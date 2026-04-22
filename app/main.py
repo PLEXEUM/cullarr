@@ -35,7 +35,6 @@ logger.info("Database initialized")
 # Register routers
 app.include_router(radarr.router, prefix="/api")
 app.include_router(plex.router, prefix="/api")
-app.include_router(plex_oauth.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(run.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
