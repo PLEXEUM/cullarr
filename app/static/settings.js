@@ -17,7 +17,8 @@ function setupEventListeners() {
     // Plex
     document.getElementById('plex-test-btn').addEventListener('click', testAndSavePlex);
     document.getElementById('plex-clear-btn').addEventListener('click', clearPlex);
-
+    document.getElementById('plex-oauth-btn').addEventListener('click', startPlexOAuth);
+    
     // Weights
     const weightSliders = ['age-weight', 'size-weight', 'rating-weight', 'quality-weight', 'monitored-weight', 'watched-weight'];
     weightSliders.forEach(id => {
@@ -120,10 +121,15 @@ async function loadPlexConfig() {
         document.getElementById('plex-url').value = data.url || '';
         document.getElementById('plex-label').value = data.label_text || 'Cullarr - Pending Deletion';
         
-        if (data.configured) {
+        if (data.configured && data.url) {
             document.getElementById('plex-status').innerHTML = '<span style="color: var(--success);">✅ Configured</span>';
+            document.getElementById('plex-authed-status').classList.remove('hidden');
+        } else if (data.configured && !data.url) {
+            document.getElementById('plex-status').innerHTML = '<span style="color: var(--warning);">⚠ Authenticated but missing server URL</span>';
+            document.getElementById('plex-authed-status').classList.add('hidden');
         } else {
             document.getElementById('plex-status').innerHTML = '<span style="color: var(--warning);">⚠ Not configured</span>';
+            document.getElementById('plex-authed-status').classList.add('hidden');
         }
     } catch (e) {
         console.error('Failed to load Plex config:', e);
@@ -132,12 +138,11 @@ async function loadPlexConfig() {
 
 async function testAndSavePlex() {
     const url = document.getElementById('plex-url').value;
-    const apiKey = document.getElementById('plex-api-key').value;
     const enabled = document.getElementById('plex-enabled').checked;
     const labelText = document.getElementById('plex-label').value;
     
-    if (!url || !apiKey) {
-        showToast('Please enter both URL and API key', 'error');
+    if (!url) {
+        showToast('Please enter Plex server URL', 'error');
         return;
     }
     
@@ -146,32 +151,33 @@ async function testAndSavePlex() {
     btn.textContent = 'Testing...';
     
     try {
+        // Save config (preserves token from OAuth)
+        const saveRes = await fetch('/api/plex/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, enabled, label_text: labelText })
+        });
+        
+        if (!saveRes.ok) {
+            const err = await saveRes.json();
+            showToast(err.detail || 'Failed to save configuration', 'error');
+            return;
+        }
+        
         // Test connection
         const testRes = await fetch('/api/plex/config/test', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, api_key: apiKey })
+            headers: { 'Content-Type': 'application/json' }
         });
         
         if (!testRes.ok) {
             const err = await testRes.json();
-            showToast(err.detail || 'Connection failed', 'error');
-            return;
-        }
-        
-        // Save config
-        const saveRes = await fetch('/api/plex/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, api_key: apiKey, enabled, label_text: labelText })
-        });
-        
-        if (saveRes.ok) {
-            showToast('Plex configured successfully', 'success');
-            loadPlexConfig();
+            showToast(err.detail || 'Connection test failed', 'error');
         } else {
-            showToast('Failed to save configuration', 'error');
+            showToast('Plex configured successfully', 'success');
         }
+        
+        loadPlexConfig();
     } catch (e) {
         showToast('Error: ' + e.message, 'error');
     } finally {
@@ -187,7 +193,6 @@ async function clearPlex() {
         if (res.ok) {
             showToast('Plex configuration cleared', 'success');
             document.getElementById('plex-url').value = '';
-            document.getElementById('plex-api-key').value = '';
             document.getElementById('plex-enabled').checked = false;
             document.getElementById('plex-label').value = 'Cullarr - Pending Deletion';
             loadPlexConfig();

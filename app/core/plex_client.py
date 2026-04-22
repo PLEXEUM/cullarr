@@ -19,9 +19,22 @@ class PlexClient:
         sep = "&" if "?" in endpoint else "?"
         url = f"{self.base_url}{endpoint}{sep}X-Plex-Token={self.api_key}"
 
+        # Proper Plex headers (matches Maintainerr/Capacitarr)
+        headers = {
+            "Accept": "application/json",
+            "X-Plex-Product": "Cullarr",
+            "X-Plex-Version": "1.0.0",
+            "X-Plex-Client-Identifier": "cullarr-695b47f5-3c61-4cbd-8eb3-bcc3d6d06ac5",
+            "X-Plex-Model": "Plex OAuth",
+            "X-Plex-Platform": "Web",
+            "X-Plex-Platform-Version": "1.0",
+            "X-Plex-Device": "Browser",
+            "X-Plex-Device-Name": "Cullarr",
+        }
+
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.get(url)
+                response = await client.get(url, headers=headers)
                 response.raise_for_status()
                 return response.json()
         except Exception as e:

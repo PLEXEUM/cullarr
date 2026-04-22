@@ -12,7 +12,6 @@ logger = get_logger()
 
 class PlexConfigInput(BaseModel):
     url: str
-    api_key: str
     label_text: Optional[str] = "Cullarr - Pending Deletion"
     enabled: bool = False
 
@@ -38,7 +37,7 @@ async def get_plex_config():
 
 @router.post("/plex/config")
 async def save_plex_config(data: PlexConfigInput):
-    """Save Plex connection settings."""
+    """Save Plex connection settings (URL and label only)."""
     # Validate URL if provided
     if data.url:
         is_valid, error = validate_url(data.url)
@@ -52,12 +51,26 @@ async def save_plex_config(data: PlexConfigInput):
 
     conn = get_connection()
     try:
-        conn.execute(
-            """UPDATE plex_config SET
-                url = ?, api_key = ?, label_text = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = 1""",
-            (data.url.rstrip("/") if data.url else None, data.api_key, data.label_text, 1 if data.enabled else 0)
-        )
+        # Get existing config to preserve token
+        existing = conn.execute("SELECT api_key FROM plex_config WHERE id = 1").fetchone()
+        
+        if existing and existing["api_key"]:
+            # Keep existing token, just update other fields
+            conn.execute(
+                """UPDATE plex_config SET
+                    url = ?, label_text = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = 1""",
+                (data.url.rstrip("/") if data.url else None, data.label_text, 1 if data.enabled else 0)
+            )
+        else:
+            # No token yet, just save URL and label
+            conn.execute(
+                """UPDATE plex_config SET
+                    url = ?, label_text = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = 1""",
+                (data.url.rstrip("/") if data.url else None, data.label_text, 1 if data.enabled else 0)
+            )
+        
         conn.commit()
         logger.info(f"Plex config saved (enabled: {data.enabled})")
         return {"success": True, "message": "Configuration saved"}
@@ -69,22 +82,16 @@ async def save_plex_config(data: PlexConfigInput):
 
 
 @router.post("/plex/config/test")
-async def test_plex_connection(data: PlexConfigInput = None):
-    """Test connection to Plex."""
-    # If no data provided, use saved config
-    if not data:
-        conn = get_connection()
-        config = conn.execute("SELECT * FROM plex_config WHERE id = 1").fetchone()
-        conn.close()
-        if not config or not config["url"] or not config["api_key"]:
-            raise HTTPException(status_code=400, detail="No Plex configuration found")
-        url = config["url"]
-        api_key = config["api_key"]
-    else:
-        url = data.url
-        api_key = data.api_key
+async def test_plex_connection():
+    """Test connection to Plex using stored token."""
+    conn = get_connection()
+    config = conn.execute("SELECT url, api_key FROM plex_config WHERE id = 1").fetchone()
+    conn.close()
 
-    client = PlexClient(url, api_key)
+    if not config or not config["url"] or not config["api_key"]:
+        raise HTTPException(status_code=400, detail="No Plex configuration found. Please authenticate with Plex first.")
+
+    client = PlexClient(config["url"], config["api_key"])
     success, message = await client.test_connection()
 
     if not success:
@@ -95,12 +102,13 @@ async def test_plex_connection(data: PlexConfigInput = None):
 
 @router.delete("/plex/config")
 async def clear_plex_config():
-    """Clear Plex configuration."""
+    """Clear Plex configuration (keep token for re-authentication)."""
     conn = get_connection()
     try:
+        # Only clear URL and label, keep token for re-authentication
         conn.execute(
             """UPDATE plex_config SET
-                url = NULL, api_key = NULL, label_text = 'Cullarr - Pending Deletion',
+                url = NULL, label_text = 'Cullarr - Pending Deletion',
                 enabled = 0, updated_at = CURRENT_TIMESTAMP
             WHERE id = 1"""
         )
