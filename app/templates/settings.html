@@ -91,7 +91,7 @@
         </div>
     </div>
 
-    <!-- Plex Connection -->
+        <!-- Plex Connection -->
     <div class="card rounded-xl overflow-hidden mb-6">
         <div class="card-header">
             <svg class="card-header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -107,15 +107,31 @@
                 <input type="checkbox" id="plex-enabled" class="accent-indigo-500">
                 <label for="plex-enabled" class="text-sm">Enable Plex Integration</label>
             </div>
+            
             <div id="plex-status" class="connection-status info">⚠ Not configured</div>
-            <input type="text" id="plex-url" placeholder="http://plex:32400">
-            <input type="password" id="plex-api-key" placeholder="API Key (admin token required)">
+            
+            <div id="plex-api-key-section">
+                <label class="text-sm block mb-1">Plex Server URL:</label>
+                <input type="text" id="plex-url" placeholder="http://192.168.0.34:32400">
+                <p class="text-xs mt-1 mb-3" style="color: var(--text-secondary);">Your local Plex server address</p>
+            </div>
+            
+            <!-- OAuth Login Button -->
+            <button id="plex-oauth-btn" class="w-full py-2 rounded-lg text-sm font-medium text-white btn-raise" style="background: #e5a00d;">
+                🔑 Login with Plex
+            </button>
+            
+            <div id="plex-authed-status" class="text-sm text-center hidden">
+                <span style="color: var(--success);">✓ Authenticated with Plex</span>
+            </div>
+            
             <input type="text" id="plex-label" placeholder="Label text" value="Cullarr - Pending Deletion">
+            
             <div class="flex gap-3">
-                <button id="plex-test-btn" class="flex-1 py-2 rounded-lg text-sm font-medium text-white btn-raise" style="background: var(--accent);">Test & Save</button>
+                <button id="plex-test-btn" class="flex-1 py-2 rounded-lg text-sm font-medium text-white btn-raise" style="background: var(--accent);">Test Connection</button>
                 <button id="plex-clear-btn" class="px-4 py-2 rounded-lg text-sm border btn-raise" style="border-color: var(--border-color); color: var(--text-secondary);">Clear</button>
             </div>
-            <p class="text-xs" style="color: var(--text-secondary);">⚠️ Admin token required for multi-user watch history</p>
+            <p class="text-xs" style="color: var(--text-secondary);">⚠️ Click "Login with Plex" to authenticate. A popup will open for you to enter the code at plex.tv/link</p>
         </div>
     </div>
 
@@ -229,4 +245,5 @@
 </div>
 
 <script src="/static/settings.js"></script>
+<script src="/static/plex_oauth.js"></script>
 {% endblock %}

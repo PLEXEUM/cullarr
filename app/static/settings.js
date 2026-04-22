@@ -17,7 +17,8 @@ function setupEventListeners() {
     // Plex
     document.getElementById('plex-test-btn').addEventListener('click', testAndSavePlex);
     document.getElementById('plex-clear-btn').addEventListener('click', clearPlex);
-    
+    document.getElementById('plex-oauth-btn').addEventListener('click', startPlexOAuth);
+
     // Weights
     const weightSliders = ['age-weight', 'size-weight', 'rating-weight', 'quality-weight', 'monitored-weight', 'watched-weight'];
     weightSliders.forEach(id => {
