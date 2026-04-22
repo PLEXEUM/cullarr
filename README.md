@@ -19,7 +19,7 @@ Cullarr is a standalone tool that automatically identifies and deletes unwanted 
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/cullarr.git
+git clone https://github.com/plexeum/cullarr.git
 cd cullarr
 
 # Create config directory
@@ -27,6 +27,7 @@ mkdir -p config logs
 
 # Start the container
 docker-compose up -d
+
 Access the web UI at http://localhost:7447
 
 Configuration Steps
@@ -49,7 +50,7 @@ Quality	15%	4K=0, 1080p=0.3, 720p=0.6, DVD=0.9, SD=1.0
 Monitored	10%	Unmonitored = higher score
 Watched	10%	0 plays=1.0, 1=0.8, 2=0.6, 3=0.4, 4=0.2, 5+=0.0
 Architecture
-text
+
 Score Cron (e.g., Sunday 3AM)
     ↓
 Score all movies in Radarr
@@ -67,6 +68,7 @@ Find scheduled_deletions where deletion_date ≤ now
 Delete from Radarr
     ↓
 Record in history
+
 Environment Variables
 Variable	Default	Description
 TZ	UTC	Server timezone
