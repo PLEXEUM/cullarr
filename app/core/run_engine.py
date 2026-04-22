@@ -14,15 +14,13 @@ async def acquire_run_lock(run_type: str) -> bool:
     """Acquire lock for a run. Returns True if acquired, False if already running."""
     conn = get_connection()
     try:
-        # Check current state
         state = conn.execute("SELECT is_running, started_at FROM run_state WHERE id = 1").fetchone()
 
         if state and state["is_running"]:
-            # Check for timeout (2 hours)
             if state["started_at"]:
                 started = datetime.fromisoformat(state["started_at"])
                 if datetime.now() - started > timedelta(hours=2):
-                    logger.warning(f"Run lock timed out, forcing release")
+                    logger.warning("Run lock timed out, forcing release")
                     conn.execute(
                         "UPDATE run_state SET is_running = 0, run_type = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = 1"
                     )
@@ -31,7 +29,6 @@ async def acquire_run_lock(run_type: str) -> bool:
                     logger.info(f"Run already in progress ({state['run_type']}), waiting...")
                     return False
 
-        # Acquire lock
         conn.execute(
             "UPDATE run_state SET is_running = 1, run_type = ?, started_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
             (run_type,)
@@ -80,15 +77,17 @@ async def run_score_cycle():
             logger.error(f"Radarr connection failed: {radarr_msg}")
             return
 
-        # Get Plex play counts if enabled
+        # Get Plex play counts if enabled — keyed by TMDb ID string
         plex_play_counts = None
         plex_enabled = plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"]
         if plex_enabled:
             plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
             plex_ok, plex_msg = await plex_client.test_connection()
             if plex_ok:
-                plex_play_counts = await plex_client.get_all_play_history()
-                logger.info(f"Fetched Plex play counts for {len(plex_play_counts)} items")
+                # Use get_play_counts_by_tmdb so data is keyed by TMDb ID,
+                # matching what the scoring engine looks up against movie.tmdbId
+                plex_play_counts = await plex_client.get_play_counts_by_tmdb()
+                logger.info(f"Fetched Plex play counts for {len(plex_play_counts)} TMDb IDs")
             else:
                 logger.warning(f"Plex connection failed: {plex_msg}, continuing without watch data")
 
@@ -115,17 +114,23 @@ async def run_score_cycle():
             logger.info("Queue full, no new movies added")
             return
 
-        # Get top N movies by score
-        to_add = scored_movies[:available_slots]
+        # Get top N movies by score, excluding any already in the queue
+        scheduled_ids = conn.execute(
+            "SELECT movie_id FROM scheduled_deletions"
+        ).fetchall()
+        scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
 
-        # Add to scheduled deletions
+        candidates = [m for m in scored_movies if m["movie_id"] not in scheduled_id_set]
+        to_add = candidates[:available_slots]
+
+        # Add to scheduled deletions — INSERT OR IGNORE to never reset an existing countdown
         added = 0
         for movie in to_add:
             scheduled_date = datetime.now() + timedelta(days=settings["delete_after_days"] if settings else 7)
 
             try:
                 conn.execute(
-                    """INSERT OR REPLACE INTO scheduled_deletions
+                    """INSERT OR IGNORE INTO scheduled_deletions
                     (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating, size_gb, quality, monitored, score, score_factors, scheduled_date, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')""",
                     (
@@ -147,8 +152,6 @@ async def run_score_cycle():
 
                 # Add Plex label if enabled
                 if plex_enabled and plex_config["label_text"]:
-                    # Note: Need rating_key mapping from Radarr to Plex
-                    # This requires additional implementation
                     logger.debug(f"Would add Plex label for {movie['movie_title']}")
             except Exception as e:
                 logger.error(f"Failed to add {movie['movie_title']} to queue: {e}")
@@ -159,6 +162,7 @@ async def run_score_cycle():
     except Exception as e:
         logger.error(f"Score cycle failed: {e}")
     finally:
+        conn.close()
         await release_run_lock()
 
 
@@ -203,7 +207,6 @@ async def run_cull_cycle():
                 result = await radarr_client.delete_movie_file_only(movie["movie_id"])
 
                 if result["success"]:
-                    # Record in history
                     conn.execute(
                         """INSERT INTO deletion_history
                         (movie_id, movie_title, movie_year, size_gb, score, status)
@@ -216,13 +219,11 @@ async def run_cull_cycle():
                             movie["score"]
                         )
                     )
-                    # Remove from queue
                     conn.execute("DELETE FROM scheduled_deletions WHERE id = ?", (movie["id"],))
                     deleted += 1
                     logger.info(f"Deleted: {movie['movie_title']}")
                 else:
                     logger.error(f"Delete failed for {movie['movie_title']}: {result['message']}")
-                    # Record failed attempt
                     conn.execute(
                         """INSERT INTO deletion_history
                         (movie_id, movie_title, movie_year, size_gb, score, status, error_message)
@@ -236,12 +237,11 @@ async def run_cull_cycle():
                             result["message"]
                         )
                     )
-                    # Remove from queue (failed movies need manual action)
                     conn.execute("DELETE FROM scheduled_deletions WHERE id = ?", (movie["id"],))
                     failed += 1
 
                 conn.commit()
-                await asyncio.sleep(1)  # Small delay between deletions
+                await asyncio.sleep(1)
 
             except Exception as e:
                 logger.error(f"Error deleting {movie['movie_title']}: {e}")
@@ -254,4 +254,5 @@ async def run_cull_cycle():
     except Exception as e:
         logger.error(f"Cull cycle failed: {e}")
     finally:
+        conn.close()
         await release_run_lock()

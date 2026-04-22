@@ -38,14 +38,11 @@ def get_quality_score(quality_name: str) -> float:
     """Get score for quality name (0-1, higher = more deletable)."""
     if not quality_name:
         return 0.5
-    # Try exact match
     if quality_name in QUALITY_SCORES:
         return QUALITY_SCORES[quality_name]
-    # Try case-insensitive
     for key, score in QUALITY_SCORES.items():
         if quality_name.lower() == key.lower():
             return score
-    # Try partial match
     q_lower = quality_name.lower()
     if "2160p" in q_lower or "4k" in q_lower:
         return 0.0
@@ -98,7 +95,6 @@ class ScoringEngine:
             self.age_max_days = weights["age_max_days"]
             self.size_max_gb = weights["size_max_gb"]
         else:
-            # Defaults
             self.age_weight = 0.25
             self.size_weight = 0.25
             self.rating_weight = 0.15
@@ -108,7 +104,6 @@ class ScoringEngine:
             self.age_max_days = 365
             self.size_max_gb = 100
 
-        # Store raw weights for factor display
         self.raw_weights = {
             "age": int(self.age_weight * 100),
             "size": int(self.size_weight * 100),
@@ -148,13 +143,13 @@ class ScoringEngine:
 
         size_gb = movie_file.get("size", 0) / (1024 ** 3)
 
-        # Age calculation (unbounded)
+        # Age calculation
         added_str = movie.get("added")
         if added_str:
             try:
                 added = datetime.fromisoformat(added_str.replace("Z", "+00:00"))
                 age_days = (datetime.now() - added).days
-            except:
+            except Exception:
                 age_days = 0
         else:
             age_days = 0
@@ -164,10 +159,9 @@ class ScoringEngine:
         if age_days < self.protection_days:
             effective_age_raw = 0
 
-        age_raw = effective_age_raw / self.age_max_days
-
-        # Size raw (unbounded)
-        size_raw = size_gb / self.size_max_gb
+        # Capped at 1.0 so outliers don't compress all other scores
+        age_raw = min(effective_age_raw / self.age_max_days, 1.0)
+        size_raw = min(size_gb / self.size_max_gb, 1.0)
 
         # TMDB rating (0-10, lower rating = higher deletion score)
         tmdb_rating = movie.get("ratings", {}).get("tmdb", {}).get("value") or movie.get("tmdbRating") or 5.0
@@ -186,12 +180,10 @@ class ScoringEngine:
         monitored = movie.get("monitored", True)
         monitored_raw = 1.0 if not monitored else 0.0
 
-        # Watched status (from Plex)
+        # Watched status (from Plex) — plex_play_counts must be keyed by TMDb ID string
         watched_raw = 0.0
         play_count = 0
-        plex_rating_key = None
         if plex_enabled and plex_play_counts:
-            # Find matching play count by TMDb ID or title
             tmdb_id = movie.get("tmdbId") or movie.get("tmdb_id")
             if tmdb_id and str(tmdb_id) in plex_play_counts:
                 play_count = plex_play_counts[str(tmdb_id)].get("play_count", 0)
@@ -212,19 +204,40 @@ class ScoringEngine:
 
         # Build factor breakdown
         factors = [
-            {"name": "Age", "key": "age", "raw_score": age_raw, "weight": self.raw_weights["age"],
-             "contribution": age_contrib, "details": f"{age_days} days" + (f" (protected: {self.protection_days} days)" if age_days < self.protection_days else "")},
-            {"name": "Size", "key": "size", "raw_score": size_raw, "weight": self.raw_weights["size"],
-             "contribution": size_contrib, "details": f"{size_gb:.1f} GB"},
-            {"name": "Rating", "key": "rating", "raw_score": rating_raw, "weight": self.raw_weights["rating"],
-             "contribution": rating_contrib, "details": f"{tmdb_rating}/10"},
-            {"name": "Quality", "key": "quality", "raw_score": quality_raw, "weight": self.raw_weights["quality"],
-             "contribution": quality_contrib, "details": current_quality},
-            {"name": "Monitored", "key": "monitored", "raw_score": monitored_raw, "weight": self.raw_weights["monitored"],
-             "contribution": monitored_contrib, "details": "No" if not monitored else "Yes"},
-            {"name": "Watched", "key": "watched", "raw_score": watched_raw, "weight": self.raw_weights["watched"],
-             "contribution": watched_contrib, "details": f"Play count: {play_count if plex_enabled else 'N/A (Plex disabled)'}",
-             "skipped": not plex_enabled, "skip_reason": "Plex not configured" if not plex_enabled else None},
+            {
+                "name": "Age", "key": "age", "raw_score": age_raw,
+                "weight": self.raw_weights["age"], "contribution": age_contrib,
+                "details": f"{age_days} days" + (
+                    f" (protected: {self.protection_days} days)" if age_days < self.protection_days else ""
+                )
+            },
+            {
+                "name": "Size", "key": "size", "raw_score": size_raw,
+                "weight": self.raw_weights["size"], "contribution": size_contrib,
+                "details": f"{size_gb:.1f} GB"
+            },
+            {
+                "name": "Rating", "key": "rating", "raw_score": rating_raw,
+                "weight": self.raw_weights["rating"], "contribution": rating_contrib,
+                "details": f"{tmdb_rating}/10"
+            },
+            {
+                "name": "Quality", "key": "quality", "raw_score": quality_raw,
+                "weight": self.raw_weights["quality"], "contribution": quality_contrib,
+                "details": current_quality
+            },
+            {
+                "name": "Monitored", "key": "monitored", "raw_score": monitored_raw,
+                "weight": self.raw_weights["monitored"], "contribution": monitored_contrib,
+                "details": "No" if not monitored else "Yes"
+            },
+            {
+                "name": "Watched", "key": "watched", "raw_score": watched_raw,
+                "weight": self.raw_weights["watched"], "contribution": watched_contrib,
+                "details": f"Play count: {play_count if plex_enabled else 'N/A (Plex disabled)'}",
+                "skipped": not plex_enabled,
+                "skip_reason": "Plex not configured" if not plex_enabled else None,
+            },
         ]
 
         return {
@@ -236,7 +249,6 @@ class ScoringEngine:
             "quality": current_quality,
             "monitored": monitored,
             "tmdb_id": movie.get("tmdbId") or movie.get("tmdb_id"),
-            "plex_rating_key": plex_rating_key,
             "factors": factors,
         }
 
@@ -281,10 +293,7 @@ class ScoringEngine:
                     "factors": result["factors"],
                 })
 
-        # Sort by raw score (highest first)
         scored.sort(key=lambda x: x["raw_score"], reverse=True)
-
-        # Normalize to 0-100
         scored = self.normalize_scores(scored)
 
         return scored
