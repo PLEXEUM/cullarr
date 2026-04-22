@@ -7,8 +7,8 @@ from app.utils.logger import get_logger
 router = APIRouter()
 logger = get_logger()
 
-# Fixed client identifier (Maintainerr uses this, we'll use the same pattern)
-CLIENT_ID = "cullarr-695b47f5-3c61-4cbd-8eb3-bcc3d6d06ac5"
+# Simple client ID (no UUID prefix)
+CLIENT_ID = "cullarr"
 
 # Store active PINs in memory
 active_pins = {}
@@ -20,18 +20,11 @@ async def create_pin():
     headers = {
         "Accept": "application/json",
         "X-Plex-Product": "Cullarr",
-        "X-Plex-Version": "1.0.0",
         "X-Plex-Client-Identifier": CLIENT_ID,
-        "X-Plex-Model": "Plex OAuth",
-        "X-Plex-Platform": "Web",
-        "X-Plex-Platform-Version": "1.0",
-        "X-Plex-Device": "Browser",
-        "X-Plex-Device-Name": "Cullarr",
     }
     
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            # ?strong=true returns a 4-digit numeric PIN
             response = await client.post(
                 "https://plex.tv/api/v2/pins?strong=true",
                 headers=headers
@@ -46,8 +39,11 @@ async def create_pin():
             }
             active_pins[data["id"]] = pin_data
             
+            # Build auth URL (no #! just #?)
+            auth_url = f"https://app.plex.tv/auth#?clientID={CLIENT_ID}&code={data['code']}"
+            
             logger.info(f"Created Plex PIN: {data['code']} (ID: {data['id']})")
-            return {"id": data["id"], "code": data["code"]}
+            return {"id": data["id"], "code": data["code"], "auth_url": auth_url}
     except Exception as e:
         logger.error(f"Failed to create Plex PIN: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create PIN: {str(e)}")
