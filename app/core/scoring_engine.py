@@ -1,0 +1,289 @@
+import json
+from datetime import datetime
+from typing import List, Dict, Optional, Any
+from app.utils.logger import get_logger
+
+logger = get_logger()
+
+# Quality to score mapping (0 = keep, 1 = delete priority)
+QUALITY_SCORES = {
+    "4K": 0.0,
+    "2160p": 0.0,
+    "Bluray-2160p": 0.0,
+    "Bluray-4K": 0.0,
+    "WEBDL-2160p": 0.0,
+    "WEB-DL-2160p": 0.0,
+    "WEBrip-2160p": 0.0,
+    "1080p": 0.3,
+    "Bluray-1080p": 0.3,
+    "BluRay-1080p": 0.3,
+    "WEBDL-1080p": 0.3,
+    "WEB-DL-1080p": 0.3,
+    "WEBrip-1080p": 0.3,
+    "720p": 0.6,
+    "Bluray-720p": 0.6,
+    "BluRay-720p": 0.6,
+    "WEBDL-720p": 0.6,
+    "WEB-DL-720p": 0.6,
+    "WEBrip-720p": 0.6,
+    "DVD": 0.9,
+    "DVD-Rip": 0.9,
+    "DVDRip": 0.9,
+    "SD": 1.0,
+    "Unknown": 0.5,
+}
+
+
+def get_quality_score(quality_name: str) -> float:
+    """Get score for quality name (0-1, higher = more deletable)."""
+    if not quality_name:
+        return 0.5
+    # Try exact match
+    if quality_name in QUALITY_SCORES:
+        return QUALITY_SCORES[quality_name]
+    # Try case-insensitive
+    for key, score in QUALITY_SCORES.items():
+        if quality_name.lower() == key.lower():
+            return score
+    # Try partial match
+    q_lower = quality_name.lower()
+    if "2160p" in q_lower or "4k" in q_lower:
+        return 0.0
+    elif "1080p" in q_lower:
+        return 0.3
+    elif "720p" in q_lower:
+        return 0.6
+    elif "dvd" in q_lower:
+        return 0.9
+    elif "sd" in q_lower:
+        return 1.0
+    return 0.5
+
+
+def get_watched_score(play_count: int) -> float:
+    """Graduated watch score: 0 plays=1.0, 1=0.8, 2=0.6, 3=0.4, 4=0.2, 5+=0.0"""
+    if play_count <= 0:
+        return 1.0
+    elif play_count == 1:
+        return 0.8
+    elif play_count == 2:
+        return 0.6
+    elif play_count == 3:
+        return 0.4
+    elif play_count == 4:
+        return 0.2
+    else:
+        return 0.0
+
+
+class ScoringEngine:
+    def __init__(self, conn):
+        self.conn = conn
+        self._load_weights()
+        self._load_settings()
+
+    def _load_weights(self):
+        """Load scoring weights from database."""
+        weights = self.conn.execute(
+            "SELECT * FROM scoring_weights WHERE id = 1"
+        ).fetchone()
+
+        if weights:
+            self.age_weight = weights["age_weight"] / 100.0
+            self.size_weight = weights["size_weight"] / 100.0
+            self.rating_weight = weights["rating_weight"] / 100.0
+            self.quality_weight = weights["quality_weight"] / 100.0
+            self.monitored_weight = weights["monitored_weight"] / 100.0
+            self.watched_weight = weights["watched_weight"] / 100.0
+            self.age_max_days = weights["age_max_days"]
+            self.size_max_gb = weights["size_max_gb"]
+        else:
+            # Defaults
+            self.age_weight = 0.25
+            self.size_weight = 0.25
+            self.rating_weight = 0.15
+            self.quality_weight = 0.15
+            self.monitored_weight = 0.10
+            self.watched_weight = 0.10
+            self.age_max_days = 365
+            self.size_max_gb = 100
+
+        # Store raw weights for factor display
+        self.raw_weights = {
+            "age": int(self.age_weight * 100),
+            "size": int(self.size_weight * 100),
+            "rating": int(self.rating_weight * 100),
+            "quality": int(self.quality_weight * 100),
+            "monitored": int(self.monitored_weight * 100),
+            "watched": int(self.watched_weight * 100),
+        }
+
+    def _load_settings(self):
+        """Load settings (protection days, collection grouping)."""
+        settings = self.conn.execute(
+            "SELECT protection_days, collection_grouping FROM settings WHERE id = 1"
+        ).fetchone()
+        if settings:
+            self.protection_days = settings["protection_days"]
+            self.collection_grouping = bool(settings["collection_grouping"])
+        else:
+            self.protection_days = 30
+            self.collection_grouping = False
+
+    def reload_config(self):
+        """Reload weights and settings from database."""
+        self._load_weights()
+        self._load_settings()
+
+    def calculate_movie_score(
+        self,
+        movie: Dict,
+        plex_play_counts: Optional[Dict] = None,
+        plex_enabled: bool = False
+    ) -> Dict[str, Any]:
+        """Calculate score for a single movie with factor breakdown."""
+        movie_file = movie.get("movieFile", {})
+        if not movie_file:
+            return {"score": 0, "eligible": False, "reason": "No file", "factors": []}
+
+        size_gb = movie_file.get("size", 0) / (1024 ** 3)
+
+        # Age calculation (unbounded)
+        added_str = movie.get("added")
+        if added_str:
+            try:
+                added = datetime.fromisoformat(added_str.replace("Z", "+00:00"))
+                age_days = (datetime.now() - added).days
+            except:
+                age_days = 0
+        else:
+            age_days = 0
+
+        # Apply protection penalty (age = 0 if within protection window)
+        effective_age_raw = age_days
+        if age_days < self.protection_days:
+            effective_age_raw = 0
+
+        age_raw = effective_age_raw / self.age_max_days
+
+        # Size raw (unbounded)
+        size_raw = size_gb / self.size_max_gb
+
+        # TMDB rating (0-10, lower rating = higher deletion score)
+        tmdb_rating = movie.get("ratings", {}).get("tmdb", {}).get("value") or movie.get("tmdbRating") or 5.0
+        rating_raw = 1.0 - (tmdb_rating / 10.0)
+
+        # Quality
+        current_quality = "Unknown"
+        file_quality_wrapper = movie_file.get("quality", {})
+        if isinstance(file_quality_wrapper, dict):
+            file_quality_obj = file_quality_wrapper.get("quality", {})
+            if isinstance(file_quality_obj, dict):
+                current_quality = file_quality_obj.get("name", "Unknown")
+        quality_raw = get_quality_score(current_quality)
+
+        # Monitored status
+        monitored = movie.get("monitored", True)
+        monitored_raw = 1.0 if not monitored else 0.0
+
+        # Watched status (from Plex)
+        watched_raw = 0.0
+        plex_rating_key = None
+        if plex_enabled and plex_play_counts:
+            # Find matching play count by TMDb ID or title
+            tmdb_id = movie.get("tmdbId") or movie.get("tmdb_id")
+            if tmdb_id and str(tmdb_id) in plex_play_counts:
+                play_count = plex_play_counts[str(tmdb_id)].get("play_count", 0)
+                watched_raw = get_watched_score(play_count)
+
+        # Calculate contributions
+        age_contrib = age_raw * self.age_weight
+        size_contrib = size_raw * self.size_weight
+        rating_contrib = rating_raw * self.rating_weight
+        quality_contrib = quality_raw * self.quality_weight
+        monitored_contrib = monitored_raw * self.monitored_weight
+        watched_contrib = watched_raw * self.watched_weight
+
+        raw_score = (
+            age_contrib + size_contrib + rating_contrib +
+            quality_contrib + monitored_contrib + watched_contrib
+        )
+
+        # Build factor breakdown
+        factors = [
+            {"name": "Age", "key": "age", "raw_score": age_raw, "weight": self.raw_weights["age"],
+             "contribution": age_contrib, "details": f"{age_days} days" + (f" (protected: {self.protection_days} days)" if age_days < self.protection_days else "")},
+            {"name": "Size", "key": "size", "raw_score": size_raw, "weight": self.raw_weights["size"],
+             "contribution": size_contrib, "details": f"{size_gb:.1f} GB"},
+            {"name": "Rating", "key": "rating", "raw_score": rating_raw, "weight": self.raw_weights["rating"],
+             "contribution": rating_contrib, "details": f"{tmdb_rating}/10"},
+            {"name": "Quality", "key": "quality", "raw_score": quality_raw, "weight": self.raw_weights["quality"],
+             "contribution": quality_contrib, "details": current_quality},
+            {"name": "Monitored", "key": "monitored", "raw_score": monitored_raw, "weight": self.raw_weights["monitored"],
+             "contribution": monitored_contrib, "details": "No" if not monitored else "Yes"},
+            {"name": "Watched", "key": "watched", "raw_score": watched_raw, "weight": self.raw_weights["watched"],
+             "contribution": watched_contrib, "details": f"Play count: {play_count if plex_enabled else 'N/A (Plex disabled)'}",
+             "skipped": not plex_enabled, "skip_reason": "Plex not configured" if not plex_enabled else None},
+        ]
+
+        return {
+            "score": raw_score,
+            "eligible": True,
+            "size_gb": size_gb,
+            "age_days": age_days,
+            "tmdb_rating": tmdb_rating,
+            "quality": current_quality,
+            "monitored": monitored,
+            "tmdb_id": movie.get("tmdbId") or movie.get("tmdb_id"),
+            "plex_rating_key": plex_rating_key,
+            "factors": factors,
+        }
+
+    def normalize_scores(self, scored_movies: List[Dict]) -> List[Dict]:
+        """Normalize raw scores to 0-100 scale."""
+        if not scored_movies:
+            return []
+
+        max_score = max(m.get("raw_score", 0) for m in scored_movies)
+        if max_score == 0:
+            for m in scored_movies:
+                m["normalized_score"] = 0
+        else:
+            for m in scored_movies:
+                m["normalized_score"] = (m["raw_score"] / max_score) * 100
+
+        return scored_movies
+
+    def get_scored_movies(
+        self,
+        movies: List[Dict],
+        plex_play_counts: Optional[Dict] = None,
+        plex_enabled: bool = False
+    ) -> List[Dict]:
+        """Calculate scores for all movies and return sorted list."""
+        scored = []
+
+        for movie in movies:
+            result = self.calculate_movie_score(movie, plex_play_counts, plex_enabled)
+            if result["eligible"]:
+                scored.append({
+                    "movie_id": movie.get("id"),
+                    "movie_title": movie.get("title"),
+                    "movie_year": movie.get("year"),
+                    "tmdb_id": result.get("tmdb_id"),
+                    "tmdb_rating": result["tmdb_rating"],
+                    "size_gb": result["size_gb"],
+                    "age_days": result["age_days"],
+                    "quality": result["quality"],
+                    "monitored": result["monitored"],
+                    "raw_score": result["score"],
+                    "factors": result["factors"],
+                })
+
+        # Sort by raw score (highest first)
+        scored.sort(key=lambda x: x["raw_score"], reverse=True)
+
+        # Normalize to 0-100
+        scored = self.normalize_scores(scored)
+
+        return scored

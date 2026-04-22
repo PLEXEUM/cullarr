@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cullarr</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Theme Variables */
+        [data-theme="dark"] {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #1e293b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #334155;
+            --accent: #6366f1;
+            --accent-rgb: 99, 102, 241;
+            --success: #10b981;
+            --success-bg: rgba(16, 185, 129, 0.15);
+            --danger: #ef4444;
+            --danger-bg: rgba(239, 68, 68, 0.15);
+            --warning: #f59e0b;
+            --warning-bg: rgba(245, 158, 11, 0.15);
+            --info: #3b82f6;
+            --info-bg: rgba(59, 130, 246, 0.15);
+            --purple: #a78bfa;
+            --purple-bg: rgba(139, 92, 246, 0.15);
+            --star: #f5c518;
+        }
+        
+        [data-theme="light"] {
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --bg-card: #ffffff;
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --border-color: #e2e8f0;
+            --accent: #6366f1;
+            --accent-rgb: 99, 102, 241;
+            --success: #059669;
+            --success-bg: rgba(5, 150, 105, 0.1);
+            --danger: #dc2626;
+            --danger-bg: rgba(220, 38, 38, 0.1);
+            --warning: #d97706;
+            --warning-bg: rgba(217, 119, 6, 0.1);
+            --info: #2563eb;
+            --info-bg: rgba(37, 99, 235, 0.1);
+            --purple: #7c3aed;
+            --purple-bg: rgba(124, 58, 237, 0.1);
+            --star: #eab308;
+        }
+        
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 0.75rem;
+        }
+        
+        .nav-link {
+            color: var(--text-secondary);
+            transition: color 0.2s;
+        }
+        
+        .nav-link:hover, .nav-link.active {
+            color: var(--text-primary);
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            z-index: 9999;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .btn-raise {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            cursor: pointer;
+        }
+        
+        .btn-raise:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .btn-sm {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.75rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+        
+        .btn-outline {
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            background: transparent;
+        }
+        
+        .btn-outline:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        
+        .btn-danger {
+            border: 1px solid var(--danger);
+            color: var(--danger);
+            background: transparent;
+        }
+        
+        .btn-danger:hover {
+            background: var(--danger-bg);
+        }
+        
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        /* Score badge colors */
+        .score-high { background: #ef4444; color: white; }
+        .score-medium { background: #eab308; color: white; }
+        .score-low { background: #22c55e; color: white; }
+        
+        /* Factor colors */
+        .factor-age { background: #3b82f6; }
+        .factor-size { background: #22c55e; }
+        .factor-rating { background: #f59e0b; }
+        .factor-quality { background: #a855f7; }
+        .factor-monitored { background: #ec4898; }
+        .factor-watched { background: #06b6d4; }
+        
+        .star { color: var(--star); }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <!-- Navigation -->
+    <nav class="card border-b border-t-0 border-x-0 rounded-none px-6 py-4">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-8">
+                <span class="text-xl font-bold text-indigo-400">🗑 Cullarr</span>
+                <div class="flex gap-6">
+                    <a href="/" class="nav-link text-sm font-medium" id="nav-dashboard">Dashboard</a>
+                    <a href="/settings" class="nav-link text-sm font-medium" id="nav-settings">Settings</a>
+                    <a href="/logs" class="nav-link text-sm font-medium" id="nav-logs">Logs</a>
+                </div>
+            </div>
+            <button onclick="toggleTheme()" class="text-sm nav-link px-3 py-1 rounded border border-current">
+                🌙 Theme
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-6 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <script>
+        // Theme toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme');
+            const next = current === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+        }
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        // Set active nav link
+        function setActiveNav() {
+            const path = window.location.pathname;
+            document.getElementById('nav-dashboard')?.classList.toggle('active', path === '/');
+            document.getElementById('nav-settings')?.classList.toggle('active', path === '/settings');
+            document.getElementById('nav-logs')?.classList.toggle('active', path === '/logs');
+        }
+        setActiveNav();
+
+        // Toast notifications
+        function showToast(message, type = 'success', duration = 5000) {
+            const colors = {
+                success: 'bg-green-800 border-green-600 text-green-100',
+                error: 'bg-red-800 border-red-600 text-red-100',
+                warning: 'bg-yellow-800 border-yellow-600 text-yellow-100',
+                info: 'bg-blue-800 border-blue-600 text-blue-100'
+            };
+            const toast = document.createElement('div');
+            toast.className = `toast card border rounded-lg px-4 py-3 text-sm ${colors[type] || colors.info}`;
+            toast.textContent = message;
+            document.getElementById('toast-container').appendChild(toast);
+            setTimeout(() => toast.remove(), duration);
+        }
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

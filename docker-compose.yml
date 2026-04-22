@@ -1,5 +1,5 @@
 services:
-  resizarr:
+  cullarr:
     build: .
     container_name: cullarr
     ports:
@@ -11,6 +11,7 @@ services:
       - TZ=UTC
       - LOG_LEVEL=INFO
       - MAX_LOG_FILES=5
+      - LOG_MAX_SIZE_MB=10
     restart: unless-stopped
     cpu_count: 1
     mem_limit: 512m

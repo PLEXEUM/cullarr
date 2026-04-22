@@ -1,0 +1,103 @@
+import httpx
+import asyncio
+from typing import Optional
+from datetime import datetime
+from app.utils.logger import get_logger
+from app.utils.redactor import redact
+
+logger = get_logger()
+
+
+class RadarrClient:
+    def __init__(self, base_url: str, api_key: str):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.headers = {
+            "X-Api-Key": api_key,
+            "Content-Type": "application/json"
+        }
+
+    async def _request(self, method: str, endpoint: str, timeout: int = 60, **kwargs) -> dict:
+        """Make an HTTP request with retry logic."""
+        url = f"{self.base_url}/api/v3/{endpoint}"
+        last_error = None
+
+        for attempt in range(1, 4):
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    response = await client.request(method, url, headers=self.headers, **kwargs)
+                    response.raise_for_status()
+                    return response.json()
+            except httpx.HTTPStatusError as e:
+                last_error = e
+                logger.warning(f"Radarr API error (attempt {attempt}/3): {e.response.status_code}")
+            except httpx.RequestError as e:
+                last_error = e
+                logger.warning(f"Radarr connection error (attempt {attempt}/3): {redact(str(e))}")
+
+            if attempt < 3:
+                wait = 2 ** attempt
+                await asyncio.sleep(wait)
+
+        raise ConnectionError(f"Radarr API unreachable after 3 attempts")
+
+    async def test_connection(self) -> tuple[bool, str]:
+        """Test connection to Radarr."""
+        try:
+            await self._request("GET", "system/status")
+            return True, "Connection successful"
+        except Exception as e:
+            return False, f"Connection failed: {redact(str(e))}"
+
+    async def get_movies(self) -> list:
+        """Fetch all movies with automatic pagination."""
+        all_movies = []
+        page = 1
+        page_size = 50
+
+        while True:
+            logger.info(f"Fetching movies page {page}...")
+            data = await self._request(
+                "GET", "movie",
+                params={"page": page, "pageSize": page_size}
+            )
+
+            if isinstance(data, list):
+                all_movies.extend(data)
+                break
+
+            records = data.get("records", [])
+            all_movies.extend(records)
+
+            total = data.get("totalRecords", 0)
+            if len(all_movies) >= total or len(records) == 0:
+                break
+
+            page += 1
+
+        logger.info(f"Fetched {len(all_movies)} movies total")
+        return all_movies
+
+    async def get_movie(self, movie_id: int) -> dict:
+        """Fetch a single movie by ID."""
+        return await self._request("GET", f"movie/{movie_id}")
+
+    async def delete_movie_file_only(self, movie_id: int) -> dict:
+        """Delete only the movie file, keep the movie entry in Radarr."""
+        try:
+            movie = await self.get_movie(movie_id)
+            movie_file = movie.get("movieFile")
+
+            if not movie_file:
+                logger.info(f"No movie file found for movie {movie_id}")
+                return {"success": False, "message": "No file to delete"}
+
+            file_id = movie_file.get("id")
+
+            await self._request("DELETE", f"moviefile/{file_id}", timeout=120)
+            logger.info(f"Deleted movie file (ID: {file_id}) for movie {movie_id}")
+            return {"success": True, "message": f"Deleted file ID: {file_id}"}
+
+        except Exception as e:
+            logger.error(f"Failed to delete movie file: {e}")
+            return {"success": False, "message": str(e)}

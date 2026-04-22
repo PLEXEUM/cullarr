@@ -1,0 +1,1 @@
+# Cullarr - Auto-delete movies from Radarr based on scoring

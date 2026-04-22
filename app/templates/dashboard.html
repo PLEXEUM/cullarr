@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .score-bar {
+        height: 6px;
+        border-radius: 3px;
+        background: var(--border-color);
+        overflow: hidden;
+    }
+    .score-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.3s ease;
+    }
+    .status-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 6px;
+    }
+    .status-connected { background: #10b981; }
+    .status-error { background: #ef4444; }
+    .status-unknown { background: #94a3b8; }
+    .expand-icon {
+        cursor: pointer;
+        user-select: none;
+        display: inline-block;
+        width: 20px;
+    }
+    .collection-row {
+        background: var(--bg-secondary);
+        border-left: 3px solid var(--accent);
+    }
+    .collection-children {
+        padding-left: 28px;
+    }
+</style>
+
+<div class="space-y-6">
+
+    <!-- Header -->
+    <div>
+        <h1 class="text-2xl font-bold">Dashboard</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary)">
+            Score and remove unwanted movies from your Radarr library
+        </p>
+    </div>
+
+    <!-- Two Column Layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- Left Box: Queue Status -->
+        <div class="card rounded-xl overflow-hidden">
+            <div class="card-header px-4 py-3 border-b" style="border-color: var(--border-color);">
+                <h2 class="font-semibold">📊 Queue Status</h2>
+            </div>
+            <div class="p-4 space-y-3" id="queue-status">
+                <div class="flex justify-between items-center">
+                    <span class="text-sm" style="color: var(--text-secondary)">Scheduled:</span>
+                    <span class="font-mono font-semibold" id="scheduled-count">--</span>
+                </div>
+                <div class="w-full bg-gray-700 rounded-full h-2">
+                    <div id="queue-bar" class="bg-indigo-500 h-2 rounded-full" style="width: 0%"></div>
+                </div>
+                <div class="flex justify-between text-xs" style="color: var(--text-secondary)">
+                    <span id="queue-percent">0%</span>
+                    <span id="queue-cap">of -- cap</span>
+                </div>
+                <div class="border-t pt-3 mt-2" style="border-color: var(--border-color);">
+                    <div class="flex justify-between text-sm">
+                        <span style="color: var(--text-secondary)">Delete after:</span>
+                        <span id="delete-after" class="font-mono">-- days</span>
+                    </div>
+                    <div class="flex justify-between text-sm mt-1">
+                        <span style="color: var(--text-secondary)">Protect new movies:</span>
+                        <span id="protection-days" class="font-mono">-- days</span>
+                    </div>
+                    <div class="flex justify-between text-sm mt-1">
+                        <span style="color: var(--text-secondary)">Collection grouping:</span>
+                        <span id="collection-grouping">--</span>
+                    </div>
+                </div>
+                <div class="border-t pt-3 mt-2" style="border-color: var(--border-color);">
+                    <div class="flex items-center gap-2 text-sm">
+                        <span class="status-dot" id="radarr-status-dot"></span>
+                        <span id="radarr-status-text">Radarr: --</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-sm mt-1">
+                        <span class="status-dot" id="plex-status-dot"></span>
+                        <span id="plex-status-text">Plex: --</span>
+                    </div>
+                    <div id="plex-details" class="text-xs mt-1" style="color: var(--text-secondary)"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Box: Run Controls -->
+        <div class="card rounded-xl overflow-hidden">
+            <div class="card-header px-4 py-3 border-b" style="border-color: var(--border-color);">
+                <h2 class="font-semibold">▶ Run Controls</h2>
+            </div>
+            <div class="p-4 text-center">
+                <div class="flex justify-center gap-3 mb-3">
+                    <button id="run-score-btn" class="btn-primary px-4 py-2 rounded-lg text-sm font-medium">
+                        🎯 Run Score
+                    </button>
+                    <button id="refresh-btn" class="btn-outline px-4 py-2 rounded-lg text-sm">
+                        ⟳ Refresh
+                    </button>
+                </div>
+                <div class="mb-3">
+                    <label class="flex items-center justify-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="dry-run-toggle" class="accent-indigo-500">
+                        <span class="text-sm">Dry Run (preview only, no changes)</span>
+                    </label>
+                </div>
+                <div class="text-left text-sm space-y-1 pt-3 border-t" style="border-color: var(--border-color);">
+                    <div><span style="color: var(--text-secondary)">Next score run:</span> <span id="next-score-run" class="font-mono">--</span></div>
+                    <div><span style="color: var(--text-secondary)">Next cull run:</span> <span id="next-cull-run" class="font-mono">--</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scheduled Deletions Table -->
+    <div class="card rounded-xl overflow-hidden">
+        <div class="card-header px-4 py-3 border-b flex justify-between items-center" style="border-color: var(--border-color);">
+            <h2 class="font-semibold">⏳ Scheduled Deletions</h2>
+            <span id="scheduled-badge" class="badge" style="background: var(--info-bg); color: var(--info);">0 items</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <th class="px-4 py-2 text-left text-xs">Movie</th>
+                        <th class="px-4 py-2 text-left text-xs">Score</th>
+                        <th class="px-4 py-2 text-left text-xs">Deletion Date</th>
+                        <th class="px-4 py-2 text-left text-xs">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="scheduled-table">
+                    <tr><td colspan="4" class="px-4 py-8 text-center" style="color: var(--text-secondary)">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Score Queue Table -->
+    <div class="card rounded-xl overflow-hidden">
+        <div class="card-header px-4 py-3 border-b flex justify-between items-center" style="border-color: var(--border-color);">
+            <h2 class="font-semibold">📋 Score Queue (next in line for deletion)</h2>
+            <div class="flex gap-2">
+                <select id="per-page-select" class="text-sm rounded-lg px-2 py-1" style="background: var(--bg-primary); border-color: var(--border-color);">
+                    <option value="10">10 per page</option>
+                    <option value="20" selected>20 per page</option>
+                    <option value="50">50 per page</option>
+                    <option value="100">100 per page</option>
+                </select>
+                <button id="refresh-queue-btn" class="btn-sm btn-outline">⟳</button>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <th class="px-4 py-2 text-left text-xs">Score</th>
+                        <th class="px-4 py-2 text-left text-xs">Movie</th>
+                        <th class="px-4 py-2 text-left text-xs">Year</th>
+                        <th class="px-4 py-2 text-left text-xs">⭐ TMDB</th>
+                        <th class="px-4 py-2 text-left text-xs">Size</th>
+                        <th class="px-4 py-2 text-left text-xs">Quality</th>
+                        <th class="px-4 py-2 text-left text-xs">Age</th>
+                        <th class="px-4 py-2 text-left text-xs"></th>
+                    </tr>
+                </thead>
+                <tbody id="score-queue-table">
+                    <tr><td colspan="8" class="px-4 py-8 text-center" style="color: var(--text-secondary)">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="score-queue-pagination" class="px-4 py-3 border-t flex justify-between items-center text-sm" style="border-color: var(--border-color);"></div>
+    </div>
+
+    <!-- Failed Deletions -->
+    <div id="failed-section" class="card rounded-xl overflow-hidden hidden">
+        <div class="card-header px-4 py-3 border-b" style="border-color: var(--border-color); background: var(--danger-bg);">
+            <h2 class="font-semibold" style="color: var(--danger);">⚠ Failed Deletions</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <th class="px-4 py-2 text-left text-xs">Movie</th>
+                        <th class="px-4 py-2 text-left text-xs">Score</th>
+                        <th class="px-4 py-2 text-left text-xs">Failed Date</th>
+                        <th class="px-4 py-2 text-left text-xs">Error</th>
+                    </tr>
+                </thead>
+                <tbody id="failed-table"></tbody>
+            </table>
+        </div>
+        <div class="px-4 py-3 border-t text-xs" style="border-color: var(--border-color); color: var(--text-secondary);">
+            ℹ️ Failed movies removed from queue. Manually delete from Radarr if needed.
+        </div>
+    </div>
+
+</div>
+
+<script src="/static/dashboard.js"></script>
+{% endblock %}
