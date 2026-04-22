@@ -1,6 +1,6 @@
 import json
 import asyncio
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime
 from app.utils.logger import get_logger
 from app.utils.redactor import redact
@@ -13,7 +13,7 @@ class PlexClient:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
 
-    async def _request(self, endpoint: str, timeout: int = 30) -> Optional[dict]:
+    async def _request(self, endpoint: str, timeout: int = 30) -> Optional[Dict]:
         """Make a request to Plex API."""
         import httpx
         sep = "&" if "?" in endpoint else "?"
@@ -40,50 +40,86 @@ class PlexClient:
         except Exception as e:
             return False, f"Connection failed: {redact(str(e))}"
 
-    async def get_all_play_history(self) -> dict:
+    async def get_all_play_history(self) -> Dict[str, Dict]:
         """
-        Fetch all play history from Plex using paginated history API.
-        Returns dict of ratingKey -> play count and last viewed.
-        Requires admin token.
+        Fetch play counts from Plex library metadata.
+        With an admin token, viewCount returns total plays across ALL users.
         """
         result = {}
-        start = 0
-        page_size = 1000
-
-        while True:
-            endpoint = f"/status/sessions/history/all?X-Plex-Container-Start={start}&X-Plex-Container-Size={page_size}"
-            data = await self._request(endpoint)
-
-            if not data:
-                break
-
-            metadata = data.get("MediaContainer", {}).get("Metadata", [])
-            if not metadata:
-                break
-
-            for item in metadata:
+        
+        # Get all library sections
+        sections_data = await self._request("/library/sections")
+        if not sections_data:
+            logger.warning("Failed to fetch Plex library sections")
+            return result
+        
+        for section in sections_data.get("MediaContainer", {}).get("Directory", []):
+            section_type = section.get("type")
+            if section_type not in ["movie", "show"]:
+                continue
+            
+            section_key = section.get("key")
+            logger.debug(f"Scanning Plex section: {section.get('title')} (type: {section_type})")
+            
+            # Get all items in this section (includeGuids=1 for TMDb ID)
+            items_data = await self._request(f"/library/sections/{section_key}/all?includeGuids=1")
+            if not items_data:
+                continue
+            
+            for item in items_data.get("MediaContainer", {}).get("Metadata", []):
                 rating_key = item.get("ratingKey")
                 if not rating_key:
                     continue
+                
+                # Extract TMDb ID from GUIDs
+                tmdb_id = self._extract_tmdb_id(item.get("Guid", []))
+                
+                view_count = item.get("viewCount", 0)
+                last_viewed = item.get("lastViewedAt", 0)
+                
+                # Store by rating_key for now (will map to TMDb ID later)
+                result[rating_key] = {
+                    "play_count": view_count,
+                    "last_viewed": last_viewed,
+                    "tmdb_id": tmdb_id,
+                    "title": item.get("title", ""),
+                    "year": item.get("year", 0)
+                }
+        
+        logger.info(f"Fetched play history for {len(result)} items from Plex library metadata")
+        return result
+    
+    def _extract_tmdb_id(self, guids: list) -> Optional[int]:
+        """Extract TMDb ID from Plex GUID array."""
+        if not guids:
+            return None
+        
+        for guid in guids:
+            guid_id = guid.get("id", "")
+            if guid_id.startswith("tmdb://"):
+                try:
+                    return int(guid_id.replace("tmdb://", ""))
+                except ValueError:
+                    pass
+        return None
 
-                if rating_key not in result:
-                    result[rating_key] = {"play_count": 0, "last_viewed": 0}
-
-                result[rating_key]["play_count"] += 1
-                viewed_at = item.get("viewedAt", 0)
-                if viewed_at > result[rating_key]["last_viewed"]:
-                    result[rating_key]["last_viewed"] = viewed_at
-
-            # Check if we have all records
-            total_size = data.get("MediaContainer", {}).get("totalSize", 0)
-            if total_size > 0 and len(metadata) < page_size:
-                break
-            if len(metadata) < page_size:
-                break
-
-            start += len(metadata)
-
-        logger.info(f"Fetched play history for {len(result)} items from Plex")
+    async def get_play_counts_by_tmdb(self) -> Dict[int, Dict]:
+        """
+        Returns play counts keyed by TMDb ID instead of ratingKey.
+        This is what the scoring engine expects.
+        """
+        raw_history = await self.get_all_play_history()
+        result = {}
+        
+        for rating_key, data in raw_history.items():
+            tmdb_id = data.get("tmdb_id")
+            if tmdb_id:
+                result[str(tmdb_id)] = {
+                    "play_count": data["play_count"],
+                    "last_viewed": data["last_viewed"]
+                }
+        
+        logger.info(f"Mapped {len(result)} items to TMDb IDs")
         return result
 
     async def add_label(self, rating_key: str, label: str) -> bool:
@@ -123,9 +159,24 @@ class PlexClient:
             return False
 
     async def get_rating_key_by_tmdb_id(self, tmdb_id: int) -> Optional[str]:
-        """Find Plex rating key for a given TMDb ID."""
-        # This requires searching Plex library
-        # For now, we'll rely on the mapping from Radarr
-        # Full implementation would need to search Plex library
-        logger.debug(f"Looking up rating key for TMDb ID {tmdb_id}")
+        """Find Plex rating key for a given TMDb ID by scanning library."""
+        sections_data = await self._request("/library/sections")
+        if not sections_data:
+            return None
+        
+        for section in sections_data.get("MediaContainer", {}).get("Directory", []):
+            section_type = section.get("type")
+            if section_type not in ["movie", "show"]:
+                continue
+            
+            section_key = section.get("key")
+            items_data = await self._request(f"/library/sections/{section_key}/all?includeGuids=1")
+            if not items_data:
+                continue
+            
+            for item in items_data.get("MediaContainer", {}).get("Metadata", []):
+                extracted_id = self._extract_tmdb_id(item.get("Guid", []))
+                if extracted_id == tmdb_id:
+                    return item.get("ratingKey")
+        
         return None
