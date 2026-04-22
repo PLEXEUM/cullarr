@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import os
 
-from app.api import radarr, plex, settings, run, dashboard, logs
+from app.api import radarr, plex, plex_oauth, settings, run, dashboard, logs
 from app.db.database import init_db
 from app.core.scheduler import start_scheduler, shutdown_scheduler
 from app.utils.logger import setup_logger, get_logger
@@ -35,6 +35,7 @@ logger.info("Database initialized")
 # Register routers
 app.include_router(radarr.router, prefix="/api")
 app.include_router(plex.router, prefix="/api")
+app.include_router(plex_oauth.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(run.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
