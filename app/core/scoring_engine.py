@@ -188,6 +188,7 @@ class ScoringEngine:
 
         # Watched status (from Plex)
         watched_raw = 0.0
+        play_count = 0
         plex_rating_key = None
         if plex_enabled and plex_play_counts:
             # Find matching play count by TMDb ID or title
