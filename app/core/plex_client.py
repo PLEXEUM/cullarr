@@ -80,12 +80,11 @@ class PlexClient:
         
         logger.info(f"Fetched {len(items)} library items from Plex")
         return items
-
-    async def fetch_all_history(self) -> Dict[str, Dict]:
+    
+    async def get_all_play_history(self) -> Dict[str, Dict]:
         """
         Fetch play history from Plex using /status/sessions/history/all.
-        This returns individual play events for ALL users with admin token.
-        Matches Capacitarr's implementation.
+        Returns dict keyed by ratingKey with play_count and last_viewed.
         """
         result = {}
         start = 0
@@ -143,7 +142,7 @@ class PlexClient:
                 rating_to_tmdb[item["rating_key"]] = str(item["tmdb_id"])
         
         # Step 2: Get play history
-        history = await self.fetch_all_history()
+        history = await self.get_all_play_history()
         
         # Step 3: Aggregate play counts by TMDb ID
         result = {}
