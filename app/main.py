@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import os
 
-from app.api import radarr, plex, plex_oauth, settings, run, dashboard, logs
+from app.api import radarr, plex, settings, run, dashboard, logs
 from app.db.database import init_db
 from app.core.scheduler import start_scheduler, shutdown_scheduler
 from app.utils.logger import setup_logger, get_logger

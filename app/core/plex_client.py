@@ -1,6 +1,6 @@
 import json
 import asyncio
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from app.utils.logger import get_logger
 from app.utils.redactor import redact
@@ -40,18 +40,15 @@ class PlexClient:
         except Exception as e:
             return False, f"Connection failed: {redact(str(e))}"
 
-    async def get_all_play_history(self) -> Dict[str, Dict]:
-        """
-        Fetch play counts from Plex library metadata.
-        With an admin token, viewCount returns total plays across ALL users.
-        """
-        result = {}
+    async def get_library_items(self) -> List[Dict]:
+        """Fetch all movies and shows from Plex libraries with GUIDs for TMDb mapping."""
+        items = []
         
         # Get all library sections
         sections_data = await self._request("/library/sections")
         if not sections_data:
             logger.warning("Failed to fetch Plex library sections")
-            return result
+            return items
         
         for section in sections_data.get("MediaContainer", {}).get("Directory", []):
             section_type = section.get("type")
@@ -59,7 +56,7 @@ class PlexClient:
                 continue
             
             section_key = section.get("key")
-            logger.debug(f"Scanning Plex section: {section.get('title')} (type: {section_type})")
+            logger.debug(f"Scanning Plex section: {section.get('title')}")
             
             # Get all items in this section (includeGuids=1 for TMDb ID)
             items_data = await self._request(f"/library/sections/{section_key}/all?includeGuids=1")
@@ -74,21 +71,94 @@ class PlexClient:
                 # Extract TMDb ID from GUIDs
                 tmdb_id = self._extract_tmdb_id(item.get("Guid", []))
                 
-                view_count = item.get("viewCount", 0)
-                last_viewed = item.get("lastViewedAt", 0)
-                
-                # Store by rating_key for now (will map to TMDb ID later)
-                result[rating_key] = {
-                    "play_count": view_count,
-                    "last_viewed": last_viewed,
+                items.append({
+                    "rating_key": rating_key,
                     "tmdb_id": tmdb_id,
                     "title": item.get("title", ""),
-                    "year": item.get("year", 0)
-                }
+                    "type": item.get("type"),
+                })
         
-        logger.info(f"Fetched play history for {len(result)} items from Plex library metadata")
+        logger.info(f"Fetched {len(items)} library items from Plex")
+        return items
+
+    async def fetch_all_history(self) -> Dict[str, Dict]:
+        """
+        Fetch play history from Plex using /status/sessions/history/all.
+        This returns individual play events for ALL users with admin token.
+        Matches Capacitarr's implementation.
+        """
+        result = {}
+        start = 0
+        page_size = 1000
+        
+        while True:
+            endpoint = f"/status/sessions/history/all?X-Plex-Container-Start={start}&X-Plex-Container-Size={page_size}"
+            data = await self._request(endpoint)
+            
+            if not data:
+                break
+            
+            metadata = data.get("MediaContainer", {}).get("Metadata", [])
+            if not metadata:
+                break
+            
+            for item in metadata:
+                rating_key = item.get("ratingKey")
+                if not rating_key:
+                    continue
+                
+                viewed_at = item.get("viewedAt", 0)
+                
+                if rating_key not in result:
+                    result[rating_key] = {"play_count": 0, "last_viewed": 0}
+                
+                result[rating_key]["play_count"] += 1
+                if viewed_at > result[rating_key]["last_viewed"]:
+                    result[rating_key]["last_viewed"] = viewed_at
+            
+            # Check if we have all records
+            total_size = data.get("MediaContainer", {}).get("totalSize", 0)
+            if total_size > 0 and len(metadata) < page_size:
+                break
+            if len(metadata) < page_size:
+                break
+            
+            start += len(metadata)
+        
+        logger.info(f"Fetched play history for {len(result)} rating keys from Plex")
         return result
-    
+
+    async def get_play_counts_by_tmdb(self) -> Dict[str, Dict]:
+        """
+        Returns play counts keyed by TMDb ID.
+        Matches Capacitarr's approach: map history events to TMDb IDs via library items.
+        """
+        # Step 1: Get library items with TMDb IDs
+        library_items = await self.get_library_items()
+        
+        # Build rating_key -> tmdb_id map
+        rating_to_tmdb = {}
+        for item in library_items:
+            if item["tmdb_id"]:
+                rating_to_tmdb[item["rating_key"]] = str(item["tmdb_id"])
+        
+        # Step 2: Get play history
+        history = await self.fetch_all_history()
+        
+        # Step 3: Aggregate play counts by TMDb ID
+        result = {}
+        for rating_key, data in history.items():
+            tmdb_id = rating_to_tmdb.get(rating_key)
+            if tmdb_id:
+                if tmdb_id not in result:
+                    result[tmdb_id] = {"play_count": 0, "last_viewed": 0}
+                result[tmdb_id]["play_count"] += data["play_count"]
+                if data["last_viewed"] > result[tmdb_id]["last_viewed"]:
+                    result[tmdb_id]["last_viewed"] = data["last_viewed"]
+        
+        logger.info(f"Mapped play counts to {len(result)} TMDb IDs")
+        return result
+
     def _extract_tmdb_id(self, guids: list) -> Optional[int]:
         """Extract TMDb ID from Plex GUID array."""
         if not guids:
@@ -102,25 +172,6 @@ class PlexClient:
                 except ValueError:
                     pass
         return None
-
-    async def get_play_counts_by_tmdb(self) -> Dict[int, Dict]:
-        """
-        Returns play counts keyed by TMDb ID instead of ratingKey.
-        This is what the scoring engine expects.
-        """
-        raw_history = await self.get_all_play_history()
-        result = {}
-        
-        for rating_key, data in raw_history.items():
-            tmdb_id = data.get("tmdb_id")
-            if tmdb_id:
-                result[str(tmdb_id)] = {
-                    "play_count": data["play_count"],
-                    "last_viewed": data["last_viewed"]
-                }
-        
-        logger.info(f"Mapped {len(result)} items to TMDb IDs")
-        return result
 
     async def add_label(self, rating_key: str, label: str) -> bool:
         """Add a label to a Plex item."""
@@ -159,24 +210,9 @@ class PlexClient:
             return False
 
     async def get_rating_key_by_tmdb_id(self, tmdb_id: int) -> Optional[str]:
-        """Find Plex rating key for a given TMDb ID by scanning library."""
-        sections_data = await self._request("/library/sections")
-        if not sections_data:
-            return None
-        
-        for section in sections_data.get("MediaContainer", {}).get("Directory", []):
-            section_type = section.get("type")
-            if section_type not in ["movie", "show"]:
-                continue
-            
-            section_key = section.get("key")
-            items_data = await self._request(f"/library/sections/{section_key}/all?includeGuids=1")
-            if not items_data:
-                continue
-            
-            for item in items_data.get("MediaContainer", {}).get("Metadata", []):
-                extracted_id = self._extract_tmdb_id(item.get("Guid", []))
-                if extracted_id == tmdb_id:
-                    return item.get("ratingKey")
-        
+        """Find Plex rating key for a given TMDb ID."""
+        library_items = await self.get_library_items()
+        for item in library_items:
+            if item["tmdb_id"] == tmdb_id:
+                return item["rating_key"]
         return None
