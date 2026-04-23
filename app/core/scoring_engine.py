@@ -179,7 +179,11 @@ class ScoringEngine:
         if added_str:
             try:
                 # Handle ISO format with Zulu timezone
-                added = datetime.fromisoformat(added_str.replace("Z", "+00:00"))
+                added_str_clean = added_str.replace("Z", "+00:00")
+                added = datetime.fromisoformat(added_str_clean)
+                # Remove timezone info to make it naive for subtraction
+                if added.tzinfo is not None:
+                    added = added.replace(tzinfo=None)
                 age_days = (datetime.now() - added).days
             except Exception as e:
                 logger.warning(f"Failed to parse date '{added_str}' for {movie.get('title')}: {e}")
