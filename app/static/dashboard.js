@@ -139,7 +139,7 @@ async function loadScoreQueue(forceRefresh = false) {
         }
 
         if (!data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No movies found. Run a score cycle or configure Radarr first.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No movies found. Run a score cycle or configure Radarr first.</td></tr>';
             document.getElementById('score-queue-pagination').innerHTML = '';
             return;
         }
@@ -154,7 +154,7 @@ async function loadScoreQueue(forceRefresh = false) {
             // Get play count (watched status) - Show plain numbers
             const playCount = movie.plex_play_count || 0;
             let watchedDisplay = '';
-            if (!data.plex_enabled) {
+            if (movie.plex_play_count === null || movie.plex_play_count === undefined) {
                 watchedDisplay = '<span style="color: var(--text-secondary);">N/A</span>';
             } else {
                 watchedDisplay = `<span style="color: var(--text-secondary);">${playCount}</span>`;
@@ -342,7 +342,7 @@ function startRunStatusPolling() {
                 document.getElementById('cull-progress-pct').textContent = '0%';
                 document.getElementById('cull-progress-label').textContent = 'Idle';
                 cancelBtn.classList.add('hidden');
-            runBtn.disabled = false;
+                runBtn.disabled = false;
                 runBtn.textContent = '🎯 Run Score';
                 showToast('Run completed', 'success');
                 await loadDashboard();

@@ -294,7 +294,7 @@ async def _rebuild_score_cache():
                 if entry.get("is_collection"):
                     # Store one cache row per collection member but mark as collection
                     for member in entry.get("movies", []):
-                        play_count = 0
+                        play_count = None
                         if plex_play_counts and member.get("tmdb_id"):
                             plex_entry = plex_play_counts.get(str(member["tmdb_id"]))
                             if plex_entry:
@@ -325,7 +325,7 @@ async def _rebuild_score_cache():
                             entry.get("collection_id"),
                         ))
                 else:
-                    play_count = 0
+                    play_count = None
                     if plex_play_counts and entry.get("tmdb_id"):
                         plex_entry = plex_play_counts.get(str(entry["tmdb_id"]))
                         if plex_entry:
