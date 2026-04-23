@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from app.db.database import get_connection
 from app.utils.logger import get_logger
-from app.utils.validators import validate_cron, validate_batch_size, validate_delete_after_days, validate_protection_days, validate_max_queued
+from app.utils.validators import validate_cron, validate_delete_after_days, validate_protection_days, validate_max_queued
 from app.core.scheduler import update_score_schedule, update_cull_schedule
 
 router = APIRouter()
@@ -35,8 +35,10 @@ class SettingsInput(BaseModel):
 async def get_scoring_weights():
     """Get current scoring weights."""
     conn = get_connection()
-    weights = conn.execute("SELECT * FROM scoring_weights WHERE id = 1").fetchone()
-    conn.close()
+    try:
+        weights = conn.execute("SELECT * FROM scoring_weights WHERE id = 1").fetchone()
+    finally:
+        conn.close()
 
     if not weights:
         return {
@@ -56,12 +58,10 @@ async def get_scoring_weights():
 @router.post("/settings/weights")
 async def save_scoring_weights(data: ScoringWeightsInput):
     """Save scoring weights."""
-    # Validate weights sum to 100
     total = data.age_weight + data.size_weight + data.rating_weight + data.quality_weight + data.monitored_weight + data.watched_weight
     if total != 100:
         raise HTTPException(status_code=400, detail=f"Weights must sum to 100, got {total}")
 
-    # Validate ranges
     if not all(0 <= w <= 100 for w in [data.age_weight, data.size_weight, data.rating_weight, data.quality_weight, data.monitored_weight, data.watched_weight]):
         raise HTTPException(status_code=400, detail="Each weight must be between 0 and 100")
 
@@ -97,8 +97,10 @@ async def save_scoring_weights(data: ScoringWeightsInput):
 async def get_settings():
     """Get all application settings."""
     conn = get_connection()
-    settings = conn.execute("SELECT * FROM settings WHERE id = 1").fetchone()
-    conn.close()
+    try:
+        settings = conn.execute("SELECT * FROM settings WHERE id = 1").fetchone()
+    finally:
+        conn.close()
 
     if not settings:
         return {
@@ -117,7 +119,6 @@ async def get_settings():
 @router.post("/settings")
 async def save_settings(data: SettingsInput):
     """Save application settings."""
-    # Validate cron expressions
     is_valid, error = validate_cron(data.score_cron)
     if not is_valid:
         raise HTTPException(status_code=400, detail=f"Score cron: {error}")
@@ -126,7 +127,6 @@ async def save_settings(data: SettingsInput):
     if not is_valid:
         raise HTTPException(status_code=400, detail=f"Cull cron: {error}")
 
-    # Validate numeric values
     is_valid, error = validate_max_queued(data.max_queued)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)
@@ -153,7 +153,6 @@ async def save_settings(data: SettingsInput):
         )
         conn.commit()
 
-        # Update scheduler if enabled
         if data.enabled:
             update_score_schedule(data.score_cron)
             update_cull_schedule(data.cull_cron)

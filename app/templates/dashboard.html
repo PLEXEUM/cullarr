@@ -136,6 +136,16 @@
         </div>
     </div>
 
+    <!-- Dry Run Banner -->
+    <div id="dry-run-banner" class="hidden card rounded-xl overflow-hidden">
+        <div class="p-4 flex items-center gap-3" style="background: var(--warning-bg);">
+            <span style="color: var(--warning);">⚠</span>
+            <p class="text-sm font-medium" style="color: var(--warning);">
+                Dry Run Preview — these movies <strong>would</strong> be queued. No changes have been made.
+            </p>
+        </div>
+    </div>
+
     <!-- Scheduled Deletions Table -->
     <div class="card rounded-xl overflow-hidden">
         <div class="card-header">
@@ -158,10 +168,11 @@
                         <th>Score</th>
                         <th>Deletion Date</th>
                         <th>Status</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody id="scheduled-table">
-                    <tr><td colspan="4" class="text-center py-8" style="color: var(--text-secondary)">Loading...</td></tr>
+                    <tr><td colspan="5" class="text-center py-8" style="color: var(--text-secondary)">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -178,7 +189,7 @@
                 <p class="card-header-subtitle">Next in line for deletion</p>
             </div>
             <div class="ml-auto flex gap-2">
-                <select id="per-page-select" class="text-sm rounded-lg px-2 py-1" style="background: var(--bg-primary); border-color: var(--border-color);">
+                <select id="per-page-select" class="text-sm rounded-lg px-2 py-1" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary);">
                     <option value="10">10 per page</option>
                     <option value="20" selected>20 per page</option>
                     <option value="50">50 per page</option>

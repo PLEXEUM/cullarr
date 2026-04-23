@@ -50,33 +50,18 @@ class RadarrClient:
             return False, f"Connection failed: {redact(str(e))}"
 
     async def get_movies(self) -> list:
-        """Fetch all movies with automatic pagination."""
-        all_movies = []
-        page = 1
-        page_size = 50
+        """Fetch all movies from Radarr."""
+        logger.info("Fetching all movies from Radarr...")
+        data = await self._request("GET", "movie")
 
-        while True:
-            logger.info(f"Fetching movies page {page}...")
-            data = await self._request(
-                "GET", "movie",
-                params={"page": page, "pageSize": page_size}
-            )
+        # Radarr /api/v3/movie always returns a flat list — no pagination
+        if isinstance(data, list):
+            logger.info(f"Fetched {len(data)} movies total")
+            return data
 
-            if isinstance(data, list):
-                all_movies.extend(data)
-                break
-
-            records = data.get("records", [])
-            all_movies.extend(records)
-
-            total = data.get("totalRecords", 0)
-            if len(all_movies) >= total or len(records) == 0:
-                break
-
-            page += 1
-
-        logger.info(f"Fetched {len(all_movies)} movies total")
-        return all_movies
+        # Unexpected response shape — log and return empty
+        logger.warning(f"Unexpected response shape from Radarr /movie: {type(data)}")
+        return []
 
     async def get_movie(self, movie_id: int) -> dict:
         """Fetch a single movie by ID."""

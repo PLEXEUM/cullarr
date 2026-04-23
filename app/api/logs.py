@@ -3,7 +3,6 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pathlib import Path
 from app.utils.logger import get_logger, LOG_PATH
-from app.utils.validators import validate_batch_size
 
 router = APIRouter()
 logger = get_logger()
@@ -118,12 +117,10 @@ async def save_log_settings(data: LogSettingsInput):
     if data.log_max_files < 1 or data.log_max_files > 20:
         raise HTTPException(status_code=400, detail="Log max files must be between 1 and 20")
 
-    # Update environment (these will be used on next restart)
     os.environ["LOG_LEVEL"] = data.log_level.upper()
     os.environ["LOG_MAX_SIZE_MB"] = str(data.log_max_size_mb)
     os.environ["MAX_LOG_FILES"] = str(data.log_max_files)
 
-    # Reconfigure logger immediately
     setup_logger(
         log_level=data.log_level,
         log_max_size_mb=data.log_max_size_mb,
