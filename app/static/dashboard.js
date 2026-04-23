@@ -148,15 +148,28 @@ async function loadScoreQueue(forceRefresh = false) {
             if (movie.normalized_score < 25) scoreClass = 'score-low';
             const tmdbRating = movie.tmdb_rating ? movie.tmdb_rating.toFixed(1) : 'N/A';
             const dryRunStyle = data.dry_run ? 'opacity: 0.75; font-style: italic;' : '';
+    
+            // Get play count (watched status)
+            const playCount = movie.plex_play_count || 0;
+            let watchedDisplay = '';
+            if (playCount === 0) {
+                watchedDisplay = '<span style="color: #ef4444;">❌ Never</span>';
+            } else if (playCount === 1) {
+                watchedDisplay = '<span style="color: #f59e0b;">⚠️ Once</span>';
+            } else {
+                watchedDisplay = `<span style="color: #10b981;">✅ ${playCount} times</span>`;
+            }
+    
             return `
                 <tr style="border-bottom: 1px solid var(--border-color); ${dryRunStyle}">
                     <td class="px-4 py-2"><span class="badge ${scoreClass}">${movie.normalized_score.toFixed(1)}</span></td>
                     <td class="px-4 py-2 font-medium">${escapeHtml(movie.movie_title)}</td>
                     <td class="px-4 py-2" style="color: var(--text-secondary)">${movie.movie_year || 'N/A'}</td>
-                    <td class="px-4 py-2"><span class="star">★</span> ${tmdbRating}</td>
-                    <td class="px-4 py-2">${movie.size_gb.toFixed(1)} GB</td>
-                    <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(movie.quality) || 'Unknown'}</td>
                     <td class="px-4 py-2" style="color: var(--text-secondary)">${movie.age_days}d</td>
+                    <td class="px-4 py-2">${movie.size_gb.toFixed(1)} GB</td>
+                    <td class="px-4 py-2"><span class="star">★</span> ${tmdbRating}</td>
+                    <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(movie.quality) || 'Unknown'}</td>
+                    <td class="px-4 py-2">${watchedDisplay}</td>
                     <td class="px-4 py-2">
                         <button onclick="showScoreDetails(${JSON.stringify(escapeHtml(movie.movie_title))}, ${movie.normalized_score}, ${JSON.stringify(movie.factors)})"
                             class="btn-sm btn-outline">🔍 Details</button>
