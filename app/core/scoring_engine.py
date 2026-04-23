@@ -158,13 +158,31 @@ class ScoringEngine:
 
         size_gb = movie_file.get("size", 0) / (1024 ** 3)
 
-        # Age calculation
-        added_str = movie.get("added")
+        # Age calculation - Get date from movie file
+        added_str = None
+        
+        # First try to get dateAdded from movieFile
+        if movie_file:
+            added_str = movie_file.get("dateAdded")
+        
+        # Fallback to movie root level if not found
+        if not added_str:
+            added_str = movie.get("added") or movie.get("addedDate") or movie.get("dateAdded")
+        
+        # DEBUG: Log first movie's date to verify
+        if not hasattr(self, '_debug_shown'):
+            logger.debug(f"DEBUG - Movie: {movie.get('title')}")
+            logger.debug(f"DEBUG - added_str: '{added_str}'")
+            logger.debug(f"DEBUG - movie_file keys: {list(movie_file.keys()) if movie_file else 'No movie_file'}")
+            self._debug_shown = True
+
         if added_str:
             try:
+                # Handle ISO format with Zulu timezone
                 added = datetime.fromisoformat(added_str.replace("Z", "+00:00"))
                 age_days = (datetime.now() - added).days
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Failed to parse date '{added_str}' for {movie.get('title')}: {e}")
                 age_days = 0
         else:
             age_days = 0
