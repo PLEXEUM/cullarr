@@ -15,16 +15,23 @@ async def get_queue_status():
     """Get queue status and system health."""
     conn = get_connection()
     try:
+        # Count slots used — each unique collection = 1 slot, each individual = 1 slot
         queue_stats = conn.execute("""
             SELECT
-                COUNT(*) as scheduled_count,
-                SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) as active_count
+                COUNT(*) as total_movies,
+                COUNT(DISTINCT CASE WHEN collection_name IS NOT NULL THEN collection_name END) as collection_slots,
+                COUNT(CASE WHEN collection_name IS NULL THEN 1 END) as individual_slots
             FROM scheduled_deletions
+            WHERE status = 'scheduled'
         """).fetchone()
 
         settings = conn.execute("SELECT max_queued FROM settings WHERE id = 1").fetchone()
         max_queued = settings["max_queued"] if settings else 20
-        scheduled_count = queue_stats["scheduled_count"] if queue_stats else 0
+
+        collection_slots = queue_stats["collection_slots"] if queue_stats else 0
+        individual_slots = queue_stats["individual_slots"] if queue_stats else 0
+        scheduled_count = collection_slots + individual_slots
+        total_movies = queue_stats["total_movies"] if queue_stats else 0
 
         # Radarr status
         radarr_config = conn.execute("SELECT url, api_key FROM radarr_config WHERE id = 1").fetchone()
@@ -49,8 +56,6 @@ async def get_queue_status():
                 ok, _ = await client.test_connection()
                 plex_status = "connected" if ok else "error"
                 if ok:
-                    # Use cached play count total from last score run rather than
-                    # making a live Plex API call on every dashboard load
                     cached = conn.execute(
                         "SELECT COUNT(*) as total FROM scored_movies_cache WHERE plex_play_count > 0"
                     ).fetchone()
@@ -63,6 +68,7 @@ async def get_queue_status():
 
     return {
         "scheduled_count": scheduled_count,
+        "total_movies": total_movies,
         "max_queued": max_queued,
         "percent_used": round((scheduled_count / max_queued) * 100, 1) if max_queued > 0 else 0,
         "radarr": {
@@ -79,45 +85,101 @@ async def get_queue_status():
 
 @router.get("/dashboard/scheduled")
 async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
-    """Get scheduled deletions queue."""
+    """
+    Get scheduled deletions queue.
+    Collections are grouped into single entries with a movies list.
+    """
     conn = get_connection()
     try:
         scheduled = conn.execute("""
-            SELECT id, movie_id, movie_title, movie_year, size_gb, quality, score, scheduled_date, status
+            SELECT id, movie_id, movie_title, movie_year, size_gb, quality,
+                   score, scheduled_date, status, collection_name
             FROM scheduled_deletions
             WHERE status = 'scheduled'
-            ORDER BY scheduled_date ASC
+            ORDER BY collection_name ASC, scheduled_date ASC
             LIMIT ?
         """, (limit,)).fetchall()
     finally:
         conn.close()
 
+    # Group collection members together for display
+    collections: dict = {}
+    individuals: list = []
+
+    for row in scheduled:
+        item = dict(row)
+        if item["collection_name"]:
+            cname = item["collection_name"]
+            if cname not in collections:
+                collections[cname] = {
+                    "is_collection": True,
+                    "collection_name": cname,
+                    "movie_title": cname,
+                    "score": item["score"],
+                    "scheduled_date": item["scheduled_date"],
+                    "status": item["status"],
+                    "movies": [],
+                    "size_gb": 0.0,
+                }
+            collections[cname]["movies"].append(item)
+            collections[cname]["size_gb"] += item["size_gb"] or 0.0
+        else:
+            item["is_collection"] = False
+            individuals.append(item)
+
+    items = individuals + list(collections.values())
+    items.sort(key=lambda x: x["scheduled_date"])
+
     return {
-        "items": [dict(row) for row in scheduled],
-        "count": len(scheduled),
+        "items": items,
+        "count": len(items),
+        "total_movies": len(scheduled),
     }
 
 
 @router.delete("/dashboard/scheduled/{movie_id}")
 async def remove_from_queue(movie_id: int):
-    """Remove a movie from the scheduled deletions queue."""
+    """
+    Remove a movie from the scheduled deletions queue.
+    If the movie is part of a collection, removes all members of that collection.
+    """
     conn = get_connection()
     try:
         existing = conn.execute(
-            "SELECT id, movie_title FROM scheduled_deletions WHERE movie_id = ? AND status = 'scheduled'",
+            "SELECT id, movie_title, collection_name FROM scheduled_deletions WHERE movie_id = ? AND status = 'scheduled'",
             (movie_id,)
         ).fetchone()
 
         if not existing:
             raise HTTPException(status_code=404, detail="Movie not found in queue")
 
-        conn.execute(
-            "DELETE FROM scheduled_deletions WHERE movie_id = ? AND status = 'scheduled'",
-            (movie_id,)
-        )
-        conn.commit()
-        logger.info(f"Manually removed from queue: {existing['movie_title']}")
-        return {"success": True, "message": f"Removed {existing['movie_title']} from queue"}
+        if existing["collection_name"]:
+            # Remove all members of the collection together
+            collection_name = existing["collection_name"]
+            members = conn.execute(
+                "SELECT movie_title FROM scheduled_deletions WHERE collection_name = ? AND status = 'scheduled'",
+                (collection_name,)
+            ).fetchall()
+            conn.execute(
+                "DELETE FROM scheduled_deletions WHERE collection_name = ? AND status = 'scheduled'",
+                (collection_name,)
+            )
+            titles = [m["movie_title"] for m in members]
+            conn.commit()
+            logger.info(f"Removed collection '{collection_name}' from queue ({len(titles)} movies)")
+            return {
+                "success": True,
+                "message": f"Removed collection '{collection_name}' ({len(titles)} movies) from queue"
+            }
+        else:
+            conn.execute(
+                "DELETE FROM scheduled_deletions WHERE movie_id = ? AND status = 'scheduled'",
+                (movie_id,)
+            )
+            conn.commit()
+            logger.info(f"Manually removed from queue: {existing['movie_title']}")
+            return {"success": True, "message": f"Removed {existing['movie_title']} from queue"}
+
     except HTTPException:
         raise
     except Exception as e:
@@ -139,7 +201,6 @@ async def get_score_queue(
     """
     conn = get_connection()
     try:
-        # Check if cache table exists and has data
         cache_count = conn.execute(
             "SELECT COUNT(*) as count FROM scored_movies_cache"
         ).fetchone()
@@ -192,36 +253,75 @@ async def _rebuild_score_cache():
 
             # Rebuild cache atomically
             conn.execute("DELETE FROM scored_movies_cache")
-            for movie in scored:
-                play_count = 0
-                if plex_play_counts and movie.get("tmdb_id"):
-                    entry = plex_play_counts.get(str(movie["tmdb_id"]))
-                    if entry:
-                        play_count = entry.get("play_count", 0)
 
-                conn.execute("""
-                    INSERT INTO scored_movies_cache
-                    (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
-                     size_gb, age_days, quality, monitored, normalized_score,
-                     raw_score, factors, plex_play_count, cached_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (
-                    movie["movie_id"],
-                    movie["movie_title"],
-                    movie["movie_year"],
-                    movie.get("tmdb_id"),
-                    movie["tmdb_rating"],
-                    movie["size_gb"],
-                    movie["age_days"],
-                    movie["quality"],
-                    1 if movie["monitored"] else 0,
-                    movie["normalized_score"],
-                    movie["raw_score"],
-                    json.dumps(movie["factors"]),
-                    play_count,
-                ))
+            for entry in scored:
+                if entry.get("is_collection"):
+                    # Store one cache row per collection member but mark as collection
+                    for member in entry.get("movies", []):
+                        play_count = 0
+                        if plex_play_counts and member.get("tmdb_id"):
+                            plex_entry = plex_play_counts.get(str(member["tmdb_id"]))
+                            if plex_entry:
+                                play_count = plex_entry.get("play_count", 0)
+
+                        conn.execute("""
+                            INSERT INTO scored_movies_cache
+                            (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
+                             size_gb, age_days, quality, monitored, normalized_score,
+                             raw_score, factors, plex_play_count,
+                             collection_name, collection_id, is_collection, cached_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+                        """, (
+                            member["movie_id"],
+                            member["movie_title"],
+                            member["movie_year"],
+                            member.get("tmdb_id"),
+                            member["tmdb_rating"],
+                            member["size_gb"],
+                            member["age_days"],
+                            member["quality"],
+                            1 if member["monitored"] else 0,
+                            entry["normalized_score"],  # collection score
+                            entry["raw_score"],
+                            json.dumps(member["factors"]),
+                            play_count,
+                            entry.get("collection_title"),
+                            entry.get("collection_id"),
+                        ))
+                else:
+                    play_count = 0
+                    if plex_play_counts and entry.get("tmdb_id"):
+                        plex_entry = plex_play_counts.get(str(entry["tmdb_id"]))
+                        if plex_entry:
+                            play_count = plex_entry.get("play_count", 0)
+
+                    conn.execute("""
+                        INSERT INTO scored_movies_cache
+                        (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
+                         size_gb, age_days, quality, monitored, normalized_score,
+                         raw_score, factors, plex_play_count,
+                         collection_name, collection_id, is_collection, cached_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+                    """, (
+                        entry["movie_id"],
+                        entry["movie_title"],
+                        entry["movie_year"],
+                        entry.get("tmdb_id"),
+                        entry["tmdb_rating"],
+                        entry["size_gb"],
+                        entry["age_days"],
+                        entry["quality"],
+                        1 if entry["monitored"] else 0,
+                        entry["normalized_score"],
+                        entry["raw_score"],
+                        json.dumps(entry["factors"]),
+                        play_count,
+                        None,
+                        None,
+                    ))
+
             conn.commit()
-            logger.info(f"Score cache rebuilt with {len(scored)} movies")
+            logger.info(f"Score cache rebuilt with {len(scored)} entries")
         finally:
             conn.close()
 
@@ -230,7 +330,10 @@ async def _rebuild_score_cache():
 
 
 async def _get_score_queue_from_cache(page: int, per_page: int) -> dict:
-    """Read paginated score queue from cache, excluding already-scheduled movies."""
+    """
+    Read paginated score queue from cache, excluding already-scheduled movies.
+    Collections are grouped into single entries for display.
+    """
     conn = get_connection()
     try:
         scheduled_ids = conn.execute(
@@ -241,34 +344,74 @@ async def _get_score_queue_from_cache(page: int, per_page: int) -> dict:
         all_cached = conn.execute("""
             SELECT movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
                    size_gb, age_days, quality, monitored, normalized_score,
-                   raw_score, factors, plex_play_count, cached_at
+                   raw_score, factors, plex_play_count,
+                   collection_name, collection_id, is_collection, cached_at
             FROM scored_movies_cache
             ORDER BY normalized_score DESC
         """).fetchall()
-
-        available = [dict(row) for row in all_cached if row["movie_id"] not in scheduled_id_set]
-
-        total = len(available)
-        offset = (page - 1) * per_page
-        paginated = available[offset:offset + per_page]
-        pages = (total + per_page - 1) // per_page if total > 0 else 1
-
-        # Parse factors JSON for each item
-        for item in paginated:
-            try:
-                item["factors"] = json.loads(item["factors"]) if item["factors"] else []
-            except Exception:
-                item["factors"] = []
-
-        return {
-            "items": paginated,
-            "total": total,
-            "page": page,
-            "per_page": per_page,
-            "pages": pages,
-        }
     finally:
         conn.close()
+
+    # Group collections and filter out already-scheduled entries
+    collections: dict = {}
+    individuals: list = []
+
+    for row in all_cached:
+        item = dict(row)
+        try:
+            item["factors"] = json.loads(item["factors"]) if item["factors"] else []
+        except Exception:
+            item["factors"] = []
+
+        if item["movie_id"] in scheduled_id_set:
+            continue
+
+        if item["is_collection"] and item["collection_name"]:
+            cname = item["collection_name"]
+            if cname not in collections:
+                collections[cname] = {
+                    "is_collection": True,
+                    "collection_name": cname,
+                    "collection_id": item["collection_id"],
+                    "movie_title": cname,
+                    "movie_year": None,
+                    "normalized_score": item["normalized_score"],
+                    "raw_score": item["raw_score"],
+                    "size_gb": 0.0,
+                    "age_days": 0,
+                    "tmdb_rating": 0.0,
+                    "quality": item["quality"],
+                    "movies": [],
+                    "movie_count": 0,
+                }
+            collections[cname]["movies"].append(item)
+            collections[cname]["movie_count"] += 1
+            collections[cname]["size_gb"] += item["size_gb"] or 0.0
+            collections[cname]["age_days"] = max(
+                collections[cname]["age_days"], item["age_days"] or 0
+            )
+            collections[cname]["tmdb_rating"] = (
+                collections[cname]["tmdb_rating"] + (item["tmdb_rating"] or 0.0)
+            ) / collections[cname]["movie_count"]
+        else:
+            individuals.append(item)
+
+    # Merge and sort by score descending
+    available = individuals + list(collections.values())
+    available.sort(key=lambda x: x["normalized_score"], reverse=True)
+
+    total = len(available)
+    offset = (page - 1) * per_page
+    paginated = available[offset:offset + per_page]
+    pages = (total + per_page - 1) // per_page if total > 0 else 1
+
+    return {
+        "items": paginated,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": pages,
+    }
 
 
 @router.get("/dashboard/failed")

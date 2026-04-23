@@ -87,7 +87,8 @@ def init_db():
             score_factors TEXT,
             scheduled_date DATETIME,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            status TEXT DEFAULT 'scheduled'
+            status TEXT DEFAULT 'scheduled',
+            collection_name TEXT
         )
     """)
 
@@ -135,6 +136,9 @@ def init_db():
             raw_score REAL,
             factors TEXT,
             plex_play_count INTEGER DEFAULT 0,
+            collection_name TEXT,
+            collection_id INTEGER,
+            is_collection BOOLEAN DEFAULT 0,
             cached_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -176,9 +180,35 @@ def migrate_db():
             raw_score REAL,
             factors TEXT,
             plex_play_count INTEGER DEFAULT 0,
+            collection_name TEXT,
+            collection_id INTEGER,
+            is_collection BOOLEAN DEFAULT 0,
             cached_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # Migration: add collection_name to scheduled_deletions if upgrading
+    try:
+        cursor.execute(
+            "ALTER TABLE scheduled_deletions ADD COLUMN collection_name TEXT"
+        )
+        print("Migration applied: added collection_name to scheduled_deletions")
+    except Exception:
+        pass  # Column already exists, safe to ignore
+
+    # Migration: add collection columns to scored_movies_cache if upgrading
+    for column, definition in [
+        ("collection_name", "TEXT"),
+        ("collection_id", "INTEGER"),
+        ("is_collection", "BOOLEAN DEFAULT 0"),
+    ]:
+        try:
+            cursor.execute(
+                f"ALTER TABLE scored_movies_cache ADD COLUMN {column} {definition}"
+            )
+            print(f"Migration applied: added {column} to scored_movies_cache")
+        except Exception:
+            pass  # Column already exists, safe to ignore
 
     conn.commit()
     conn.close()

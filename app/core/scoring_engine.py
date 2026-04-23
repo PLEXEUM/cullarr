@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from app.utils.logger import get_logger
 
 logger = get_logger()
@@ -71,6 +71,21 @@ def get_watched_score(play_count: int) -> float:
         return 0.2
     else:
         return 0.0
+
+
+def extract_collection(movie: Dict) -> Optional[Tuple[int, str]]:
+    """
+    Extract TMDB collection ID and name from a Radarr movie object.
+    Returns (collection_tmdb_id, collection_title) or None if not in a collection.
+    """
+    collection = movie.get("collection")
+    if not collection:
+        return None
+    collection_id = collection.get("tmdbId")
+    collection_title = collection.get("title", "Unknown Collection")
+    if collection_id:
+        return (int(collection_id), collection_title)
+    return None
 
 
 class ScoringEngine:
@@ -267,18 +282,81 @@ class ScoringEngine:
 
         return scored_movies
 
+    def group_into_collections(self, scored_movies: List[Dict]) -> List[Dict]:
+        """
+        Group individually scored movies into collection groups.
+
+        Each collection becomes a single entry in the returned list with:
+        - collection_score: average raw score of all movies in the collection
+        - movies: list of all individual movie entries in the group
+        - size_gb: total combined size of all movies in the collection
+        - is_collection: True flag so callers can distinguish groups from singles
+
+        Movies not in any collection are returned as-is with is_collection: False.
+        Only collections where ALL movies have files are grouped — if any movie
+        in the collection is missing a file it is treated as an individual.
+        """
+        # Separate into collection buckets and standalone movies
+        collection_buckets: Dict[int, List[Dict]] = {}
+        standalone: List[Dict] = []
+
+        for movie in scored_movies:
+            coll = movie.get("collection")
+            if coll:
+                coll_id = coll[0]
+                if coll_id not in collection_buckets:
+                    collection_buckets[coll_id] = []
+                collection_buckets[coll_id].append(movie)
+            else:
+                standalone.append(movie)
+
+        result = list(standalone)
+
+        for coll_id, movies in collection_buckets.items():
+            coll_title = movies[0]["collection"][1]
+            avg_score = sum(m["raw_score"] for m in movies) / len(movies)
+            total_size = sum(m["size_gb"] for m in movies)
+            oldest_age = max(m["age_days"] for m in movies)
+
+            result.append({
+                "is_collection": True,
+                "collection_id": coll_id,
+                "collection_title": coll_title,
+                "movie_title": coll_title,
+                "movie_year": None,
+                "movies": movies,
+                "movie_count": len(movies),
+                "raw_score": avg_score,
+                "normalized_score": 0,  # set after normalization
+                "size_gb": total_size,
+                "age_days": oldest_age,
+                "tmdb_rating": sum(m["tmdb_rating"] for m in movies) / len(movies),
+                "quality": movies[0]["quality"],
+                "monitored": all(m["monitored"] for m in movies),
+                "factors": movies[0]["factors"],  # representative factors from first movie
+            })
+
+        return result
+
     def get_scored_movies(
         self,
         movies: List[Dict],
         plex_play_counts: Optional[Dict] = None,
         plex_enabled: bool = False
     ) -> List[Dict]:
-        """Calculate scores for all movies and return sorted list."""
+        """
+        Calculate scores for all movies and return sorted list.
+        If collection_grouping is enabled, collections are grouped into
+        single entries scored by their average and counted as one queue slot.
+        """
         scored = []
 
         for movie in movies:
             result = self.calculate_movie_score(movie, plex_play_counts, plex_enabled)
             if result["eligible"]:
+                # Extract collection info from Radarr movie object
+                collection = extract_collection(movie)
+
                 scored.append({
                     "movie_id": movie.get("id"),
                     "movie_title": movie.get("title"),
@@ -291,9 +369,20 @@ class ScoringEngine:
                     "monitored": result["monitored"],
                     "raw_score": result["score"],
                     "factors": result["factors"],
+                    "collection": collection,
+                    "is_collection": False,
                 })
 
+        # Sort by raw score (highest first)
         scored.sort(key=lambda x: x["raw_score"], reverse=True)
+
+        # Group into collections if enabled
+        if self.collection_grouping:
+            scored = self.group_into_collections(scored)
+            # Re-sort after grouping since collection avg scores may differ
+            scored.sort(key=lambda x: x["raw_score"], reverse=True)
+
+        # Normalize to 0-100
         scored = self.normalize_scores(scored)
 
         return scored

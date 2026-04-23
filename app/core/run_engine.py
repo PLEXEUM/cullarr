@@ -59,10 +59,17 @@ async def _apply_plex_labels(
 ) -> None:
     """
     Add a Plex label to each movie in the list.
-    library_map is a pre-built dict of tmdb_id -> rating_key to avoid
-    repeated full library scans (one scan per score cycle, not per movie).
+    Handles both individual movies and collection groups.
     """
+    # Flatten collections into individual movies for label application
+    flat_movies = []
     for movie in movies:
+        if movie.get("is_collection"):
+            flat_movies.extend(movie.get("movies", []))
+        else:
+            flat_movies.append(movie)
+
+    for movie in flat_movies:
         tmdb_id = movie.get("tmdb_id")
         if not tmdb_id:
             logger.debug(f"No TMDb ID for {movie['movie_title']}, skipping Plex label")
@@ -88,9 +95,17 @@ async def _remove_plex_labels(
 ) -> None:
     """
     Remove a Plex label from each movie in the list.
-    Used when a movie is removed from the queue manually or after deletion.
+    Handles both individual movies and collection groups.
     """
+    # Flatten collections into individual movies for label removal
+    flat_movies = []
     for movie in movies:
+        if movie.get("is_collection"):
+            flat_movies.extend(movie.get("movies", []))
+        else:
+            flat_movies.append(movie)
+
+    for movie in flat_movies:
         tmdb_id = movie.get("tmdb_id") or movie.get("tmdb_id")
         if not tmdb_id:
             continue
@@ -118,6 +133,50 @@ async def _build_plex_library_map(plex_client: PlexClient) -> dict:
             library_map[str(item["tmdb_id"])] = item["rating_key"]
     logger.info(f"Built Plex library map with {len(library_map)} items")
     return library_map
+
+
+def _queue_entries_for_movie(movie: dict, scheduled_date: str) -> list:
+    """
+    Build a list of DB insert tuples for a scored movie entry.
+    For collections, returns one tuple per movie in the collection.
+    For individual movies, returns a single tuple.
+    Each collection member shares the same scheduled_date and collection score.
+    """
+    entries = []
+
+    if movie.get("is_collection"):
+        for member in movie.get("movies", []):
+            entries.append((
+                member["movie_id"],
+                member["movie_title"],
+                member["movie_year"],
+                member.get("tmdb_id"),
+                member["tmdb_rating"],
+                member["size_gb"],
+                member["quality"],
+                1 if member["monitored"] else 0,
+                movie["normalized_score"],  # use collection score for all members
+                json.dumps(member["factors"]),
+                scheduled_date,
+                movie.get("collection_title", "Unknown Collection"),
+            ))
+    else:
+        entries.append((
+            movie["movie_id"],
+            movie["movie_title"],
+            movie["movie_year"],
+            movie.get("tmdb_id"),
+            movie["tmdb_rating"],
+            movie["size_gb"],
+            movie["quality"],
+            1 if movie["monitored"] else 0,
+            movie["normalized_score"],
+            json.dumps(movie["factors"]),
+            scheduled_date,
+            None,  # no collection name for individual movies
+        ))
+
+    return entries
 
 
 async def run_score_cycle():
@@ -159,7 +218,6 @@ async def run_score_cycle():
             plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
             plex_ok, plex_msg = await plex_client.test_connection()
             if plex_ok:
-                # Build library map and play counts in parallel to save time
                 plex_library_map, plex_play_counts = await asyncio.gather(
                     _build_plex_library_map(plex_client),
                     plex_client.get_play_counts_by_tmdb()
@@ -172,33 +230,50 @@ async def run_score_cycle():
         # Fetch movies from Radarr
         movies = await radarr_client.get_movies()
 
-        # Score movies
+        # Score movies (collection grouping handled inside engine if enabled)
         engine = ScoringEngine(conn)
         scored_movies = engine.get_scored_movies(movies, plex_play_counts, plex_enabled)
 
-        logger.info(f"Scored {len(scored_movies)} movies")
+        logger.info(f"Scored {len(scored_movies)} entries ({len(movies)} total movies)")
 
         # Get current scheduled deletions count
         current_queue = conn.execute(
-            "SELECT COUNT(*) as count FROM scheduled_deletions WHERE status = 'scheduled'"
+            "SELECT COUNT(DISTINCT collection_name) as coll_count, "
+            "COUNT(CASE WHEN collection_name IS NULL THEN 1 END) as single_count "
+            "FROM scheduled_deletions WHERE status = 'scheduled'"
         ).fetchone()
-        current_count = current_queue["count"] if current_queue else 0
-        max_queued = settings["max_queued"] if settings else 20
-        available_slots = max_queued - current_count
 
-        logger.info(f"Queue status: {current_count}/{max_queued} slots used, {available_slots} available")
+        # Count slots used: each unique collection = 1 slot, each individual = 1 slot
+        used_slots = (
+            (current_queue["coll_count"] if current_queue else 0) +
+            (current_queue["single_count"] if current_queue else 0)
+        )
+        max_queued = settings["max_queued"] if settings else 20
+        available_slots = max_queued - used_slots
+
+        logger.info(f"Queue status: {used_slots}/{max_queued} slots used, {available_slots} available")
 
         if available_slots <= 0:
             logger.info("Queue full, no new movies added")
             return
 
-        # Filter already-queued movies
+        # Filter already-queued movie IDs
         scheduled_ids = conn.execute(
             "SELECT movie_id FROM scheduled_deletions"
         ).fetchall()
         scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
 
-        candidates = [m for m in scored_movies if m["movie_id"] not in scheduled_id_set]
+        # Filter out entries where any member is already queued
+        candidates = []
+        for entry in scored_movies:
+            if entry.get("is_collection"):
+                member_ids = {m["movie_id"] for m in entry.get("movies", [])}
+                if not member_ids.intersection(scheduled_id_set):
+                    candidates.append(entry)
+            else:
+                if entry["movie_id"] not in scheduled_id_set:
+                    candidates.append(entry)
+
         to_add = candidates[:available_slots]
 
         # Add to scheduled deletions
@@ -207,36 +282,34 @@ async def run_score_cycle():
             scheduled_date = datetime.now() + timedelta(
                 days=settings["delete_after_days"] if settings else 7
             )
+            entries = _queue_entries_for_movie(movie, scheduled_date.isoformat())
+
             try:
-                conn.execute(
-                    """INSERT OR IGNORE INTO scheduled_deletions
-                    (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating, size_gb, quality,
-                     monitored, score, score_factors, scheduled_date, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')""",
-                    (
-                        movie["movie_id"],
-                        movie["movie_title"],
-                        movie["movie_year"],
-                        movie.get("tmdb_id"),
-                        movie["tmdb_rating"],
-                        movie["size_gb"],
-                        movie["quality"],
-                        1 if movie["monitored"] else 0,
-                        movie["normalized_score"],
-                        json.dumps(movie["factors"]),
-                        scheduled_date.isoformat()
+                for entry in entries:
+                    conn.execute(
+                        """INSERT OR IGNORE INTO scheduled_deletions
+                        (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating, size_gb, quality,
+                         monitored, score, score_factors, scheduled_date, status, collection_name)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)""",
+                        entry
                     )
+
+                label = movie.get("collection_title") or movie["movie_title"]
+                count = len(entries)
+                logger.info(
+                    f"Added to queue: {label} "
+                    f"({'collection: ' + str(count) + ' movies' if movie.get('is_collection') else 'score: ' + str(movie['normalized_score']):.1f})"
                 )
                 added.append(movie)
-                logger.info(f"Added to queue: {movie['movie_title']} (score: {movie['normalized_score']:.1f})")
             except Exception as e:
-                logger.error(f"Failed to add {movie['movie_title']} to queue: {e}")
+                label = movie.get("collection_title") or movie.get("movie_title")
+                logger.error(f"Failed to add {label} to queue: {e}")
 
         conn.commit()
 
         # Apply Plex labels to all newly queued movies in one pass
         if plex_enabled and plex_client and plex_config["label_text"] and added:
-            logger.info(f"Applying Plex labels to {len(added)} movies")
+            logger.info(f"Applying Plex labels to {len(added)} queue entries")
             await _apply_plex_labels(
                 plex_client,
                 plex_config["label_text"],
@@ -244,7 +317,7 @@ async def run_score_cycle():
                 plex_library_map
             )
 
-        logger.info(f"Score cycle complete: added {len(added)} movies to queue")
+        logger.info(f"Score cycle complete: added {len(added)} queue entries")
 
     except Exception as e:
         logger.error(f"Score cycle failed: {e}")
@@ -288,7 +361,7 @@ async def run_cull_cycle():
                 logger.warning("Plex connection failed, labels will not be removed")
                 plex_enabled = False
 
-        # Get due movies
+        # Get due movies — fetch all members of due collections together
         now = datetime.now().isoformat()
         due_movies = conn.execute(
             "SELECT * FROM scheduled_deletions WHERE status = 'scheduled' AND scheduled_date <= ?",
