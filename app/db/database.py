@@ -91,7 +91,7 @@ def init_db():
         )
     """)
 
-    # Deletion history (from logs, but structured for easy query)
+    # Deletion history
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS deletion_history (
             id INTEGER PRIMARY KEY,
@@ -117,6 +117,28 @@ def init_db():
         )
     """)
 
+    # Scored movies cache — populated by score runs, read by dashboard
+    # Avoids live Radarr/Plex API calls on every dashboard page load
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS scored_movies_cache (
+            id INTEGER PRIMARY KEY,
+            movie_id INTEGER UNIQUE,
+            movie_title TEXT,
+            movie_year INTEGER,
+            tmdb_id INTEGER,
+            tmdb_rating REAL,
+            size_gb REAL,
+            age_days INTEGER,
+            quality TEXT,
+            monitored BOOLEAN,
+            normalized_score REAL,
+            raw_score REAL,
+            factors TEXT,
+            plex_play_count INTEGER DEFAULT 0,
+            cached_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     # Insert default records if not exists
     cursor.execute("INSERT OR IGNORE INTO radarr_config (id) VALUES (1)")
     cursor.execute("INSERT OR IGNORE INTO plex_config (id) VALUES (1)")
@@ -127,3 +149,36 @@ def init_db():
     conn.commit()
     conn.close()
     print("Database initialized successfully.")
+
+
+def migrate_db():
+    """
+    Apply schema migrations for existing installs.
+    Safe to run on every startup — all migrations are idempotent.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Migration: add scored_movies_cache if upgrading from a version without it
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS scored_movies_cache (
+            id INTEGER PRIMARY KEY,
+            movie_id INTEGER UNIQUE,
+            movie_title TEXT,
+            movie_year INTEGER,
+            tmdb_id INTEGER,
+            tmdb_rating REAL,
+            size_gb REAL,
+            age_days INTEGER,
+            quality TEXT,
+            monitored BOOLEAN,
+            normalized_score REAL,
+            raw_score REAL,
+            factors TEXT,
+            plex_play_count INTEGER DEFAULT 0,
+            cached_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    conn.commit()
+    conn.close()

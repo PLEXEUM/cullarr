@@ -51,6 +51,75 @@ async def release_run_lock():
         conn.close()
 
 
+async def _apply_plex_labels(
+    plex_client: PlexClient,
+    label_text: str,
+    movies: list,
+    library_map: dict
+) -> None:
+    """
+    Add a Plex label to each movie in the list.
+    library_map is a pre-built dict of tmdb_id -> rating_key to avoid
+    repeated full library scans (one scan per score cycle, not per movie).
+    """
+    for movie in movies:
+        tmdb_id = movie.get("tmdb_id")
+        if not tmdb_id:
+            logger.debug(f"No TMDb ID for {movie['movie_title']}, skipping Plex label")
+            continue
+
+        rating_key = library_map.get(str(tmdb_id))
+        if not rating_key:
+            logger.debug(f"No Plex rating key found for {movie['movie_title']} (TMDb: {tmdb_id})")
+            continue
+
+        success = await plex_client.add_label(rating_key, label_text)
+        if success:
+            logger.info(f"Added Plex label '{label_text}' to {movie['movie_title']}")
+        else:
+            logger.warning(f"Failed to add Plex label to {movie['movie_title']}")
+
+
+async def _remove_plex_labels(
+    plex_client: PlexClient,
+    label_text: str,
+    movies: list,
+    library_map: dict
+) -> None:
+    """
+    Remove a Plex label from each movie in the list.
+    Used when a movie is removed from the queue manually or after deletion.
+    """
+    for movie in movies:
+        tmdb_id = movie.get("tmdb_id") or movie.get("tmdb_id")
+        if not tmdb_id:
+            continue
+
+        rating_key = library_map.get(str(tmdb_id))
+        if not rating_key:
+            continue
+
+        success = await plex_client.remove_label(rating_key, label_text)
+        if success:
+            logger.info(f"Removed Plex label '{label_text}' from {movie['movie_title']}")
+        else:
+            logger.warning(f"Failed to remove Plex label from {movie['movie_title']}")
+
+
+async def _build_plex_library_map(plex_client: PlexClient) -> dict:
+    """
+    Build a single tmdb_id -> rating_key map from the Plex library.
+    Called once per cycle to avoid repeated full library scans.
+    """
+    library_items = await plex_client.get_library_items()
+    library_map = {}
+    for item in library_items:
+        if item.get("tmdb_id"):
+            library_map[str(item["tmdb_id"])] = item["rating_key"]
+    logger.info(f"Built Plex library map with {len(library_map)} items")
+    return library_map
+
+
 async def run_score_cycle():
     """Score all movies and add top N to scheduled deletions queue."""
     lock_acquired = await acquire_run_lock("score")
@@ -77,19 +146,28 @@ async def run_score_cycle():
             logger.error(f"Radarr connection failed: {radarr_msg}")
             return
 
-        # Get Plex play counts if enabled — keyed by TMDb ID string
+        # Get Plex client and data if enabled
+        plex_client = None
         plex_play_counts = None
-        plex_enabled = plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"]
+        plex_library_map = {}
+        plex_enabled = bool(
+            plex_config and plex_config["enabled"] and
+            plex_config["url"] and plex_config["api_key"]
+        )
+
         if plex_enabled:
             plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
             plex_ok, plex_msg = await plex_client.test_connection()
             if plex_ok:
-                # Use get_play_counts_by_tmdb so data is keyed by TMDb ID,
-                # matching what the scoring engine looks up against movie.tmdbId
-                plex_play_counts = await plex_client.get_play_counts_by_tmdb()
-                logger.info(f"Fetched Plex play counts for {len(plex_play_counts)} TMDb IDs")
+                # Build library map and play counts in parallel to save time
+                plex_library_map, plex_play_counts = await asyncio.gather(
+                    _build_plex_library_map(plex_client),
+                    plex_client.get_play_counts_by_tmdb()
+                )
+                logger.info(f"Fetched Plex data: {len(plex_play_counts)} TMDb play counts")
             else:
                 logger.warning(f"Plex connection failed: {plex_msg}, continuing without watch data")
+                plex_enabled = False
 
         # Fetch movies from Radarr
         movies = await radarr_client.get_movies()
@@ -114,7 +192,7 @@ async def run_score_cycle():
             logger.info("Queue full, no new movies added")
             return
 
-        # Get top N movies by score, excluding any already in the queue
+        # Filter already-queued movies
         scheduled_ids = conn.execute(
             "SELECT movie_id FROM scheduled_deletions"
         ).fetchall()
@@ -123,15 +201,17 @@ async def run_score_cycle():
         candidates = [m for m in scored_movies if m["movie_id"] not in scheduled_id_set]
         to_add = candidates[:available_slots]
 
-        # Add to scheduled deletions — INSERT OR IGNORE to never reset an existing countdown
-        added = 0
+        # Add to scheduled deletions
+        added = []
         for movie in to_add:
-            scheduled_date = datetime.now() + timedelta(days=settings["delete_after_days"] if settings else 7)
-
+            scheduled_date = datetime.now() + timedelta(
+                days=settings["delete_after_days"] if settings else 7
+            )
             try:
                 conn.execute(
                     """INSERT OR IGNORE INTO scheduled_deletions
-                    (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating, size_gb, quality, monitored, score, score_factors, scheduled_date, status)
+                    (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating, size_gb, quality,
+                     monitored, score, score_factors, scheduled_date, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')""",
                     (
                         movie["movie_id"],
@@ -147,17 +227,24 @@ async def run_score_cycle():
                         scheduled_date.isoformat()
                     )
                 )
-                added += 1
+                added.append(movie)
                 logger.info(f"Added to queue: {movie['movie_title']} (score: {movie['normalized_score']:.1f})")
-
-                # Add Plex label if enabled
-                if plex_enabled and plex_config["label_text"]:
-                    logger.debug(f"Would add Plex label for {movie['movie_title']}")
             except Exception as e:
                 logger.error(f"Failed to add {movie['movie_title']} to queue: {e}")
 
         conn.commit()
-        logger.info(f"Score cycle complete: added {added} movies to queue")
+
+        # Apply Plex labels to all newly queued movies in one pass
+        if plex_enabled and plex_client and plex_config["label_text"] and added:
+            logger.info(f"Applying Plex labels to {len(added)} movies")
+            await _apply_plex_labels(
+                plex_client,
+                plex_config["label_text"],
+                added,
+                plex_library_map
+            )
+
+        logger.info(f"Score cycle complete: added {len(added)} movies to queue")
 
     except Exception as e:
         logger.error(f"Score cycle failed: {e}")
@@ -176,11 +263,30 @@ async def run_cull_cycle():
     try:
         conn = get_connection()
 
-        # Load Radarr config
+        # Load configs
         radarr_config = conn.execute("SELECT * FROM radarr_config WHERE id = 1").fetchone()
+        plex_config = conn.execute("SELECT * FROM plex_config WHERE id = 1").fetchone()
+
         if not radarr_config or not radarr_config["url"] or not radarr_config["api_key"]:
             logger.error("Radarr not configured, cannot run cull cycle")
             return
+
+        # Get Plex client if enabled
+        plex_client = None
+        plex_library_map = {}
+        plex_enabled = bool(
+            plex_config and plex_config["enabled"] and
+            plex_config["url"] and plex_config["api_key"]
+        )
+
+        if plex_enabled:
+            plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
+            plex_ok, _ = await plex_client.test_connection()
+            if plex_ok:
+                plex_library_map = await _build_plex_library_map(plex_client)
+            else:
+                logger.warning("Plex connection failed, labels will not be removed")
+                plex_enabled = False
 
         # Get due movies
         now = datetime.now().isoformat()
@@ -222,6 +328,15 @@ async def run_cull_cycle():
                     conn.execute("DELETE FROM scheduled_deletions WHERE id = ?", (movie["id"],))
                     deleted += 1
                     logger.info(f"Deleted: {movie['movie_title']}")
+
+                    # Remove Plex label after successful deletion
+                    if plex_enabled and plex_client and plex_config["label_text"]:
+                        await _remove_plex_labels(
+                            plex_client,
+                            plex_config["label_text"],
+                            [dict(movie)],
+                            plex_library_map
+                        )
                 else:
                     logger.error(f"Delete failed for {movie['movie_title']}: {result['message']}")
                     conn.execute(

@@ -3,6 +3,7 @@
 let scoreQueuePage = 1;
 let scoreQueuePerPage = 20;
 let refreshInterval = null;
+let runStatusInterval = null;
 
 // Load all dashboard data
 async function loadDashboard() {
@@ -18,13 +19,13 @@ async function loadQueueStatus() {
     try {
         const res = await fetch('/api/dashboard/queue-status');
         const data = await res.json();
-        
+
         document.getElementById('scheduled-count').textContent = data.scheduled_count;
         const percent = data.percent_used || 0;
         document.getElementById('queue-bar').style.width = `${percent}%`;
         document.getElementById('queue-percent').textContent = `${percent}%`;
         document.getElementById('queue-cap').textContent = `of ${data.max_queued} cap`;
-        
+
         // Radarr status
         const radarrDot = document.getElementById('radarr-status-dot');
         const radarrText = document.getElementById('radarr-status-text');
@@ -38,7 +39,7 @@ async function loadQueueStatus() {
             radarrDot.className = 'status-dot status-unknown';
             radarrText.textContent = 'Radarr: Not configured';
         }
-        
+
         // Plex status
         const plexDot = document.getElementById('plex-status-dot');
         const plexText = document.getElementById('plex-status-text');
@@ -72,12 +73,12 @@ async function loadScheduledDeletions() {
         const data = await res.json();
         const tbody = document.getElementById('scheduled-table');
         document.getElementById('scheduled-badge').textContent = `${data.count} items`;
-        
+
         if (!data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No scheduled deletions</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No scheduled deletions</td></tr>';
             return;
         }
-        
+
         tbody.innerHTML = data.items.map(item => {
             let scoreClass = 'score-high';
             if (item.score < 40) scoreClass = 'score-medium';
@@ -89,6 +90,10 @@ async function loadScheduledDeletions() {
                     <td class="px-4 py-2"><span class="badge ${scoreClass}">${item.score.toFixed(1)}</span></td>
                     <td class="px-4 py-2">${deleteDate}</td>
                     <td class="px-4 py-2"><span class="badge" style="background: var(--info-bg); color: var(--info);">scheduled</span></td>
+                    <td class="px-4 py-2">
+                        <button onclick="removeFromQueue(${item.movie_id}, '${escapeHtml(item.movie_title)}')"
+                            class="btn-sm btn-danger">✕ Remove</button>
+                    </td>
                 </tr>
             `;
         }).join('');
@@ -97,26 +102,54 @@ async function loadScheduledDeletions() {
     }
 }
 
-// Score Queue
-async function loadScoreQueue() {
+// Remove a movie from the scheduled deletions queue
+async function removeFromQueue(movieId, title) {
+    if (!confirm(`Remove "${title}" from the deletion queue?`)) return;
     try {
-        const res = await fetch(`/api/dashboard/score-queue?page=${scoreQueuePage}&per_page=${scoreQueuePerPage}`);
+        const res = await fetch(`/api/dashboard/scheduled/${movieId}`, { method: 'DELETE' });
+        if (res.ok) {
+            showToast(`Removed "${title}" from queue`, 'success');
+            await loadScheduledDeletions();
+            await loadQueueStatus();
+        } else {
+            const err = await res.json();
+            showToast(err.detail || 'Failed to remove from queue', 'error');
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+    }
+}
+
+// Score Queue
+async function loadScoreQueue(forceRefresh = false) {
+    try {
+        const url = `/api/dashboard/score-queue?page=${scoreQueuePage}&per_page=${scoreQueuePerPage}${forceRefresh ? '&refresh=true' : ''}`;
+        const res = await fetch(url);
         const data = await res.json();
         const tbody = document.getElementById('score-queue-table');
-        
+
+        // Show dry run banner if applicable
+        const dryRunBanner = document.getElementById('dry-run-banner');
+        if (data.dry_run) {
+            dryRunBanner?.classList.remove('hidden');
+        } else {
+            dryRunBanner?.classList.add('hidden');
+        }
+
         if (!data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No movies found. Configure Radarr first.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No movies found. Run a score cycle or configure Radarr first.</td></tr>';
             document.getElementById('score-queue-pagination').innerHTML = '';
             return;
         }
-        
+
         tbody.innerHTML = data.items.map(movie => {
             let scoreClass = 'score-high';
             if (movie.normalized_score < 40) scoreClass = 'score-medium';
             if (movie.normalized_score < 25) scoreClass = 'score-low';
             const tmdbRating = movie.tmdb_rating ? movie.tmdb_rating.toFixed(1) : 'N/A';
+            const dryRunStyle = data.dry_run ? 'opacity: 0.75; font-style: italic;' : '';
             return `
-                <tr style="border-bottom: 1px solid var(--border-color);">
+                <tr style="border-bottom: 1px solid var(--border-color); ${dryRunStyle}">
                     <td class="px-4 py-2"><span class="badge ${scoreClass}">${movie.normalized_score.toFixed(1)}</span></td>
                     <td class="px-4 py-2 font-medium">${escapeHtml(movie.movie_title)}</td>
                     <td class="px-4 py-2" style="color: var(--text-secondary)">${movie.movie_year || 'N/A'}</td>
@@ -124,15 +157,18 @@ async function loadScoreQueue() {
                     <td class="px-4 py-2">${movie.size_gb.toFixed(1)} GB</td>
                     <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(movie.quality) || 'Unknown'}</td>
                     <td class="px-4 py-2" style="color: var(--text-secondary)">${movie.age_days}d</td>
-                    <td class="px-4 py-2"><button onclick="showScoreDetails(${JSON.stringify(escapeHtml(movie.movie_title))}, ${movie.normalized_score}, ${JSON.stringify(movie.factors)})" class="btn-sm btn-outline">🔍 Details</button></td>
+                    <td class="px-4 py-2">
+                        <button onclick="showScoreDetails(${JSON.stringify(escapeHtml(movie.movie_title))}, ${movie.normalized_score}, ${JSON.stringify(movie.factors)})"
+                            class="btn-sm btn-outline">🔍 Details</button>
+                    </td>
                 </tr>
             `;
         }).join('');
-        
+
         // Pagination
         const totalPages = data.pages || 1;
         document.getElementById('score-queue-pagination').innerHTML = `
-            <span style="color: var(--text-secondary)">${data.total} total movies</span>
+            <span style="color: var(--text-secondary)">${data.total} total movies${data.dry_run ? ' <span class="badge" style="background: var(--warning-bg); color: var(--warning);">Dry Run Preview</span>' : ''}</span>
             <div class="flex gap-2">
                 <button onclick="changeScoreQueuePage(${scoreQueuePage - 1})" class="btn-sm btn-outline" ${scoreQueuePage <= 1 ? 'disabled' : ''}>← Prev</button>
                 <span class="text-sm">Page ${scoreQueuePage} of ${totalPages}</span>
@@ -156,12 +192,12 @@ async function loadFailedDeletions() {
         const data = await res.json();
         const section = document.getElementById('failed-section');
         const tbody = document.getElementById('failed-table');
-        
+
         if (!data.items || data.items.length === 0) {
             section.classList.add('hidden');
             return;
         }
-        
+
         section.classList.remove('hidden');
         tbody.innerHTML = data.items.map(item => `
             <tr style="border-bottom: 1px solid var(--border-color);">
@@ -207,57 +243,160 @@ async function triggerScoreRun() {
     const btn = document.getElementById('run-score-btn');
     btn.disabled = true;
     btn.textContent = 'Starting...';
-    
+
     try {
         const res = await fetch(`/api/run/score?dry_run=${dryRun}`, { method: 'POST' });
         if (res.ok) {
-            showToast(dryRun ? 'Dry score run started' : 'Score run started', 'success');
-            setTimeout(() => loadDashboard(), 2000);
+            showToast(dryRun ? 'Dry run started — results will appear in Score Queue' : 'Score run started', 'success');
+            startRunStatusPolling();
         } else {
             const err = await res.json();
             showToast(err.detail || 'Failed to start run', 'error');
+            btn.disabled = false;
+            btn.textContent = '🎯 Run Score';
         }
     } catch (e) {
         showToast('Error: ' + e.message, 'error');
-    } finally {
         btn.disabled = false;
         btn.textContent = '🎯 Run Score';
     }
 }
 
-// Score details modal (simplified - shows alert for now, can be enhanced)
-function showScoreDetails(title, score, factors) {
-    let msg = `Score Details: ${title}\nScore: ${score.toFixed(1)}\n\nBreakdown:\n`;
-    if (factors && factors.length) {
-        factors.forEach(f => {
-            msg += `\n${f.name}: ${(f.contribution * 100).toFixed(1)}% (raw: ${f.raw_score.toFixed(2)}, weight: ${f.weight}%)`;
-            if (f.details) msg += ` - ${f.details}`;
-            if (f.skipped) msg += ` [SKIPPED: ${f.skip_reason}]`;
-        });
+// Run status polling — updates progress bar and re-loads queue when done
+function startRunStatusPolling() {
+    const progressSection = document.getElementById('progress-section');
+    const progressBar = document.getElementById('progress-bar');
+    const progressLabel = document.getElementById('progress-label');
+    const progressPct = document.getElementById('progress-pct');
+    const cancelBtn = document.getElementById('cancel-run-btn');
+    const runBtn = document.getElementById('run-score-btn');
+
+    progressSection.classList.remove('hidden');
+    cancelBtn.classList.remove('hidden');
+
+    if (runStatusInterval) clearInterval(runStatusInterval);
+
+    runStatusInterval = setInterval(async () => {
+        try {
+            const res = await fetch('/api/run/status');
+            const data = await res.json();
+
+            if (data.is_running) {
+                const pct = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
+                progressBar.style.width = `${pct}%`;
+                progressPct.textContent = `${pct}%`;
+                progressLabel.textContent = data.current_movie
+                    ? `Processing: ${data.current_movie}`
+                    : `${data.run_type === 'score' ? 'Scoring' : 'Culling'} movies...`;
+                cancelBtn.onclick = () => cancelRun(data.run_id);
+            } else {
+                // Run finished
+                clearInterval(runStatusInterval);
+                runStatusInterval = null;
+                progressSection.classList.add('hidden');
+                cancelBtn.classList.add('hidden');
+                progressBar.style.width = '0%';
+                runBtn.disabled = false;
+                runBtn.textContent = '🎯 Run Score';
+                showToast('Run completed', 'success');
+                await loadDashboard();
+            }
+        } catch (e) {
+            console.error('Failed to poll run status:', e);
+        }
+    }, 2000);
+}
+
+async function cancelRun(runId) {
+    try {
+        const res = await fetch(`/api/run/${runId}/cancel`, { method: 'POST' });
+        if (res.ok) {
+            showToast('Cancellation requested', 'info');
+        }
+    } catch (e) {
+        console.error('Failed to cancel run:', e);
     }
-    alert(msg);
+}
+
+// Score details modal
+function showScoreDetails(title, score, factors) {
+    // Remove any existing modal
+    document.getElementById('score-modal')?.remove();
+
+    const factorRows = (factors && factors.length)
+        ? factors.map(f => {
+            const pct = (f.contribution * 100).toFixed(1);
+            const barWidth = Math.min(Math.round(f.raw_score * 100), 100);
+            const skippedNote = f.skipped ? `<span class="text-xs ml-2" style="color: var(--text-secondary)">(${f.skip_reason})</span>` : '';
+            return `
+                <div class="mb-3">
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="font-medium">${f.name}${skippedNote}</span>
+                        <span style="color: var(--text-secondary)">${f.details || ''}</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="flex-1 rounded-full h-2" style="background: var(--border-color)">
+                            <div class="h-2 rounded-full" style="width: ${barWidth}%; background: var(--accent);"></div>
+                        </div>
+                        <span class="text-xs font-mono w-12 text-right" style="color: var(--text-secondary)">
+                            ${pct}%
+                        </span>
+                    </div>
+                </div>
+            `;
+        }).join('')
+        : '<p style="color: var(--text-secondary)">No factor data available.</p>';
+
+    const modal = document.createElement('div');
+    modal.id = 'score-modal';
+    modal.className = 'fixed inset-0 flex items-center justify-center z-50';
+    modal.style.background = 'rgba(0,0,0,0.6)';
+    modal.innerHTML = `
+        <div class="card rounded-xl p-6 w-full max-w-md mx-4" style="max-height: 90vh; overflow-y: auto;">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h3 class="font-semibold text-lg">${escapeHtml(title)}</h3>
+                    <p class="text-sm mt-1" style="color: var(--text-secondary)">
+                        Total score: <span class="font-mono font-bold" style="color: var(--accent)">${score.toFixed(1)}</span>
+                    </p>
+                </div>
+                <button onclick="document.getElementById('score-modal').remove()"
+                    class="text-lg leading-none" style="color: var(--text-secondary)">✕</button>
+            </div>
+            <div class="border-t pt-4" style="border-color: var(--border-color)">
+                ${factorRows}
+            </div>
+        </div>
+    `;
+
+    // Close on backdrop click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+
+    document.body.appendChild(modal);
 }
 
 function escapeHtml(str) {
     if (!str) return '';
-    return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m] || m);
+    return str.replace(/[&<>]/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'})[m] || m);
 }
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
     loadDashboard();
     loadSettingsSummary();
-    
+
     document.getElementById('run-score-btn').addEventListener('click', triggerScoreRun);
     document.getElementById('refresh-btn').addEventListener('click', () => loadDashboard());
-    document.getElementById('refresh-queue-btn').addEventListener('click', () => loadScoreQueue());
+    document.getElementById('refresh-queue-btn').addEventListener('click', () => loadScoreQueue(true));
     document.getElementById('per-page-select').addEventListener('change', (e) => {
         scoreQueuePerPage = parseInt(e.target.value);
         scoreQueuePage = 1;
         loadScoreQueue();
     });
-    
-    // Auto-refresh every 30 seconds
+
+    // Auto-refresh every 30 seconds — queue status and deletions only, not score queue
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(() => {
         loadQueueStatus();
