@@ -205,12 +205,29 @@ async def get_score_queue(
             "SELECT COUNT(*) as count FROM scored_movies_cache"
         ).fetchone()
         has_cache = cache_count and cache_count["count"] > 0
+        
+        # Check if Plex is enabled but cache has no play counts
+        plex_config = conn.execute("SELECT enabled FROM plex_config WHERE id = 1").fetchone()
+        plex_enabled = bool(plex_config and plex_config["enabled"]) if plex_config else False
+        
+        play_counts_exist = False
+        if has_cache and plex_enabled:
+            # Check if any cache entries have play counts > 0
+            play_count_check = conn.execute(
+                "SELECT COUNT(*) as count FROM scored_movies_cache WHERE plex_play_count > 0"
+            ).fetchone()
+            play_counts_exist = play_count_check and play_count_check["count"] > 0
+        
+        # Rebuild if: refresh requested, OR no cache, OR (Plex enabled but no play counts in cache)
+        needs_rebuild = refresh or not has_cache or (plex_enabled and not play_counts_exist)
+        
     except Exception:
         has_cache = False
+        needs_rebuild = True
     finally:
         conn.close()
 
-    if refresh or not has_cache:
+    if needs_rebuild:
         await _rebuild_score_cache()
 
     return await _get_score_queue_from_cache(page, per_page)
@@ -227,6 +244,13 @@ async def _rebuild_score_cache():
 
         plex_config = conn.execute("SELECT url, api_key, enabled FROM plex_config WHERE id = 1").fetchone()
         plex_enabled = bool(plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"])
+        
+        # DEBUG: Log Plex config status
+        logger.info(f"Plex enabled: {plex_enabled}")
+        if plex_enabled:
+            logger.info(f"Plex URL: {plex_config['url']}")
+            logger.info(f"Plex API Key exists: {bool(plex_config['api_key'])}")
+        
         settings = conn.execute("SELECT protection_days, collection_grouping FROM settings WHERE id = 1").fetchone()
     finally:
         conn.close()
@@ -238,9 +262,19 @@ async def _rebuild_score_cache():
         plex_play_counts = None
         if plex_enabled:
             plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
-            ok, _ = await plex_client.test_connection()
+            ok, connection_msg = await plex_client.test_connection()
+            logger.info(f"Plex connection test: {ok} - {connection_msg}")
             if ok:
                 plex_play_counts = await plex_client.get_play_counts_by_tmdb()
+                logger.info(f"Fetched {len(plex_play_counts)} play counts from Plex")
+                # Log a sample of play counts
+                sample_items = list(plex_play_counts.items())[:5]
+                for tmdb_id, data in sample_items:
+                    logger.info(f"Sample play count - TMDb: {tmdb_id}, plays: {data.get('play_count', 0)}")
+            else:
+                logger.warning(f"Plex connection failed: {connection_msg}")
+        else:
+            logger.info("Plex not enabled, skipping play counts")
 
         conn = get_connection()
         try:
@@ -336,6 +370,10 @@ async def _get_score_queue_from_cache(page: int, per_page: int) -> dict:
     """
     conn = get_connection()
     try:
+        # Check if Plex is enabled
+        plex_config = conn.execute("SELECT enabled FROM plex_config WHERE id = 1").fetchone()
+        plex_enabled = bool(plex_config and plex_config["enabled"]) if plex_config else False
+        
         scheduled_ids = conn.execute(
             "SELECT movie_id FROM scheduled_deletions"
         ).fetchall()
@@ -411,6 +449,7 @@ async def _get_score_queue_from_cache(page: int, per_page: int) -> dict:
         "page": page,
         "per_page": per_page,
         "pages": pages,
+        "plex_enabled": plex_enabled,
     }
 
 
