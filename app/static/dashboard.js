@@ -2,6 +2,8 @@
 
 let scoreQueuePage = 1;
 let scoreQueuePerPage = 20;
+let scoreQueueSortBy = 'score';
+let scoreQueueSortOrder = 'desc';
 let refreshInterval = null;
 let runStatusInterval = null;
 
@@ -123,7 +125,7 @@ async function removeFromQueue(movieId, title) {
 // Score Queue
 async function loadScoreQueue(forceRefresh = false) {
     try {
-        const url = `/api/dashboard/score-queue?page=${scoreQueuePage}&per_page=${scoreQueuePerPage}${forceRefresh ? '&refresh=true' : ''}`;
+        const url = `/api/dashboard/score-queue?page=${scoreQueuePage}&per_page=${scoreQueuePerPage}&sort_by=${scoreQueueSortBy}&sort_order=${scoreQueueSortOrder}${forceRefresh ? '&refresh=true' : ''}`;
         const res = await fetch(url);
         const data = await res.json();
         const tbody = document.getElementById('score-queue-table');
@@ -149,15 +151,13 @@ async function loadScoreQueue(forceRefresh = false) {
             const tmdbRating = movie.tmdb_rating ? movie.tmdb_rating.toFixed(1) : 'N/A';
             const dryRunStyle = data.dry_run ? 'opacity: 0.75; font-style: italic;' : '';
     
-            // Get play count (watched status)
+            // Get play count (watched status) - Show plain numbers
             const playCount = movie.plex_play_count || 0;
             let watchedDisplay = '';
-            if (playCount === 0) {
-                watchedDisplay = '<span style="color: #ef4444;">❌ Never</span>';
-            } else if (playCount === 1) {
-                watchedDisplay = '<span style="color: #f59e0b;">⚠️ Once</span>';
+            if (!data.plex_enabled) {
+                watchedDisplay = '<span style="color: var(--text-secondary);">N/A</span>';
             } else {
-                watchedDisplay = `<span style="color: #10b981;">✅ ${playCount} times</span>`;
+                watchedDisplay = `<span style="color: var(--text-secondary);">${playCount}</span>`;
             }
     
             return `
@@ -188,6 +188,10 @@ async function loadScoreQueue(forceRefresh = false) {
                 <button onclick="changeScoreQueuePage(${scoreQueuePage + 1})" class="btn-sm btn-outline" ${scoreQueuePage >= totalPages ? 'disabled' : ''}>Next →</button>
             </div>
         `;
+
+        // Update sort icons
+        updateSortIcons();
+
     } catch (e) {
         console.error('Failed to load score queue:', e);
     }
@@ -196,6 +200,32 @@ async function loadScoreQueue(forceRefresh = false) {
 function changeScoreQueuePage(page) {
     scoreQueuePage = page;
     loadScoreQueue();
+}
+
+// Add sort function here
+function sortScoreQueue(sortBy) {
+    if (scoreQueueSortBy === sortBy) {
+        // Toggle order if same column
+        scoreQueueSortOrder = scoreQueueSortOrder === 'desc' ? 'asc' : 'desc';
+    } else {
+        // New column, default to desc for score, asc for others
+        scoreQueueSortBy = sortBy;
+        scoreQueueSortOrder = sortBy === 'score' ? 'desc' : 'asc';
+    }
+    scoreQueuePage = 1; // Reset to first page
+    loadScoreQueue();
+}
+
+function updateSortIcons() {
+    document.querySelectorAll('.sortable').forEach(header => {
+        const sortColumn = header.dataset.sort;
+        const icon = header.querySelector('.sort-icon');
+        if (sortColumn === scoreQueueSortBy) {
+            icon.textContent = scoreQueueSortOrder === 'desc' ? '↓' : '↑';
+        } else {
+            icon.textContent = '↕';
+        }
+    });
 }
 
 // Failed Deletions
@@ -407,6 +437,14 @@ document.addEventListener('DOMContentLoaded', () => {
         scoreQueuePerPage = parseInt(e.target.value);
         scoreQueuePage = 1;
         loadScoreQueue();
+    });
+
+    // Add sort event listeners
+    document.querySelectorAll('.sortable').forEach(header => {
+        header.addEventListener('click', () => {
+            const sortBy = header.dataset.sort;
+            sortScoreQueue(sortBy);
+        });
     });
 
     // Auto-refresh every 30 seconds — queue status and deletions only, not score queue

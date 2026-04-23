@@ -193,7 +193,9 @@ async def remove_from_queue(movie_id: int):
 async def get_score_queue(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    refresh: bool = False
+    refresh: bool = False,
+    sort_by: str = Query("score", description="Sort column: score, title, year, age, size, rating, quality, watched"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc")
 ):
     """
     Get scored movies from cache. If refresh=True or cache is empty,
@@ -230,7 +232,7 @@ async def get_score_queue(
     if needs_rebuild:
         await _rebuild_score_cache()
 
-    return await _get_score_queue_from_cache(page, per_page)
+    return await _get_score_queue_from_cache(page, per_page, sort_by, sort_order)
 
 
 async def _rebuild_score_cache():
@@ -363,7 +365,7 @@ async def _rebuild_score_cache():
         logger.error(f"Failed to rebuild score cache: {e}")
 
 
-async def _get_score_queue_from_cache(page: int, per_page: int) -> dict:
+async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "score", sort_order: str = "desc") -> dict:
     """
     Read paginated score queue from cache, excluding already-scheduled movies.
     Collections are grouped into single entries for display.
@@ -385,7 +387,6 @@ async def _get_score_queue_from_cache(page: int, per_page: int) -> dict:
                    raw_score, factors, plex_play_count,
                    collection_name, collection_id, is_collection, cached_at
             FROM scored_movies_cache
-            ORDER BY normalized_score DESC
         """).fetchall()
     finally:
         conn.close()
@@ -436,7 +437,24 @@ async def _get_score_queue_from_cache(page: int, per_page: int) -> dict:
 
     # Merge and sort by score descending
     available = individuals + list(collections.values())
-    available.sort(key=lambda x: x["normalized_score"], reverse=True)
+    
+    # Apply sorting
+    sort_mapping = {
+        "score": "normalized_score",
+        "title": "movie_title",
+        "year": "movie_year",
+        "age": "age_days",
+        "size": "size_gb",
+        "rating": "tmdb_rating",
+        "quality": "quality",
+        "watched": "plex_play_count",
+    }
+    
+    sort_column = sort_mapping.get(sort_by, "normalized_score")
+    reverse = sort_order.lower() == "desc"
+    
+    # Handle None values for sorting
+    available.sort(key=lambda x: x.get(sort_column) or (0 if isinstance(x.get(sort_column), (int, float)) else ""), reverse=reverse)
 
     total = len(available)
     offset = (page - 1) * per_page
