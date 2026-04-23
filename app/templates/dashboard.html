@@ -80,57 +80,57 @@
             </div>
             <div class="p-6">
                 <div class="space-y-4">
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="dry-run-toggle" class="accent-indigo-500" />
-                        <span class="text-sm">Dry Run (preview only, no changes)</span>
-                    </label>
-                    <div class="flex gap-3">
-                        <button id="run-score-btn" class="flex-1 py-2 rounded-lg text-sm font-medium text-white btn-raise" style="background: var(--accent);">
-                            🎯 Run Score
-                        </button>
-                        <button id="refresh-btn" class="px-4 py-2 rounded-lg text-sm border btn-raise" style="border-color: var(--border-color); color: var(--text-secondary);">
-                            ⟳ Refresh
-                        </button>
-                    </div>
-                    <div class="border-t pt-3 mt-2" style="border-color: var(--border-color);">
-                        <div class="flex justify-between text-sm">
+                    
+                    <!-- Score Run Progress -->
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span style="color: var(--text-secondary)">Score Run Progress:</span>
+                            <span id="score-progress-pct" style="color: var(--text-secondary)">0%</span>
+                        </div>
+                        <div class="w-full rounded-full h-2" style="background: var(--border-color)">
+                            <div id="score-progress-bar" class="h-2 rounded-full transition-all duration-300" style="width: 0%; background: var(--accent)"></div>
+                        </div>
+                        <div class="text-xs mt-1" style="color: var(--text-secondary)">
+                            <span id="score-progress-label">Idle</span>
+                        </div>
+                        <div class="flex justify-between text-xs mt-2">
                             <span style="color: var(--text-secondary)">Next score run:</span>
                             <span id="next-score-run" class="font-mono">--</span>
                         </div>
-                        <div class="flex justify-between text-sm mt-1">
+                    </div>
+
+                    <!-- Cull Run Progress -->
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span style="color: var(--text-secondary)">Cull Run Progress:</span>
+                            <span id="cull-progress-pct" style="color: var(--text-secondary)">0%</span>
+                        </div>
+                        <div class="w-full rounded-full h-2" style="background: var(--border-color)">
+                            <div id="cull-progress-bar" class="h-2 rounded-full transition-all duration-300" style="width: 0%; background: var(--accent)"></div>
+                        </div>
+                        <div class="text-xs mt-1" style="color: var(--text-secondary)">
+                            <span id="cull-progress-label">Idle</span>
+                        </div>
+                        <div class="flex justify-between text-xs mt-2">
                             <span style="color: var(--text-secondary)">Next cull run:</span>
                             <span id="next-cull-run" class="font-mono">--</span>
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <!-- Progress Bar -->
-    <div id="progress-section" class="hidden card rounded-xl overflow-hidden">
-        <div class="card-header">
-            <svg class="card-header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-            </svg>
-            <div>
-                <h2 class="card-header-title">Deletion Progress</h2>
-                <p class="card-header-subtitle">Current scan status</p>
-            </div>
-        </div>
-        <div class="p-6">
-            <div class="space-y-2">
-                <div class="flex justify-between text-xs" style="color: var(--text-secondary)">
-                    <span id="progress-label">Starting...</span>
-                    <span id="progress-pct">0%</span>
-                </div>
-                <div class="flex items-center gap-3">
-                    <div class="flex-1">
-                        <div class="w-full rounded-full h-2" style="background: var(--border-color)">
-                            <div id="progress-bar" class="h-2 rounded-full transition-all duration-300" style="width: 0%; background: var(--accent)"></div>
-                        </div>
-                    </div>
-                    <button id="cancel-run-btn" class="hidden btn-sm btn-danger">Cancel</button>
+                    <!-- Cancel Button (hidden by default) -->
+                    <button id="cancel-run-btn" class="hidden w-full py-2 rounded-lg text-sm font-medium btn-danger">Cancel Run</button>
+
+                    <!-- Dry Run Toggle -->
+                    <label class="flex items-center gap-2 cursor-pointer pt-2">
+                        <input type="checkbox" id="dry-run-toggle" class="accent-indigo-500" />
+                        <span class="text-sm">Dry Run (preview only, no changes)</span>
+                    </label>
+
+                    <!-- Run Score Button -->
+                    <button id="run-score-btn" class="w-full py-2 rounded-lg text-sm font-medium text-white btn-raise" style="background: var(--accent);">
+                        🎯 Run Score
+                    </button>
+
                 </div>
             </div>
         </div>

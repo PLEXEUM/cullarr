@@ -307,14 +307,9 @@ async function triggerScoreRun() {
 
 // Run status polling — updates progress bar and re-loads queue when done
 function startRunStatusPolling() {
-    const progressSection = document.getElementById('progress-section');
-    const progressBar = document.getElementById('progress-bar');
-    const progressLabel = document.getElementById('progress-label');
-    const progressPct = document.getElementById('progress-pct');
     const cancelBtn = document.getElementById('cancel-run-btn');
     const runBtn = document.getElementById('run-score-btn');
 
-    progressSection.classList.remove('hidden');
     cancelBtn.classList.remove('hidden');
 
     if (runStatusInterval) clearInterval(runStatusInterval);
@@ -326,20 +321,28 @@ function startRunStatusPolling() {
 
             if (data.is_running) {
                 const pct = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
-                progressBar.style.width = `${pct}%`;
-                progressPct.textContent = `${pct}%`;
-                progressLabel.textContent = data.current_movie
-                    ? `Processing: ${data.current_movie}`
-                    : `${data.run_type === 'score' ? 'Scoring' : 'Culling'} movies...`;
+    
+                if (data.run_type === 'score') {
+                    document.getElementById('score-progress-bar').style.width = `${pct}%`;
+                    document.getElementById('score-progress-pct').textContent = `${pct}%`;
+                    document.getElementById('score-progress-label').textContent = data.current_movie || 'Scoring movies...';
+                } else if (data.run_type === 'cull') {
+                    document.getElementById('cull-progress-bar').style.width = `${pct}%`;
+                    document.getElementById('cull-progress-pct').textContent = `${pct}%`;
+                    document.getElementById('cull-progress-label').textContent = data.current_movie || 'Deleting movies...';
+                }
+    
                 cancelBtn.onclick = () => cancelRun(data.run_id);
             } else {
-                // Run finished
-                clearInterval(runStatusInterval);
-                runStatusInterval = null;
-                progressSection.classList.add('hidden');
+                // Reset both progress bars when idle
+                document.getElementById('score-progress-bar').style.width = '0%';
+                document.getElementById('score-progress-pct').textContent = '0%';
+                document.getElementById('score-progress-label').textContent = 'Idle';
+                document.getElementById('cull-progress-bar').style.width = '0%';
+                document.getElementById('cull-progress-pct').textContent = '0%';
+                document.getElementById('cull-progress-label').textContent = 'Idle';
                 cancelBtn.classList.add('hidden');
-                progressBar.style.width = '0%';
-                runBtn.disabled = false;
+            runBtn.disabled = false;
                 runBtn.textContent = '🎯 Run Score';
                 showToast('Run completed', 'success');
                 await loadDashboard();
@@ -431,7 +434,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSettingsSummary();
 
     document.getElementById('run-score-btn').addEventListener('click', triggerScoreRun);
-    document.getElementById('refresh-btn').addEventListener('click', () => loadDashboard());
     document.getElementById('refresh-queue-btn').addEventListener('click', () => loadScoreQueue(true));
     document.getElementById('per-page-select').addEventListener('change', (e) => {
         scoreQueuePerPage = parseInt(e.target.value);
