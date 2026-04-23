@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException
 import httpx
-from typing import Optional
 from app.db.database import get_connection
 from app.utils.logger import get_logger
 
@@ -21,29 +20,6 @@ def _cleanup_stale_pins():
         for key in oldest_keys:
             del active_pins[key]
             logger.debug(f"Cleaned up stale PIN: {key}")
-
-
-async def discover_plex_server(token: str) -> Optional[str]:
-    """Discover Plex server URL from token."""
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
-                "https://plex.tv/api/v2/resources",
-                headers={"X-Plex-Token": token}
-            )
-            if response.status_code == 200:
-                data = response.json()
-                for resource in data.get("data", []):
-                    if resource.get("presence") and resource.get("connections"):
-                        # Prefer local connection
-                        for conn in resource["connections"]:
-                            if conn.get("local"):
-                                return conn.get("uri")
-                        # Fallback to first connection
-                        return resource["connections"][0].get("uri")
-    except Exception as e:
-        logger.error(f"Failed to discover Plex server: {e}")
-    return None
 
 
 @router.post("/plex/oauth/pin")
@@ -106,35 +82,23 @@ async def check_pin(pin_id: int):
                 auth_token = data["authToken"]
                 active_pins[pin_id]["auth_token"] = auth_token
 
-                # Try to auto-discover server URL
-                discovered_url = await discover_plex_server(auth_token)
-
+                # Save token to database (URL will be saved separately by user)
                 conn = get_connection()
                 try:
-                    if discovered_url:
-                        # Auto-save URL AND enable Plex
-                        conn.execute("""
-                            UPDATE plex_config
-                            SET api_key = ?, url = ?, enabled = 1, label_text = 'Cullarr - Pending Deletion', updated_at = CURRENT_TIMESTAMP
-                            WHERE id = 1
-                        """, (auth_token, discovered_url))
-                        logger.info(f"Plex auto-configured with URL: {discovered_url}")
-                    else:
-                        # Save token only (manual URL entry will be needed)
-                        conn.execute("""
-                            UPDATE plex_config
-                            SET api_key = ?, enabled = 0, label_text = 'Cullarr - Pending Deletion', updated_at = CURRENT_TIMESTAMP
-                            WHERE id = 1
-                        """, (auth_token,))
-                        logger.info("Plex token saved but no URL discovered")
+                    conn.execute("""
+                        UPDATE plex_config
+                        SET api_key = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = 1
+                    """, (auth_token,))
                     conn.commit()
+                    logger.info("Plex OAuth token saved to database")
                 finally:
                     conn.close()
 
                 # Clean up pin from memory
                 del active_pins[pin_id]
 
-                return {"auth_token": auth_token, "authenticated": True, "auto_configured": discovered_url is not None}
+                return {"auth_token": auth_token, "authenticated": True}
 
             return {"authenticated": False}
 

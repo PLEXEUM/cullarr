@@ -91,7 +91,7 @@
         </div>
     </div>
 
-    <!-- Plex Connection -->
+        <!-- Plex Connection -->
     <div class="card rounded-xl overflow-hidden mb-6">
         <div class="card-header">
             <svg class="card-header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -99,69 +99,30 @@
             </svg>
             <div>
                 <h2 class="card-header-title">Plex Connection</h2>
-                <p class="card-header-subtitle">Connect to Plex for watch history</p>
-            </div>
-            <div class="ml-auto">
-                <span id="plex-status-badge" class="badge badge-secondary">Not Connected</span>
+                <p class="card-header-subtitle">Connect to your Plex instance for watch history</p>
             </div>
         </div>
         <div class="p-6 space-y-4">
+            <div id="plex-status" class="connection-status info">⚠ Not configured</div>
             
-            <!-- Status Message -->
-            <div id="plex-status-message" class="text-sm"></div>
+            <!-- Plex Server URL -->
+            <input type="text" id="plex-url" placeholder="http://192.168.0.34:32400">
             
-            <!-- Connected State (hidden by default) -->
-            <div id="plex-connected-section" class="hidden">
-                <div class="p-3 rounded-lg" style="background: var(--success-bg);">
-                    <div class="flex items-center justify-between flex-wrap gap-2">
-                        <div>
-                            <div class="font-medium">✅ Connected to Plex</div>
-                            <div class="text-xs mt-1" id="connected-plex-url" style="color: var(--text-secondary)"></div>
-                            <div class="text-xs mt-1" id="plex-stats" style="color: var(--text-secondary)"></div>
-                        </div>
-                        <button id="plex-disconnect-btn" class="btn-sm btn-danger">Disconnect</button>
-                    </div>
-                </div>
-                
-                <!-- Label settings -->
-                <div class="mt-4">
-                    <label class="block text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--text-secondary);">
-                        Plex Label Text
-                    </label>
-                    <input type="text" id="plex-label" value="Cullarr - Pending Deletion" class="w-full">
-                    <p class="text-xs mt-1" style="color: var(--text-secondary);">Label added to movies scheduled for deletion</p>
-                </div>
+            <div class="flex gap-3">
+                <button id="plex-auth-btn" class="flex-1 py-2 rounded-lg text-sm font-medium text-white btn-raise" style="background: #e5a00d;">
+                    🔑 Authenticate & Save
+                </button>
+                <button id="plex-clear-btn" class="px-4 py-2 rounded-lg text-sm border btn-raise" style="border-color: var(--border-color); color: var(--text-secondary);">Clear</button>
             </div>
             
-            <!-- Disconnected State -->
-            <div id="plex-disconnected-section">
-                <div class="text-center py-4">
-                    <p class="text-sm mb-4" style="color: var(--text-secondary);">
-                        Connect to Plex to get watch history for smarter deletion decisions.
-                    </p>
-                    <button id="plex-connect-btn" class="w-full py-3 rounded-lg text-white font-medium btn-raise" style="background: #e5a00d;">
-                        🔑 Connect to Plex
-                    </button>
-                    <p class="text-xs mt-3" style="color: var(--text-secondary);">
-                        Click to login with Plex. Your server will be discovered automatically.
-                    </p>
-                </div>
+            <!-- Plex Label with its own Save button -->
+            <div class="flex gap-2 items-center">
+                <input type="text" id="plex-label" placeholder="Movies Leaving Soon" value="Movies Leaving Soon" class="flex-1">
+                <button id="plex-save-label-btn" class="px-4 py-2 rounded-lg text-sm border btn-raise" style="border-color: var(--border-color); color: var(--text-secondary);">Save</button>
             </div>
+            <p class="text-xs" style="color: var(--text-secondary);">Label added to movies scheduled for deletion</p>
             
-            <!-- Manual URL Entry (shown only if auto-discovery fails) -->
-            <div id="plex-manual-section" class="hidden border-t pt-4 mt-2" style="border-color: var(--border-color);">
-                <label class="block text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--text-secondary);">
-                    Manual Server URL
-                </label>
-                <div class="flex gap-2">
-                    <input type="text" id="plex-manual-url" placeholder="http://192.168.0.34:32400" class="flex-1">
-                    <button id="plex-save-url-btn" class="px-4 py-2 rounded-lg text-sm font-medium text-white" style="background: var(--accent);">Save</button>
-                </div>
-                <p class="text-xs mt-2" style="color: var(--text-secondary);">
-                    Auto-discovery failed. Enter your Plex server URL manually.
-                </p>
-            </div>
-            
+            <p class="text-xs mt-2" style="color: var(--text-secondary);">ℹ️ Click "Authenticate & Save" to login via Plex popup. Your server URL and label will be saved automatically.</p>
         </div>
     </div>
 

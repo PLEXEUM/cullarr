@@ -14,6 +14,11 @@ function setupEventListeners() {
     document.getElementById('radarr-test-btn').addEventListener('click', testAndSaveRadarr);
     document.getElementById('radarr-clear-btn').addEventListener('click', clearRadarr);
     
+    // Plex
+    document.getElementById('plex-auth-btn').addEventListener('click', authenticateAndSavePlex);
+    document.getElementById('plex-clear-btn').addEventListener('click', clearPlex);
+    document.getElementById('plex-save-label-btn').addEventListener('click', savePlexLabel);
+    
     // Weights
     const weightSliders = ['age-weight', 'size-weight', 'rating-weight', 'quality-weight', 'monitored-weight', 'watched-weight'];
     weightSliders.forEach(id => {
@@ -108,62 +113,42 @@ async function clearRadarr() {
 }
 
 // Plex
+let plexPopupWindow = null;
+let plexPollInterval = null;
+let plexTimeoutTimer = null;
+
 async function loadPlexConfig() {
     try {
         const res = await fetch('/api/plex/config');
         const data = await res.json();
         
-        const connectedSection = document.getElementById('plex-connected-section');
-        const disconnectedSection = document.getElementById('plex-disconnected-section');
-        const statusBadge = document.getElementById('plex-status-badge');
-        const statusMessage = document.getElementById('plex-status-message');
+        // Load fields
+        document.getElementById('plex-url').value = data.url || '';
+        document.getElementById('plex-label').value = data.label_text || 'Movies Leaving Soon';
         
-        if (data.configured && data.url) {
-            // Fully configured
-            connectedSection.classList.remove('hidden');
-            disconnectedSection.classList.add('hidden');
-            statusBadge.className = 'badge badge-success';
-            statusBadge.textContent = 'Connected';
-            statusMessage.innerHTML = '';
-            document.getElementById('connected-plex-url').textContent = data.url;
-            document.getElementById('plex-label').value = data.label_text || 'Cullarr - Pending Deletion';
-            
-            // Try to get stats
-            try {
-                const statsRes = await fetch('/api/dashboard/queue-status');
-                const stats = await statsRes.json();
-                if (stats.plex.details) {
-                    document.getElementById('plex-stats').textContent = stats.plex.details;
-                }
-            } catch(e) {}
-        } else if (data.configured && !data.url && data.api_key === '[REDACTED]') {
-            // Has token but no URL (auto-discovery failed)
-            connectedSection.classList.add('hidden');
-            disconnectedSection.classList.add('hidden');
-            statusBadge.className = 'badge badge-warning';
-            statusBadge.textContent = 'Authenticated';
-            statusMessage.innerHTML = '✓ Authenticated with Plex. Please enter your server URL below.';
-            document.getElementById('plex-manual-section').classList.remove('hidden');
+        // Update status display
+        const statusDiv = document.getElementById('plex-status');
+        if (data.configured && data.url && data.api_key === '[REDACTED]') {
+            statusDiv.innerHTML = '<span style="color: var(--success);">✅ Configured</span>';
+        } else if (data.api_key === '[REDACTED]') {
+            statusDiv.innerHTML = '<span style="color: var(--warning);">⚠ Authenticated (token saved)</span>';
         } else {
-            // Not configured
-            connectedSection.classList.add('hidden');
-            disconnectedSection.classList.remove('hidden');
-            statusBadge.className = 'badge badge-secondary';
-            statusBadge.textContent = 'Not Connected';
-            statusMessage.innerHTML = '';
-            document.getElementById('plex-manual-section').classList.add('hidden');
+            statusDiv.innerHTML = '<span style="color: var(--warning);">⚠ Not configured</span>';
         }
     } catch (e) {
         console.error('Failed to load Plex config:', e);
     }
 }
 
-// One-click Plex Setup
-let plexPopupWindow = null;
-let plexPollInterval = null;
-let plexTimeoutTimer = null;
-
-async function oneClickPlexSetup() {
+async function authenticateAndSavePlex() {
+    const url = document.getElementById('plex-url').value;
+    const labelText = document.getElementById('plex-label').value;
+    
+    if (!url) {
+        showToast('Please enter Plex server URL', 'error');
+        return;
+    }
+    
     // Close any existing popup
     if (plexPopupWindow && !plexPopupWindow.closed) {
         plexPopupWindow.close();
@@ -179,14 +164,10 @@ async function oneClickPlexSetup() {
         plexTimeoutTimer = null;
     }
     
-    // Update UI to connecting state
-    const connectBtn = document.getElementById('plex-connect-btn');
-    const originalText = connectBtn.textContent;
-    connectBtn.disabled = true;
-    connectBtn.textContent = '⏳ Connecting to Plex...';
-    const statusBadge = document.getElementById('plex-status-badge');
-    statusBadge.className = 'badge badge-warning';
-    statusBadge.textContent = 'Connecting...';
+    const btn = document.getElementById('plex-auth-btn');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Authenticating...';
     
     try {
         // Create PIN
@@ -205,8 +186,8 @@ async function oneClickPlexSetup() {
         plexPopupWindow = window.open(data.auth_url, 'PlexAuth', 'width=800,height=600,scrollbars=yes');
         if (!plexPopupWindow) {
             showToast('Popup blocked. Please allow popups for this site.', 'warning');
-            connectBtn.disabled = false;
-            connectBtn.textContent = originalText;
+            btn.disabled = false;
+            btn.textContent = originalText;
             return;
         }
         plexPopupWindow.focus();
@@ -220,27 +201,39 @@ async function oneClickPlexSetup() {
                 const pollData = await pollRes.json();
                 
                 if (pollData.authenticated) {
-                    // Success!
+                    // Success! Save the config
                     clearInterval(plexPollInterval);
                     clearTimeout(plexTimeoutTimer);
                     if (plexPopupWindow && !plexPopupWindow.closed) {
                         plexPopupWindow.close();
                     }
                     
-                    if (pollData.auto_configured) {
-                        showToast('Plex connected successfully!', 'success');
+                    // Save URL and label
+                    const saveRes = await fetch('/api/plex/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            url: url, 
+                            label_text: labelText, 
+                            enabled: true 
+                        })
+                    });
+                    
+                    if (saveRes.ok) {
+                        showToast('Plex configured successfully!', 'success');
                         await loadPlexConfig();
                     } else {
-                        showToast('Plex authenticated! Please enter your server URL.', 'info');
-                        await loadPlexConfig();
+                        showToast('Token saved but failed to save URL/label', 'error');
                     }
+                    
+                    btn.disabled = false;
+                    btn.textContent = originalText;
                 } else if (pollCount > 300) { // 5 minutes timeout
                     clearInterval(plexPollInterval);
                     clearTimeout(plexTimeoutTimer);
                     showToast('Plex login timed out', 'error');
-                    connectBtn.disabled = false;
-                    connectBtn.textContent = originalText;
-                    await loadPlexConfig();
+                    btn.disabled = false;
+                    btn.textContent = originalText;
                 }
             } catch (e) {
                 console.error('Poll error:', e);
@@ -252,56 +245,66 @@ async function oneClickPlexSetup() {
             if (plexPollInterval) {
                 clearInterval(plexPollInterval);
                 showToast('Plex login timed out after 5 minutes', 'error');
-                connectBtn.disabled = false;
-                connectBtn.textContent = originalText;
-                loadPlexConfig();
+                btn.disabled = false;
+                btn.textContent = originalText;
             }
         }, 300000);
         
     } catch (error) {
         console.error('Plex setup error:', error);
         showToast('Failed to start Plex login: ' + error.message, 'error');
-        connectBtn.disabled = false;
-        connectBtn.textContent = originalText;
-        loadPlexConfig();
+        btn.disabled = false;
+        btn.textContent = originalText;
     }
 }
 
-async function disconnectPlex() {
-    if (!confirm('Disconnect Plex? This will remove your Plex configuration.')) return;
+async function savePlexLabel() {
+    const url = document.getElementById('plex-url').value;
+    const labelText = document.getElementById('plex-label').value;
+    
+    if (!url) {
+        showToast('Please enter Plex server URL first', 'error');
+        return;
+    }
     
     try {
-        const res = await fetch('/api/plex/config', { method: 'DELETE' });
+        const res = await fetch('/api/plex/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                url: url, 
+                label_text: labelText, 
+                enabled: true 
+            })
+        });
+        
         if (res.ok) {
-            showToast('Plex disconnected', 'success');
+            showToast('Label saved successfully', 'success');
             await loadPlexConfig();
+        } else {
+            const err = await res.json();
+            showToast(err.detail || 'Failed to save label', 'error');
         }
     } catch (e) {
         showToast('Error: ' + e.message, 'error');
     }
 }
 
-// Event listeners
-document.getElementById('plex-connect-btn')?.addEventListener('click', oneClickPlexSetup);
-document.getElementById('plex-disconnect-btn')?.addEventListener('click', disconnectPlex);
-document.getElementById('plex-save-url-btn')?.addEventListener('click', async () => {
-    const url = document.getElementById('plex-manual-url').value;
-    const labelText = document.getElementById('plex-label').value;
+async function clearPlex() {
+    if (!confirm('Clear Plex configuration? This will remove URL, token, and label.')) return;
     
     try {
-        const res = await fetch('/api/plex/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, label_text: labelText, enabled: true })
-        });
+        const res = await fetch('/api/plex/config', { method: 'DELETE' });
         if (res.ok) {
-            showToast('Plex URL saved', 'success');
+            showToast('Plex configuration cleared', 'success');
+            document.getElementById('plex-url').value = '';
+            document.getElementById('plex-label').value = 'Movies Leaving Soon';
             await loadPlexConfig();
         }
-    } catch(e) {
-        showToast('Failed to save URL', 'error');
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
     }
-});
+}
 
 // Weights
 function updateWeightDisplay(id) {
