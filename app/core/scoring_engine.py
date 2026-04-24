@@ -379,12 +379,16 @@ class ScoringEngine:
         scored = []
         total = len(movies)
 
+        # Throttle progress updates to every N movies
+        PROGRESS_THROTTLE = 50  # Update every 50 movies
+        
         for idx, movie in enumerate(movies):
             result = self.calculate_movie_score(movie, plex_play_counts, plex_enabled)
             
-            # Report progress after each movie
+            # Report progress at throttle interval OR on last movie
             if progress_callback:
-                progress_callback(idx + 1, total, movie.get("title", "Unknown"))
+                if (idx + 1) % PROGRESS_THROTTLE == 0 or (idx + 1) == total:
+                    progress_callback(idx + 1, total, movie.get("title", "Unknown"))
             
             if result["eligible"]:
                 # Extract collection info from Radarr movie object
