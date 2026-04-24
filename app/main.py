@@ -68,7 +68,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown scheduler on app stop"""
-    shutdown_dispatcher()
+    shutdown_scheduler()
     logger.info("Cullarr stopped")
 
 if __name__ == "__main__":
