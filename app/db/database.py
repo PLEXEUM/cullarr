@@ -220,5 +220,21 @@ def migrate_db():
     except Exception:
         pass  # Column already exists, safe to ignore
 
+    # Migration: add raw weight columns for 1-10 scale storage
+    for column, default in [
+        ("age_raw", "5"),
+        ("size_raw", "5"),
+        ("rating_raw", "5"),
+        ("quality_raw", "5"),
+        ("watched_raw", "5"),
+    ]:
+        try:
+            cursor.execute(
+                f"ALTER TABLE scoring_weights ADD COLUMN {column} INTEGER DEFAULT {default}"
+            )
+            print(f"Migration applied: added {column} to scoring_weights")
+        except Exception:
+            pass  # Column already exists, safe to ignore
+
     conn.commit()
     conn.close()
