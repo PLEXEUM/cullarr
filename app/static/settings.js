@@ -88,25 +88,26 @@ function setupEventListeners() {
     document.getElementById('save-weights-btn').addEventListener('click', saveWeights);
     document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
     
-    // Advanced section toggle
-    const advancedToggle = document.getElementById('advanced-toggle');
-    const advancedContent = document.getElementById('advanced-content');
-    const advancedIcon = document.getElementById('advanced-icon');
-    if (advancedToggle) {
-        advancedToggle.addEventListener('click', () => {
-            const isHidden = advancedContent.classList.toggle('hidden');
-            advancedIcon.textContent = isHidden ? '▶' : '▼';
-        });
-    }
-    
     // Recalibrate button
     document.getElementById('recalibrate-btn')?.addEventListener('click', recalibrateAdvanced);
+}
+
+function toggleAdvancedSettings() {
+    const section = document.getElementById('advanced-settings-section');
+    const icon = document.getElementById('advanced-settings-icon');
+    if (section.style.display === 'none' || section.style.display === '') {
+        section.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        section.style.display = 'none';
+        icon.style.transform = 'rotate(0deg)';
+    }
 }
 
 // Auto-balance sliders to keep 100% total
 function handleAutoBalance(changedId, newValue) {
     // Get current values
-    const oldValues = {
+    const sliders = {
         age: parseInt(ageSlider.value),
         size: parseInt(sizeSlider.value),
         rating: parseInt(ratingSlider.value),
@@ -114,46 +115,54 @@ function handleAutoBalance(changedId, newValue) {
         watched: parseInt(watchedSlider.value)
     };
     
-    // Calculate delta
-    const oldChanged = oldValues[changedId.replace('-weight', '')];
-    const delta = newValue - oldChanged;
+    const changedKey = changedId.replace('-weight', '');
+    const oldValue = sliders[changedKey];
+    const delta = newValue - oldValue;
     
     if (delta === 0) return;
     
-    // Sum of other sliders
-    const otherSliders = ['age', 'size', 'rating', 'quality', 'watched'].filter(id => id !== changedId.replace('-weight', ''));
-    const otherSum = otherSliders.reduce((sum, id) => sum + oldValues[id], 0);
+    // Calculate sum of other sliders
+    let otherSum = 0;
+    const otherKeys = [];
+    for (const [key, value] of Object.entries(sliders)) {
+        if (key !== changedKey) {
+            otherSum += value;
+            otherKeys.push(key);
+        }
+    }
     
     if (otherSum === 0) return;
     
-    // Distribute delta proportionally
-    const newValues = { ...oldValues };
-    newValues[changedId.replace('-weight', '')] = newValue;
+    // Distribute delta proportionally among other sliders
+    const newValues = { ...sliders };
+    newValues[changedKey] = newValue;
     
-    for (const id of otherSliders) {
-        const proportion = oldValues[id] / otherSum;
+    for (const key of otherKeys) {
+        const proportion = sliders[key] / otherSum;
         let adjustment = delta * proportion;
-        let newVal = oldValues[id] - adjustment;
+        let newVal = sliders[key] - adjustment;
         
         // Clamp to 0-100
         newVal = Math.max(0, Math.min(100, Math.round(newVal)));
-        newValues[id] = newVal;
+        newValues[key] = newVal;
     }
     
-    // Ensure total is exactly 100 (adjust if rounding caused issues)
+    // Fix rounding issues - adjust the largest remaining slider to make total 100
     let total = Object.values(newValues).reduce((a, b) => a + b, 0);
     if (total !== 100 && total > 0) {
-        // Find the largest slider to adjust
-        const largestId = Object.keys(newValues).reduce((a, b) => newValues[a] > newValues[b] ? a : b);
-        newValues[largestId] += (100 - total);
+        // Find the largest remaining slider (not the changed one)
+        let largestKey = otherKeys.reduce((a, b) => newValues[a] > newValues[b] ? a : b);
+        newValues[largestKey] += (100 - total);
+        // Clamp again
+        newValues[largestKey] = Math.max(0, Math.min(100, newValues[largestKey]));
     }
     
-    // Apply new values without triggering auto-balance again
-    if (newValues.age !== oldValues.age) ageSlider.value = newValues.age;
-    if (newValues.size !== oldValues.size) sizeSlider.value = newValues.size;
-    if (newValues.rating !== oldValues.rating) ratingSlider.value = newValues.rating;
-    if (newValues.quality !== oldValues.quality) qualitySlider.value = newValues.quality;
-    if (newValues.watched !== oldValues.watched) watchedSlider.value = newValues.watched;
+    // Apply new values without triggering events
+    if (newValues.age !== sliders.age) ageSlider.value = newValues.age;
+    if (newValues.size !== sliders.size) sizeSlider.value = newValues.size;
+    if (newValues.rating !== sliders.rating) ratingSlider.value = newValues.rating;
+    if (newValues.quality !== sliders.quality) qualitySlider.value = newValues.quality;
+    if (newValues.watched !== sliders.watched) watchedSlider.value = newValues.watched;
     
     // Update displays
     updateWeightDisplay('age-weight');
