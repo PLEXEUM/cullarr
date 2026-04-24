@@ -106,8 +106,10 @@ function toggleAdvancedSettings() {
 
 // Auto-balance sliders to keep 100% total
 function handleAutoBalance(changedId, newValue) {
-    // Get current values
-    const sliders = {
+    const changedKey = changedId.replace('-weight', '');
+    
+    // Get all current values
+    let values = {
         age: parseInt(ageSlider.value),
         size: parseInt(sizeSlider.value),
         rating: parseInt(ratingSlider.value),
@@ -115,8 +117,7 @@ function handleAutoBalance(changedId, newValue) {
         watched: parseInt(watchedSlider.value)
     };
     
-    const changedKey = changedId.replace('-weight', '');
-    const oldValue = sliders[changedKey];
+    const oldValue = values[changedKey];
     const delta = newValue - oldValue;
     
     if (delta === 0) return;
@@ -124,47 +125,49 @@ function handleAutoBalance(changedId, newValue) {
     // Calculate sum of other sliders
     let otherSum = 0;
     const otherKeys = [];
-    for (const [key, value] of Object.entries(sliders)) {
+    for (const [key, val] of Object.entries(values)) {
         if (key !== changedKey) {
-            otherSum += value;
+            otherSum += val;
             otherKeys.push(key);
         }
     }
     
-    if (otherSum === 0) return;
-    
-    // Distribute delta proportionally among other sliders
-    const newValues = { ...sliders };
-    newValues[changedKey] = newValue;
-    
-    for (const key of otherKeys) {
-        const proportion = sliders[key] / otherSum;
-        let adjustment = delta * proportion;
-        let newVal = sliders[key] - adjustment;
+    if (otherSum === 0) {
+        // If all others are 0, just set changed slider to 100
+        values[changedKey] = Math.min(100, Math.max(0, newValue));
+        for (const key of otherKeys) {
+            values[key] = 0;
+        }
+    } else {
+        // Update the changed slider
+        values[changedKey] = newValue;
         
-        // Clamp to 0-100
-        newVal = Math.max(0, Math.min(100, Math.round(newVal)));
-        newValues[key] = newVal;
+        // Distribute the delta among other sliders proportionally
+        for (const key of otherKeys) {
+            const proportion = values[key] / otherSum;
+            let adjustment = delta * proportion;
+            let newVal = values[key] - adjustment;
+            values[key] = Math.max(0, Math.min(100, Math.round(newVal)));
+        }
     }
     
-    // Fix rounding issues - adjust the largest remaining slider to make total 100
-    let total = Object.values(newValues).reduce((a, b) => a + b, 0);
+    // Fix any rounding issues - ensure total is exactly 100
+    let total = values.age + values.size + values.rating + values.quality + values.watched;
     if (total !== 100 && total > 0) {
-        // Find the largest remaining slider (not the changed one)
-        let largestKey = otherKeys.reduce((a, b) => newValues[a] > newValues[b] ? a : b);
-        newValues[largestKey] += (100 - total);
-        // Clamp again
-        newValues[largestKey] = Math.max(0, Math.min(100, newValues[largestKey]));
+        // Find the largest slider (not the changed one) to adjust
+        let adjustKey = otherKeys.length > 0 ? otherKeys.reduce((a, b) => values[a] > values[b] ? a : b) : changedKey;
+        values[adjustKey] += (100 - total);
+        values[adjustKey] = Math.max(0, Math.min(100, values[adjustKey]));
     }
     
-    // Apply new values without triggering events
-    if (newValues.age !== sliders.age) ageSlider.value = newValues.age;
-    if (newValues.size !== sliders.size) sizeSlider.value = newValues.size;
-    if (newValues.rating !== sliders.rating) ratingSlider.value = newValues.rating;
-    if (newValues.quality !== sliders.quality) qualitySlider.value = newValues.quality;
-    if (newValues.watched !== sliders.watched) watchedSlider.value = newValues.watched;
+    // Apply the new values
+    ageSlider.value = values.age;
+    sizeSlider.value = values.size;
+    ratingSlider.value = values.rating;
+    qualitySlider.value = values.quality;
+    watchedSlider.value = values.watched;
     
-    // Update displays
+    // Update all displays
     updateWeightDisplay('age-weight');
     updateWeightDisplay('size-weight');
     updateWeightDisplay('rating-weight');
