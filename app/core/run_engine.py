@@ -233,7 +233,7 @@ async def run_score_cycle(progress_callback: Optional[Callable] = None):
 
         # Score movies (collection grouping handled inside engine if enabled)
         engine = ScoringEngine(conn)
-        scored_movies = engine.get_scored_movies(
+        scored_movies = await engine.get_scored_movies(
             movies, 
             plex_play_counts, 
             plex_enabled,

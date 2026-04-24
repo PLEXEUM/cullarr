@@ -111,7 +111,7 @@ async def _run_dry_score(run_id: str):
                 _active_run["current_movie"] = f"Scoring: {movie_title} ({current}/{total})"
                 await asyncio.sleep(0)
             
-            scored = engine.get_scored_movies(
+            scored = await engine.get_scored_movies(
                 movies, 
                 plex_play_counts, 
                 plex_enabled,
