@@ -357,7 +357,7 @@ class ScoringEngine:
 
         return result
 
-    def get_scored_movies(
+    async def get_scored_movies(
         self,
         movies: List[Dict],
         plex_play_counts: Optional[Dict] = None,
@@ -368,27 +368,20 @@ class ScoringEngine:
         Calculate scores for all movies and return sorted list.
         If collection_grouping is enabled, collections are grouped into
         single entries scored by their average and counted as one queue slot.
-        
-        Args:
-            movies: List of movies from Radarr
-            plex_play_counts: Optional dict of play counts by TMDb ID
-            plex_enabled: Whether Plex is enabled
-            progress_callback: Optional function called after each movie
-                              Signature: callback(current, total, movie_title)
         """
         scored = []
         total = len(movies)
 
-        # Throttle progress updates to every N movies
-        PROGRESS_THROTTLE = 50  # Update every 50 movies
-        
+        # Throttle progress updates to every 50 movies
+        PROGRESS_THROTTLE = 50
+
         for idx, movie in enumerate(movies):
             result = self.calculate_movie_score(movie, plex_play_counts, plex_enabled)
             
             # Report progress at throttle interval OR on last movie
             if progress_callback:
                 if (idx + 1) % PROGRESS_THROTTLE == 0 or (idx + 1) == total:
-                    progress_callback(idx + 1, total, movie.get("title", "Unknown"))
+                    await progress_callback(idx + 1, total, movie.get("title", "Unknown"))
             
             if result["eligible"]:
                 # Extract collection info from Radarr movie object

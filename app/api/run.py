@@ -105,14 +105,11 @@ async def _run_dry_score(run_id: str):
         try:
             engine = ScoringEngine(conn)
             
-            # Progress callback for real-time updates
-            def update_progress(current, total, movie_title):
-                # Log every 500 movies to avoid spam, or always log for debugging
-                if current % 500 == 0 or current == total:
-                    logger.info(f"CALLBACK: current={current}, total={total}, movie={movie_title}")
+            async def update_progress(current, total, movie_title):
                 _active_run["current"] = current
                 _active_run["total"] = total
                 _active_run["current_movie"] = f"Scoring: {movie_title} ({current}/{total})"
+                await asyncio.sleep(0)
             
             scored = engine.get_scored_movies(
                 movies, 
@@ -184,11 +181,11 @@ async def trigger_score_run(dry_run: bool = False, background_tasks: BackgroundT
                 logger.info(f"Dry score run started (ID: {run_id})")
                 await _run_dry_score(run_id)
             else:
-                # Progress callback for non-dry run
-                def update_progress(current, total, movie_title):
+                async def update_progress(current, total, movie_title):
                     _active_run["current"] = current
                     _active_run["total"] = total
                     _active_run["current_movie"] = f"Scoring: {movie_title} ({current}/{total})"
+                    await asyncio.sleep(0)
                 
                 await run_score_cycle(progress_callback=update_progress)
         except Exception as e:
