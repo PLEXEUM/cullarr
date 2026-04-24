@@ -306,6 +306,30 @@ async function triggerScoreRun() {
     }
 }
 
+// Trigger cull run
+async function triggerCullRun() {
+    const btn = document.getElementById('run-cull-btn');
+    btn.disabled = true;
+    btn.textContent = 'Starting...';
+
+    try {
+        const res = await fetch('/api/run/cull', { method: 'POST' });
+        if (res.ok) {
+            showToast('Cull run started', 'success');
+            startRunStatusPolling();
+        } else {
+            const err = await res.json();
+            showToast(err.detail || 'Failed to start cull run', 'error');
+            btn.disabled = false;
+            btn.textContent = '🗑️ Run Cull';
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = '🗑️ Run Cull';
+    }
+}
+
 // Run status polling — updates progress bar and re-loads queue when done
 function startRunStatusPolling() {
     const cancelBtn = document.getElementById('cancel-run-btn');
@@ -345,6 +369,13 @@ function startRunStatusPolling() {
                 cancelBtn.classList.add('hidden');
                 runBtn.disabled = false;
                 runBtn.textContent = '🎯 Run Score';
+                
+                const cullBtn = document.getElementById('run-cull-btn');
+                if (cullBtn) {
+                    cullBtn.disabled = false;
+                    cullBtn.textContent = '🗑️ Run Cull';
+                }
+                
                 showToast('Run completed', 'success');
                 await loadDashboard();
                 
@@ -439,6 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSettingsSummary();
 
     document.getElementById('run-score-btn').addEventListener('click', triggerScoreRun);
+    document.getElementById('run-cull-btn').addEventListener('click', triggerCullRun);
     document.getElementById('refresh-queue-btn').addEventListener('click', () => loadScoreQueue(true));
     document.getElementById('per-page-select').addEventListener('change', (e) => {
         scoreQueuePerPage = parseInt(e.target.value);
