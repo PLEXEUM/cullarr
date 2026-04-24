@@ -438,9 +438,9 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
     # Merge and sort by score descending
     available = individuals + list(collections.values())
     
-    # Apply sorting
+    # Apply sorting — using raw_score instead of normalized_score
     sort_mapping = {
-        "score": "normalized_score",
+        "score": "raw_score",  # ← CHANGED: was "normalized_score"
         "title": "movie_title",
         "year": "movie_year",
         "age": "age_days",
@@ -450,7 +450,7 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
         "watched": "plex_play_count",
     }
     
-    sort_column = sort_mapping.get(sort_by, "normalized_score")
+    sort_column = sort_mapping.get(sort_by, "raw_score")
     reverse = sort_order.lower() == "desc"
     
     # Handle None values for sorting

@@ -105,7 +105,8 @@ class ScoringEngine:
             self.size_weight = weights["size_weight"] / 100.0
             self.rating_weight = weights["rating_weight"] / 100.0
             self.quality_weight = weights["quality_weight"] / 100.0
-            self.monitored_weight = weights["monitored_weight"] / 100.0
+            # monitored_weight is permanently disabled (set to 0)
+            self.monitored_weight = 0.0
             self.watched_weight = weights["watched_weight"] / 100.0
             self.age_max_days = weights["age_max_days"]
             self.size_max_gb = weights["size_max_gb"]
@@ -114,7 +115,7 @@ class ScoringEngine:
             self.size_weight = 0.25
             self.rating_weight = 0.15
             self.quality_weight = 0.15
-            self.monitored_weight = 0.10
+            self.monitored_weight = 0.0  # permanently disabled
             self.watched_weight = 0.10
             self.age_max_days = 365
             self.size_max_gb = 100
@@ -124,7 +125,7 @@ class ScoringEngine:
             "size": int(self.size_weight * 100),
             "rating": int(self.rating_weight * 100),
             "quality": int(self.quality_weight * 100),
-            "monitored": int(self.monitored_weight * 100),
+            # "monitored" removed from UI weights
             "watched": int(self.watched_weight * 100),
         }
 
@@ -213,9 +214,10 @@ class ScoringEngine:
                 current_quality = file_quality_obj.get("name", "Unknown")
         quality_raw = get_quality_score(current_quality)
 
-        # Monitored status
-        monitored = movie.get("monitored", True)
-        monitored_raw = 1.0 if not monitored else 0.0
+        # Monitored status - PERMANENTLY DISABLED (weight set to 0 in _load_weights)
+        # The code below is commented out because monitored no longer affects scores
+        # monitored = movie.get("monitored", True)
+        # monitored_raw = 0.0
 
         # Watched status (from Plex) — plex_play_counts must be keyed by TMDb ID string
         watched_raw = 0.0
@@ -226,20 +228,20 @@ class ScoringEngine:
                 play_count = plex_play_counts[str(tmdb_id)].get("play_count", 0)
                 watched_raw = get_watched_score(play_count)
 
-        # Calculate contributions
+        # Calculate contributions (monitored removed)
         age_contrib = age_raw * self.age_weight
         size_contrib = size_raw * self.size_weight
         rating_contrib = rating_raw * self.rating_weight
         quality_contrib = quality_raw * self.quality_weight
-        monitored_contrib = monitored_raw * self.monitored_weight
+        # monitored_contrib removed (always 0)
         watched_contrib = watched_raw * self.watched_weight
 
         raw_score = (
             age_contrib + size_contrib + rating_contrib +
-            quality_contrib + monitored_contrib + watched_contrib
+            quality_contrib + watched_contrib  # monitored removed
         )
 
-        # Build factor breakdown
+        # Build factor breakdown (monitored factor removed)
         factors = [
             {
                 "name": "Age", "key": "age", "raw_score": age_raw,
@@ -264,11 +266,6 @@ class ScoringEngine:
                 "details": current_quality
             },
             {
-                "name": "Monitored", "key": "monitored", "raw_score": monitored_raw,
-                "weight": self.raw_weights["monitored"], "contribution": monitored_contrib,
-                "details": "No" if not monitored else "Yes"
-            },
-            {
                 "name": "Watched", "key": "watched", "raw_score": watched_raw,
                 "weight": self.raw_weights["watched"], "contribution": watched_contrib,
                 "details": f"Play count: {play_count if plex_enabled else 'N/A (Plex disabled)'}",
@@ -284,7 +281,7 @@ class ScoringEngine:
             "age_days": age_days,
             "tmdb_rating": tmdb_rating,
             "quality": current_quality,
-            "monitored": monitored,
+            "monitored": movie.get("monitored", True),  # Pass through for reference only
             "tmdb_id": movie.get("tmdbId") or movie.get("tmdb_id"),
             "factors": factors,
         }
@@ -349,7 +346,7 @@ class ScoringEngine:
                 "movies": movies,
                 "movie_count": len(movies),
                 "raw_score": avg_score,
-                "normalized_score": 0,  # set after normalization
+                "normalized_score": avg_score * 100,  # raw × 100 for display
                 "size_gb": total_size,
                 "age_days": oldest_age,
                 "tmdb_rating": sum(m["tmdb_rating"] for m in movies) / len(movies),
@@ -404,7 +401,11 @@ class ScoringEngine:
             # Re-sort after grouping since collection avg scores may differ
             scored.sort(key=lambda x: x["raw_score"], reverse=True)
 
-        # Normalize to 0-100
-        scored = self.normalize_scores(scored)
+        # Convert raw scores (0-1) to 0-100 scale (raw_score * 100)
+        # No normalization against library max
+        for movie in scored:
+            movie["score"] = movie["raw_score"] * 100
+            # Keep normalized_score for backward compatibility (set to same value)
+            movie["normalized_score"] = movie["raw_score"] * 100
 
         return scored

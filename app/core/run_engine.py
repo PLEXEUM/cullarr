@@ -263,9 +263,16 @@ async def run_score_cycle():
         ).fetchall()
         scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
 
-        # Filter out entries where any member is already queued
+        # Get threshold from settings
+        threshold = settings["min_score_threshold"] if settings else 0
+
+        # Filter out entries where any member is already queued AND apply threshold
         candidates = []
         for entry in scored_movies:
+            # Check threshold first (using normalized_score which is raw × 100)
+            if entry.get("normalized_score", 0) <= threshold:
+                continue
+                
             if entry.get("is_collection"):
                 member_ids = {m["movie_id"] for m in entry.get("movies", [])}
                 if not member_ids.intersection(scheduled_id_set):

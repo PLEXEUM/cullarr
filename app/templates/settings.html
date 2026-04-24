@@ -134,55 +134,144 @@
             </svg>
             <div>
                 <h2 class="card-header-title">Scoring Weights</h2>
-                <p class="card-header-subtitle">Must sum to 100%</p>
+                <p class="card-header-subtitle">Drag any slider — others adjust automatically to keep 100% total</p>
             </div>
         </div>
-        <div class="p-6 space-y-3">
-            <div class="flex items-center gap-3">
-                <span class="text-sm w-20">Age</span>
-                <input type="range" id="age-weight" min="0" max="100" step="1" value="25" class="weight-slider">
-                <span id="age-weight-val" class="weight-value text-sm">25%</span>
-            </div>
-            <div class="flex items-center gap-3">
-                <span class="text-sm w-20">Size</span>
-                <input type="range" id="size-weight" min="0" max="100" step="1" value="25" class="weight-slider">
-                <span id="size-weight-val" class="weight-value text-sm">25%</span>
-            </div>
-            <div class="flex items-center gap-3">
-                <span class="text-sm w-20">Rating</span>
-                <input type="range" id="rating-weight" min="0" max="100" step="1" value="15" class="weight-slider">
-                <span id="rating-weight-val" class="weight-value text-sm">15%</span>
-            </div>
-            <div class="flex items-center gap-3">
-                <span class="text-sm w-20">Quality</span>
-                <input type="range" id="quality-weight" min="0" max="100" step="1" value="15" class="weight-slider">
-                <span id="quality-weight-val" class="weight-value text-sm">15%</span>
-            </div>
-            <div class="flex items-center gap-3">
-                <span class="text-sm w-20">Monitored</span>
-                <input type="range" id="monitored-weight" min="0" max="100" step="1" value="10" class="weight-slider">
-                <span id="monitored-weight-val" class="weight-value text-sm">10%</span>
-            </div>
-            <div class="flex items-center gap-3">
-                <span class="text-sm w-20">Watched</span>
-                <input type="range" id="watched-weight" min="0" max="100" step="1" value="10" class="weight-slider">
-                <span id="watched-weight-val" class="weight-value text-sm">10%</span>
-            </div>
-            <div class="border-t pt-3 mt-2 space-y-2" style="border-color: var(--border-color);">
-                <div class="flex justify-between items-center">
-                    <span class="text-sm">Age max days:</span>
-                    <input type="number" id="age-max-days" value="365" class="w-24 text-right">
+        <div class="p-6 space-y-6">
+
+            <!-- CULL FASTER Section -->
+            <div>
+                <div class="text-xs font-semibold uppercase tracking-wide mb-3" style="color: var(--accent);">
+                    🗑️ CULL FASTER (higher = more likely to delete)
                 </div>
-                <div class="flex justify-between items-center">
-                    <span class="text-sm">Size max GB:</span>
-                    <input type="number" id="size-max-gb" value="100" class="w-24 text-right">
+                <div class="space-y-3">
+                    <!-- Age Slider -->
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm w-16">🕰️ Age</span>
+                            <input type="range" id="age-weight" min="0" max="100" step="1" value="25" class="weight-slider flex-1">
+                            <span id="age-weight-val" class="weight-value text-sm w-12 text-right">25%</span>
+                        </div>
+                        <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Older movies score higher</p>
+                    </div>
+
+                    <!-- Size Slider -->
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm w-16">📦 Size</span>
+                            <input type="range" id="size-weight" min="0" max="100" step="1" value="25" class="weight-slider flex-1">
+                            <span id="size-weight-val" class="weight-value text-sm w-12 text-right">25%</span>
+                        </div>
+                        <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Larger files score higher</p>
+                    </div>
                 </div>
             </div>
-            <div class="flex justify-between items-center pt-2">
-                <span class="text-sm font-semibold">Total: <span id="total-weight">100</span>%</span>
-                <span id="weight-warning" class="text-xs text-yellow-500 hidden">⚠ Must sum to 100%</span>
+
+            <!-- PROTECT Section -->
+            <div class="border-t pt-4" style="border-color: var(--border-color);">
+                <div class="text-xs font-semibold uppercase tracking-wide mb-3" style="color: var(--success);">
+                    🛡️ PROTECT (higher = safer from deletion)
+                </div>
+                <div class="space-y-3">
+                    <!-- Rating Slider -->
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm w-16">⭐ Rating</span>
+                            <input type="range" id="rating-weight" min="0" max="100" step="1" value="15" class="weight-slider flex-1">
+                            <span id="rating-weight-val" class="weight-value text-sm w-12 text-right">15%</span>
+                        </div>
+                        <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Low-rated movies are more deletable</p>
+                    </div>
+
+                    <!-- Quality Slider -->
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm w-16">🎬 Quality</span>
+                            <input type="range" id="quality-weight" min="0" max="100" step="1" value="15" class="weight-slider flex-1">
+                            <span id="quality-weight-val" class="weight-value text-sm w-12 text-right">15%</span>
+                        </div>
+                        <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">SD/DVD quality deletes before 4K/1080p</p>
+                    </div>
+
+                    <!-- Watched Slider -->
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm w-16">👀 Watched</span>
+                            <input type="range" id="watched-weight" min="0" max="100" step="1" value="10" class="weight-slider flex-1">
+                            <span id="watched-weight-val" class="weight-value text-sm w-12 text-right">10%</span>
+                        </div>
+                        <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Unwatched movies delete before watched ones</p>
+                    </div>
+                </div>
             </div>
-            <button id="save-weights-btn" class="w-full py-2 rounded-lg text-sm font-medium text-white btn-raise mt-2" style="background: var(--accent);">Save Weights</button>
+
+            <!-- Total Weight Indicator -->
+            <div class="border-t pt-3" style="border-color: var(--border-color);">
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-semibold">Total: <span id="total-weight">100</span>%</span>
+                    <span id="weight-warning" class="text-xs text-yellow-500 hidden">⚠ Must sum to 100% (auto-balanced)</span>
+                </div>
+            </div>
+
+            <!-- QUICK PRESETS -->
+            <div class="border-t pt-4" style="border-color: var(--border-color);">
+                <div class="text-xs font-semibold uppercase tracking-wide mb-3" style="color: var(--text-secondary);">
+                    ⚡ QUICK PRESETS
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" id="preset-balanced" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-medium transition-all" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">⚖️ Balanced</button>
+                    <button type="button" id="preset-space-saver" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-medium transition-all" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">🗑️ Space Saver</button>
+                    <button type="button" id="preset-quality-keeper" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-medium transition-all" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">⭐ Quality Keeper</button>
+                    <button type="button" id="preset-freshness" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-medium transition-all" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">🎬 Freshness First</button>
+                </div>
+            </div>
+
+            <!-- LIVE PREVIEW CARD -->
+            <div class="border rounded-xl p-4" style="border-color: var(--border-color); background: var(--bg-primary);">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="text-sm font-semibold">🔍 Live Preview</span>
+                    <span class="text-xs" style="color: var(--text-secondary);">(updates as you drag)</span>
+                </div>
+                <div id="live-preview-content">
+                    <div class="text-center py-8" style="color: var(--text-secondary);">
+                        Loading preview...
+                    </div>
+                </div>
+            </div>
+
+            <!-- ADVANCED SECTION (Collapsed) -->
+            <div class="border-t" style="border-color: var(--border-color);">
+                <button type="button" id="advanced-toggle" class="w-full flex items-center justify-between py-3 text-left">
+                    <span class="text-sm font-medium">▼ Advanced Settings</span>
+                    <span id="advanced-icon" class="text-sm">▶</span>
+                </button>
+                <div id="advanced-content" class="hidden pt-3 pb-2 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm">Age max days:</span>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="age-max-days" value="365" class="w-24 text-right" min="1" max="3650">
+                            <span class="text-xs" style="color: var(--text-secondary);">days</span>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm">Size max GB:</span>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="size-max-gb" value="100" class="w-24 text-right" min="1" max="10000" step="1">
+                            <span class="text-xs" style="color: var(--text-secondary);">GB</span>
+                        </div>
+                    </div>
+                    <button id="recalibrate-btn" class="w-full py-2 rounded-lg text-sm font-medium mt-2" style="background: var(--info-bg); color: var(--info); border: 1px solid var(--info);">
+                        📊 Recalibrate from library
+                    </button>
+                    <p class="text-xs mt-2" style="color: var(--text-secondary);">
+                        Auto-calculates age_max_days (90th percentile × 1.5) and size_max_gb (95th percentile) from your library.
+                    </p>
+                </div>
+            </div>
+
+            <button id="save-weights-btn" class="w-full py-2 rounded-lg text-sm font-medium text-white btn-raise mt-2" style="background: var(--accent);">
+                💾 Save Weights
+            </button>
         </div>
     </div>
 
@@ -229,6 +318,11 @@
             <div class="checkbox-row">
                 <input type="checkbox" id="collection-grouping" class="accent-indigo-500">
                 <label for="collection-grouping" class="text-sm">Enable collection grouping (delete entire TMDB collections together)</label>
+            </div>
+            <div>
+                <label class="text-sm block mb-1">Minimum score to queue:</label>
+                <input type="number" id="min-score-threshold" value="0" min="0" max="100" step="1">
+                <p class="text-xs mt-1" style="color: var(--text-secondary);">Only movies scoring above this value will be queued. 0 = all movies qualify.</p>
             </div>
             <button id="save-settings-btn" class="w-full py-2 rounded-lg text-sm font-medium text-white btn-raise mt-2" style="background: var(--accent);">Save Settings</button>
         </div>

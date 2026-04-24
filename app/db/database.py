@@ -67,6 +67,7 @@ def init_db():
             delete_after_days INTEGER DEFAULT 7,
             protection_days INTEGER DEFAULT 30,
             collection_grouping BOOLEAN DEFAULT 0,
+            min_score_threshold INTEGER DEFAULT 0,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -209,6 +210,15 @@ def migrate_db():
             print(f"Migration applied: added {column} to scored_movies_cache")
         except Exception:
             pass  # Column already exists, safe to ignore
+
+    # Migration: add min_score_threshold to settings table
+    try:
+        cursor.execute(
+            "ALTER TABLE settings ADD COLUMN min_score_threshold INTEGER DEFAULT 0"
+        )
+        print("Migration applied: added min_score_threshold to settings")
+    except Exception:
+        pass  # Column already exists, safe to ignore
 
     conn.commit()
     conn.close()

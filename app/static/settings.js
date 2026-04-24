@@ -1,11 +1,58 @@
 // Settings page JavaScript for Cullarr
 
+// DOM Elements
+let ageSlider, sizeSlider, ratingSlider, qualitySlider, watchedSlider;
+let ageVal, sizeVal, ratingVal, qualityVal, watchedVal;
+let totalSpan, warningSpan;
+let ageMaxDays, sizeMaxGb;
+let minScoreThreshold;
+let debounceTimer = null;
+
+// Store current weights for auto-balancing
+let currentWeights = {
+    age: 25,
+    size: 25,
+    rating: 15,
+    quality: 15,
+    watched: 10
+};
+
+// Preset configurations (sum to 100)
+const PRESETS = {
+    balanced: { age: 25, size: 25, rating: 15, quality: 15, watched: 10 },
+    spaceSaver: { age: 30, size: 40, rating: 10, quality: 10, watched: 10 },
+    qualityKeeper: { age: 15, size: 15, rating: 30, quality: 30, watched: 10 },
+    freshness: { age: 40, size: 20, rating: 15, quality: 15, watched: 10 }
+};
+
 // Load all settings on page load
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize DOM references
+    ageSlider = document.getElementById('age-weight');
+    sizeSlider = document.getElementById('size-weight');
+    ratingSlider = document.getElementById('rating-weight');
+    qualitySlider = document.getElementById('quality-weight');
+    watchedSlider = document.getElementById('watched-weight');
+    
+    ageVal = document.getElementById('age-weight-val');
+    sizeVal = document.getElementById('size-weight-val');
+    ratingVal = document.getElementById('rating-weight-val');
+    qualityVal = document.getElementById('quality-weight-val');
+    watchedVal = document.getElementById('watched-weight-val');
+    
+    totalSpan = document.getElementById('total-weight');
+    warningSpan = document.getElementById('weight-warning');
+    ageMaxDays = document.getElementById('age-max-days');
+    sizeMaxGb = document.getElementById('size-max-gb');
+    minScoreThreshold = document.getElementById('min-score-threshold');
+    
+    // Load data
     loadRadarrConfig();
     loadPlexConfig();
     loadWeights();
     loadSettings();
+    
+    // Setup event listeners
     setupEventListeners();
 });
 
@@ -19,21 +66,286 @@ function setupEventListeners() {
     document.getElementById('plex-clear-btn').addEventListener('click', clearPlex);
     document.getElementById('plex-save-label-btn').addEventListener('click', savePlexLabel);
     
-    // Weights
-    const weightSliders = ['age-weight', 'size-weight', 'rating-weight', 'quality-weight', 'monitored-weight', 'watched-weight'];
-    weightSliders.forEach(id => {
-        const slider = document.getElementById(id);
+    // Weight sliders with auto-balance
+    const sliders = [ageSlider, sizeSlider, ratingSlider, qualitySlider, watchedSlider];
+    sliders.forEach(slider => {
         if (slider) {
-            slider.addEventListener('input', () => updateWeightDisplay(id));
+            slider.addEventListener('input', (e) => {
+                updateWeightDisplay(e.target.id);
+                handleAutoBalance(e.target.id, parseInt(e.target.value));
+                scheduleLivePreview();
+            });
         }
     });
-    document.getElementById('save-weights-btn').addEventListener('click', saveWeights);
     
-    // Settings
+    // Preset buttons
+    document.getElementById('preset-balanced')?.addEventListener('click', () => applyPreset('balanced'));
+    document.getElementById('preset-space-saver')?.addEventListener('click', () => applyPreset('spaceSaver'));
+    document.getElementById('preset-quality-keeper')?.addEventListener('click', () => applyPreset('qualityKeeper'));
+    document.getElementById('preset-freshness')?.addEventListener('click', () => applyPreset('freshness'));
+    
+    // Save buttons
+    document.getElementById('save-weights-btn').addEventListener('click', saveWeights);
     document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
+    
+    // Advanced section toggle
+    const advancedToggle = document.getElementById('advanced-toggle');
+    const advancedContent = document.getElementById('advanced-content');
+    const advancedIcon = document.getElementById('advanced-icon');
+    if (advancedToggle) {
+        advancedToggle.addEventListener('click', () => {
+            const isHidden = advancedContent.classList.toggle('hidden');
+            advancedIcon.textContent = isHidden ? '▶' : '▼';
+        });
+    }
+    
+    // Recalibrate button
+    document.getElementById('recalibrate-btn')?.addEventListener('click', recalibrateAdvanced);
 }
 
-// Radarr
+// Auto-balance sliders to keep 100% total
+function handleAutoBalance(changedId, newValue) {
+    // Get current values
+    const oldValues = {
+        age: parseInt(ageSlider.value),
+        size: parseInt(sizeSlider.value),
+        rating: parseInt(ratingSlider.value),
+        quality: parseInt(qualitySlider.value),
+        watched: parseInt(watchedSlider.value)
+    };
+    
+    // Calculate delta
+    const oldChanged = oldValues[changedId.replace('-weight', '')];
+    const delta = newValue - oldChanged;
+    
+    if (delta === 0) return;
+    
+    // Sum of other sliders
+    const otherSliders = ['age', 'size', 'rating', 'quality', 'watched'].filter(id => id !== changedId.replace('-weight', ''));
+    const otherSum = otherSliders.reduce((sum, id) => sum + oldValues[id], 0);
+    
+    if (otherSum === 0) return;
+    
+    // Distribute delta proportionally
+    const newValues = { ...oldValues };
+    newValues[changedId.replace('-weight', '')] = newValue;
+    
+    for (const id of otherSliders) {
+        const proportion = oldValues[id] / otherSum;
+        let adjustment = delta * proportion;
+        let newVal = oldValues[id] - adjustment;
+        
+        // Clamp to 0-100
+        newVal = Math.max(0, Math.min(100, Math.round(newVal)));
+        newValues[id] = newVal;
+    }
+    
+    // Ensure total is exactly 100 (adjust if rounding caused issues)
+    let total = Object.values(newValues).reduce((a, b) => a + b, 0);
+    if (total !== 100 && total > 0) {
+        // Find the largest slider to adjust
+        const largestId = Object.keys(newValues).reduce((a, b) => newValues[a] > newValues[b] ? a : b);
+        newValues[largestId] += (100 - total);
+    }
+    
+    // Apply new values without triggering auto-balance again
+    if (newValues.age !== oldValues.age) ageSlider.value = newValues.age;
+    if (newValues.size !== oldValues.size) sizeSlider.value = newValues.size;
+    if (newValues.rating !== oldValues.rating) ratingSlider.value = newValues.rating;
+    if (newValues.quality !== oldValues.quality) qualitySlider.value = newValues.quality;
+    if (newValues.watched !== oldValues.watched) watchedSlider.value = newValues.watched;
+    
+    // Update displays
+    updateWeightDisplay('age-weight');
+    updateWeightDisplay('size-weight');
+    updateWeightDisplay('rating-weight');
+    updateWeightDisplay('quality-weight');
+    updateWeightDisplay('watched-weight');
+    
+    updateTotalWeight();
+}
+
+function updateWeightDisplay(id) {
+    const val = document.getElementById(id).value;
+    const displayId = id.replace('-weight', '-weight-val');
+    const display = document.getElementById(displayId);
+    if (display) display.textContent = `${val}%`;
+}
+
+function updateTotalWeight() {
+    const age = parseInt(ageSlider.value) || 0;
+    const size = parseInt(sizeSlider.value) || 0;
+    const rating = parseInt(ratingSlider.value) || 0;
+    const quality = parseInt(qualitySlider.value) || 0;
+    const watched = parseInt(watchedSlider.value) || 0;
+    const total = age + size + rating + quality + watched;
+    
+    if (totalSpan) totalSpan.textContent = total;
+    
+    // Auto-balance keeps total at 100, but show warning if not
+    if (warningSpan) {
+        if (total !== 100) {
+            warningSpan.classList.remove('hidden');
+        } else {
+            warningSpan.classList.add('hidden');
+        }
+    }
+}
+
+function applyPreset(presetName) {
+    const preset = PRESETS[presetName];
+    if (!preset) return;
+    
+    // Apply preset values
+    ageSlider.value = preset.age;
+    sizeSlider.value = preset.size;
+    ratingSlider.value = preset.rating;
+    qualitySlider.value = preset.quality;
+    watchedSlider.value = preset.watched;
+    
+    // Update displays
+    updateWeightDisplay('age-weight');
+    updateWeightDisplay('size-weight');
+    updateWeightDisplay('rating-weight');
+    updateWeightDisplay('quality-weight');
+    updateWeightDisplay('watched-weight');
+    
+    updateTotalWeight();
+    scheduleLivePreview();
+    showToast(`Preset "${presetName}" applied`, 'info');
+}
+
+// Debounced live preview
+function scheduleLivePreview() {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => updateLivePreview(), 300);
+}
+
+async function updateLivePreview() {
+    const previewDiv = document.getElementById('live-preview-content');
+    if (!previewDiv) return;
+    
+    previewDiv.innerHTML = '<div class="text-center py-8" style="color: var(--text-secondary);">Updating preview...</div>';
+    
+    try {
+        // Get current weights
+        const weights = {
+            age_weight: parseInt(ageSlider.value),
+            size_weight: parseInt(sizeSlider.value),
+            rating_weight: parseInt(ratingSlider.value),
+            quality_weight: parseInt(qualitySlider.value),
+            watched_weight: parseInt(watchedSlider.value),
+            age_max_days: parseInt(ageMaxDays.value),
+            size_max_gb: parseFloat(sizeMaxGb.value)
+        };
+        
+        // Call preview endpoint (we'll need to add this to backend)
+        const res = await fetch('/api/settings/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(weights)
+        });
+        
+        if (!res.ok) {
+            previewDiv.innerHTML = '<div class="text-center py-8" style="color: var(--text-secondary);">Preview unavailable — run a score cycle first</div>';
+            return;
+        }
+        
+        const data = await res.json();
+        
+        if (!data.movie) {
+            previewDiv.innerHTML = '<div class="text-center py-8" style="color: var(--text-secondary);">No movies found in library</div>';
+            return;
+        }
+        
+        renderPreview(data.movie);
+        
+    } catch (e) {
+        console.error('Preview failed:', e);
+        previewDiv.innerHTML = '<div class="text-center py-8" style="color: var(--text-secondary);">Preview unavailable</div>';
+    }
+}
+
+function renderPreview(movie) {
+    const previewDiv = document.getElementById('live-preview-content');
+    if (!previewDiv) return;
+    
+    const score = (movie.raw_score * 100).toFixed(1);
+    const wouldQueue = movie.raw_score * 100 > (parseInt(minScoreThreshold?.value) || 0);
+    const queueBadge = wouldQueue 
+        ? '<span class="badge" style="background: var(--success-bg); color: var(--success);">✓ Would queue</span>'
+        : '<span class="badge" style="background: var(--danger-bg); color: var(--danger);">✗ Below threshold</span>';
+    
+    // Build factor bars
+    const factors = movie.factors || [];
+    const factorHtml = factors.map(f => {
+        const pct = (f.contribution * 100).toFixed(1);
+        const barWidth = Math.min(Math.round(f.raw_score * 100), 100);
+        return `
+            <div class="mb-2">
+                <div class="flex justify-between text-xs mb-1">
+                    <span>${f.name}</span>
+                    <span style="color: var(--text-secondary);">${f.details || ''}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="flex-1 rounded-full h-1.5" style="background: var(--border-color)">
+                        <div class="h-1.5 rounded-full" style="width: ${barWidth}%; background: var(--accent);"></div>
+                    </div>
+                    <span class="text-xs font-mono w-10 text-right" style="color: var(--text-secondary);">${pct}%</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    previewDiv.innerHTML = `
+        <div class="space-y-3">
+            <div class="flex justify-between items-start">
+                <div>
+                    <div class="font-semibold">${escapeHtml(movie.movie_title)} (${movie.movie_year || 'N/A'})</div>
+                    <div class="text-xs" style="color: var(--text-secondary);">${movie.size_gb?.toFixed(1) || 0} GB • ${movie.age_days || 0} days old</div>
+                </div>
+                ${queueBadge}
+            </div>
+            <div class="border-t pt-2" style="border-color: var(--border-color);">
+                ${factorHtml}
+            </div>
+            <div class="border-t pt-2 flex justify-between items-center" style="border-color: var(--border-color);">
+                <span class="text-sm font-semibold">TOTAL SCORE:</span>
+                <span class="text-xl font-bold" style="color: var(--accent);">${score}</span>
+            </div>
+        </div>
+    `;
+}
+
+async function recalibrateAdvanced() {
+    const btn = document.getElementById('recalibrate-btn');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Analyzing library...';
+    
+    try {
+        const res = await fetch('/api/settings/recalibrate', { method: 'POST' });
+        const data = await res.json();
+        
+        if (res.ok) {
+            ageMaxDays.value = data.age_max_days;
+            sizeMaxGb.value = data.size_max_gb;
+            showToast(data.message, 'success');
+            // Refresh live preview with new values
+            scheduleLivePreview();
+        } else {
+            showToast(data.detail || 'Recalibration failed', 'error');
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+}
+
+// ----- Existing functions (keep as is, with modifications) -----
+
 async function loadRadarrConfig() {
     try {
         const res = await fetch('/api/radarr/config');
@@ -63,7 +375,6 @@ async function testAndSaveRadarr() {
     btn.textContent = 'Testing...';
     
     try {
-        // Test connection
         const testRes = await fetch('/api/radarr/config/test', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -76,7 +387,6 @@ async function testAndSaveRadarr() {
             return;
         }
         
-        // Save config
         const saveRes = await fetch('/api/radarr/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -112,7 +422,7 @@ async function clearRadarr() {
     }
 }
 
-// Plex
+// Plex OAuth (keep existing implementation)
 let plexPopupWindow = null;
 let plexPollInterval = null;
 let plexTimeoutTimer = null;
@@ -122,11 +432,9 @@ async function loadPlexConfig() {
         const res = await fetch('/api/plex/config');
         const data = await res.json();
         
-        // Load fields
         document.getElementById('plex-url').value = data.url || '';
         document.getElementById('plex-label').value = data.label_text || 'Movies Leaving Soon';
         
-        // Update status display
         const statusDiv = document.getElementById('plex-status');
         if (data.configured && data.url && data.api_key === '[REDACTED]') {
             statusDiv.innerHTML = '<span style="color: var(--success);">✅ Configured</span>';
@@ -149,12 +457,10 @@ async function authenticateAndSavePlex() {
         return;
     }
     
-    // Close any existing popup
     if (plexPopupWindow && !plexPopupWindow.closed) {
         plexPopupWindow.close();
     }
     
-    // Clear any existing polling
     if (plexPollInterval) {
         clearInterval(plexPollInterval);
         plexPollInterval = null;
@@ -170,7 +476,6 @@ async function authenticateAndSavePlex() {
     btn.textContent = '⏳ Authenticating...';
     
     try {
-        // Create PIN
         const response = await fetch('/api/plex/oauth/pin', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
@@ -182,7 +487,6 @@ async function authenticateAndSavePlex() {
         
         const data = await response.json();
         
-        // Open popup with auth URL
         plexPopupWindow = window.open(data.auth_url, 'PlexAuth', 'width=800,height=600,scrollbars=yes');
         if (!plexPopupWindow) {
             showToast('Popup blocked. Please allow popups for this site.', 'warning');
@@ -192,7 +496,6 @@ async function authenticateAndSavePlex() {
         }
         plexPopupWindow.focus();
         
-        // Start polling for token
         let pollCount = 0;
         plexPollInterval = setInterval(async () => {
             pollCount++;
@@ -201,22 +504,16 @@ async function authenticateAndSavePlex() {
                 const pollData = await pollRes.json();
                 
                 if (pollData.authenticated) {
-                    // Success! Save the config
                     clearInterval(plexPollInterval);
                     clearTimeout(plexTimeoutTimer);
                     if (plexPopupWindow && !plexPopupWindow.closed) {
                         plexPopupWindow.close();
                     }
                     
-                    // Save URL and label
                     const saveRes = await fetch('/api/plex/config', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            url: url, 
-                            label_text: labelText, 
-                            enabled: true 
-                        })
+                        body: JSON.stringify({ url: url, label_text: labelText, enabled: true })
                     });
                     
                     if (saveRes.ok) {
@@ -228,7 +525,7 @@ async function authenticateAndSavePlex() {
                     
                     btn.disabled = false;
                     btn.textContent = originalText;
-                } else if (pollCount > 300) { // 5 minutes timeout
+                } else if (pollCount > 300) {
                     clearInterval(plexPollInterval);
                     clearTimeout(plexTimeoutTimer);
                     showToast('Plex login timed out', 'error');
@@ -240,7 +537,6 @@ async function authenticateAndSavePlex() {
             }
         }, 1000);
         
-        // Set timeout
         plexTimeoutTimer = setTimeout(() => {
             if (plexPollInterval) {
                 clearInterval(plexPollInterval);
@@ -271,11 +567,7 @@ async function savePlexLabel() {
         const res = await fetch('/api/plex/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                url: url, 
-                label_text: labelText, 
-                enabled: true 
-            })
+            body: JSON.stringify({ url: url, label_text: labelText, enabled: true })
         });
         
         if (res.ok) {
@@ -307,72 +599,49 @@ async function clearPlex() {
 }
 
 // Weights
-function updateWeightDisplay(id) {
-    const val = document.getElementById(id).value;
-    document.getElementById(`${id}-val`).textContent = `${val}%`;
-    updateTotalWeight();
-}
-
-function updateTotalWeight() {
-    const age = parseInt(document.getElementById('age-weight').value) || 0;
-    const size = parseInt(document.getElementById('size-weight').value) || 0;
-    const rating = parseInt(document.getElementById('rating-weight').value) || 0;
-    const quality = parseInt(document.getElementById('quality-weight').value) || 0;
-    const monitored = parseInt(document.getElementById('monitored-weight').value) || 0;
-    const watched = parseInt(document.getElementById('watched-weight').value) || 0;
-    const total = age + size + rating + quality + monitored + watched;
-    
-    document.getElementById('total-weight').textContent = total;
-    const warning = document.getElementById('weight-warning');
-    if (total !== 100) {
-        warning.classList.remove('hidden');
-    } else {
-        warning.classList.add('hidden');
-    }
-}
-
 async function loadWeights() {
     try {
         const res = await fetch('/api/settings/weights');
         const data = await res.json();
         
-        document.getElementById('age-weight').value = data.age_weight || 25;
-        document.getElementById('age-weight-val').textContent = `${data.age_weight || 25}%`;
-        document.getElementById('size-weight').value = data.size_weight || 25;
-        document.getElementById('size-weight-val').textContent = `${data.size_weight || 25}%`;
-        document.getElementById('rating-weight').value = data.rating_weight || 15;
-        document.getElementById('rating-weight-val').textContent = `${data.rating_weight || 15}%`;
-        document.getElementById('quality-weight').value = data.quality_weight || 15;
-        document.getElementById('quality-weight-val').textContent = `${data.quality_weight || 15}%`;
-        document.getElementById('monitored-weight').value = data.monitored_weight || 10;
-        document.getElementById('monitored-weight-val').textContent = `${data.monitored_weight || 10}%`;
-        document.getElementById('watched-weight').value = data.watched_weight || 10;
-        document.getElementById('watched-weight-val').textContent = `${data.watched_weight || 10}%`;
-        document.getElementById('age-max-days').value = data.age_max_days || 365;
-        document.getElementById('size-max-gb').value = data.size_max_gb || 100;
+        ageSlider.value = data.age_weight || 25;
+        sizeSlider.value = data.size_weight || 25;
+        ratingSlider.value = data.rating_weight || 15;
+        qualitySlider.value = data.quality_weight || 15;
+        watchedSlider.value = data.watched_weight || 10;
+        
+        updateWeightDisplay('age-weight');
+        updateWeightDisplay('size-weight');
+        updateWeightDisplay('rating-weight');
+        updateWeightDisplay('quality-weight');
+        updateWeightDisplay('watched-weight');
+        
+        ageMaxDays.value = data.age_max_days || 365;
+        sizeMaxGb.value = data.size_max_gb || 100;
         
         updateTotalWeight();
+        scheduleLivePreview();
     } catch (e) {
         console.error('Failed to load weights:', e);
     }
 }
 
 async function saveWeights() {
-    const total = parseInt(document.getElementById('total-weight').textContent);
+    const total = parseInt(totalSpan.textContent);
     if (total !== 100) {
         showToast('Weights must sum to 100%', 'error');
         return;
     }
     
     const payload = {
-        age_weight: parseInt(document.getElementById('age-weight').value),
-        size_weight: parseInt(document.getElementById('size-weight').value),
-        rating_weight: parseInt(document.getElementById('rating-weight').value),
-        quality_weight: parseInt(document.getElementById('quality-weight').value),
-        monitored_weight: parseInt(document.getElementById('monitored-weight').value),
-        watched_weight: parseInt(document.getElementById('watched-weight').value),
-        age_max_days: parseInt(document.getElementById('age-max-days').value),
-        size_max_gb: parseInt(document.getElementById('size-max-gb').value),
+        age_weight: parseInt(ageSlider.value),
+        size_weight: parseInt(sizeSlider.value),
+        rating_weight: parseInt(ratingSlider.value),
+        quality_weight: parseInt(qualitySlider.value),
+        watched_weight: parseInt(watchedSlider.value),
+        age_max_days: parseInt(ageMaxDays.value),
+        size_max_gb: parseFloat(sizeMaxGb.value),
+        monitored_weight: 0  // Send 0 for compatibility
     };
     
     try {
@@ -406,6 +675,7 @@ async function loadSettings() {
         document.getElementById('delete-after-days').value = data.delete_after_days || 7;
         document.getElementById('protection-days').value = data.protection_days || 30;
         document.getElementById('collection-grouping').checked = data.collection_grouping || false;
+        if (minScoreThreshold) minScoreThreshold.value = data.min_score_threshold || 0;
     } catch (e) {
         console.error('Failed to load settings:', e);
     }
@@ -420,6 +690,7 @@ async function saveSettings() {
         delete_after_days: parseInt(document.getElementById('delete-after-days').value),
         protection_days: parseInt(document.getElementById('protection-days').value),
         collection_grouping: document.getElementById('collection-grouping').checked,
+        min_score_threshold: parseInt(minScoreThreshold?.value || 0)
     };
     
     try {
@@ -438,4 +709,9 @@ async function saveSettings() {
     } catch (e) {
         showToast('Error: ' + e.message, 'error');
     }
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'})[m] || m);
 }

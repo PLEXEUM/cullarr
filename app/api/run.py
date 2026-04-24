@@ -108,9 +108,16 @@ async def _run_dry_score(run_id: str):
         finally:
             conn.close()
 
-        # Filter already-queued movies and cap at max_queued
+        # Filter already-queued movies and apply threshold
         max_queued = settings["max_queued"] if settings else 20
-        candidates = [m for m in scored if m["movie_id"] not in scheduled_id_set]
+        threshold = settings["min_score_threshold"] if settings else 0
+        
+        # Filter: not already queued AND score > threshold
+        candidates = [
+            m for m in scored 
+            if m["movie_id"] not in scheduled_id_set 
+            and m["normalized_score"] > threshold  # Using raw_score here
+        ]
         would_queue = candidates[:max_queued]
 
         _active_run["dry_run_results"] = would_queue

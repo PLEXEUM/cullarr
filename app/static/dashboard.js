@@ -83,8 +83,8 @@ async function loadScheduledDeletions() {
 
         tbody.innerHTML = data.items.map(item => {
             let scoreClass = 'score-high';
-            if (item.score < 40) scoreClass = 'score-medium';
-            if (item.score < 25) scoreClass = 'score-low';
+            if (item.score < 60) scoreClass = 'score-medium';
+            if (item.score < 30) scoreClass = 'score-low';
             const deleteDate = new Date(item.scheduled_date).toLocaleDateString();
             return `
                 <tr style="border-bottom: 1px solid var(--border-color);">
@@ -145,9 +145,10 @@ async function loadScoreQueue(forceRefresh = false) {
         }
 
         tbody.innerHTML = data.items.map(movie => {
+            // Score badges based on raw score (0-100 scale)
             let scoreClass = 'score-high';
-            if (movie.normalized_score < 40) scoreClass = 'score-medium';
-            if (movie.normalized_score < 25) scoreClass = 'score-low';
+            if (movie.normalized_score < 60) scoreClass = 'score-medium';
+            if (movie.normalized_score < 30) scoreClass = 'score-low';
             const tmdbRating = movie.tmdb_rating ? movie.tmdb_rating.toFixed(1) : 'N/A';
             const dryRunStyle = data.dry_run ? 'opacity: 0.75; font-style: italic;' : '';
     
