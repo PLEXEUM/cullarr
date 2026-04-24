@@ -107,6 +107,9 @@ async def _run_dry_score(run_id: str):
             
             # Progress callback for real-time updates
             def update_progress(current, total, movie_title):
+                # Log every 500 movies to avoid spam, or always log for debugging
+                if current % 500 == 0 or current == total:
+                    logger.info(f"CALLBACK: current={current}, total={total}, movie={movie_title}")
                 _active_run["current"] = current
                 _active_run["total"] = total
                 _active_run["current_movie"] = f"Scoring: {movie_title} ({current}/{total})"
