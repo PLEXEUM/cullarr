@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from typing import List, Dict, Optional, Any, Tuple
+from typing import List, Dict, Optional, Any, Tuple, Callable
 from app.utils.logger import get_logger
 
 logger = get_logger()
