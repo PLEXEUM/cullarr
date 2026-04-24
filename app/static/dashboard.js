@@ -378,8 +378,8 @@ function startRunStatusPolling() {
     
                 // Check if this was a dry run with results
                 if (data.dry_run && data.dry_run_results && data.dry_run_results.length > 0) {
-                    const title = data.run_type === 'score' ? 'Score Dry Run Preview' : 'Cull Dry Run Preview';
-                    showDryRunModal(title, data.dry_run_results, data.run_type);
+                    const title = window.pendingDryRun === 'score' ? 'Score Dry Run Preview' : 'Cull Dry Run Preview';
+                    showDryRunModal(title, data.dry_run_results, window.pendingDryRun || 'score');
                 } else if (data.dry_run) {
                     showToast('Dry run completed - no items would be affected', 'info');
                 }
