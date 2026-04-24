@@ -51,7 +51,6 @@ async def _set_run_inactive():
         _active_run["is_running"] = False
         _active_run["run_id"] = None
         _active_run["run_type"] = None
-        _active_run["dry_run"] = False
 
 
 async def _run_dry_score(run_id: str):
