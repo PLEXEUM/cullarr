@@ -82,12 +82,8 @@ async def get_scoring_weights():
 @router.post("/settings/weights")
 async def save_scoring_weights(data: ScoringWeightsInput):
     """Save scoring weights."""
-    total = data.age_weight + data.size_weight + data.rating_weight + data.quality_weight + data.monitored_weight + data.watched_weight
-    if total != 100:
-        raise HTTPException(status_code=400, detail=f"Weights must sum to 100, got {total}")
-
-    if not all(0 <= w <= 100 for w in [data.age_weight, data.size_weight, data.rating_weight, data.quality_weight, data.monitored_weight, data.watched_weight]):
-        raise HTTPException(status_code=400, detail="Each weight must be between 0 and 100")
+    if not all(1 <= w <= 10 for w in [data.age_weight, data.size_weight, data.rating_weight, data.quality_weight, data.watched_weight]):
+        raise HTTPException(status_code=400, detail="Each weight must be between 1 and 10")
 
     if data.age_max_days < 1 or data.age_max_days > 3650:
         raise HTTPException(status_code=400, detail="Age max days must be between 1 and 3650")

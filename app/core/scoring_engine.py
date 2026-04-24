@@ -95,39 +95,49 @@ class ScoringEngine:
         self._load_settings()
 
     def _load_weights(self):
-        """Load scoring weights from database."""
+        """Load scoring weights from database and normalize by sum."""
         weights = self.conn.execute(
             "SELECT * FROM scoring_weights WHERE id = 1"
         ).fetchone()
 
         if weights:
-            self.age_weight = weights["age_weight"] / 100.0
-            self.size_weight = weights["size_weight"] / 100.0
-            self.rating_weight = weights["rating_weight"] / 100.0
-            self.quality_weight = weights["quality_weight"] / 100.0
-            # monitored_weight is permanently disabled (set to 0)
-            self.monitored_weight = 0.0
-            self.watched_weight = weights["watched_weight"] / 100.0
+            # Get raw 1-10 values
+            age_raw = weights["age_weight"]
+            size_raw = weights["size_weight"]
+            rating_raw = weights["rating_weight"]
+            quality_raw = weights["quality_weight"]
+            watched_raw = weights["watched_weight"]
+        
+            # Calculate total for normalization
+            total = age_raw + size_raw + rating_raw + quality_raw + watched_raw
+        
+            if total > 0:
+                self.age_weight = age_raw / total
+                self.size_weight = size_raw / total
+                self.rating_weight = rating_raw / total
+                self.quality_weight = quality_raw / total
+                self.watched_weight = watched_raw / total
+            else:
+                # Fallback to equal weights if total is 0
+                self.age_weight = 0.2
+                self.size_weight = 0.2
+                self.rating_weight = 0.2
+                self.quality_weight = 0.2
+                self.watched_weight = 0.2
+            
+            self.monitored_weight = 0.0  # permanently disabled
             self.age_max_days = weights["age_max_days"]
             self.size_max_gb = weights["size_max_gb"]
         else:
-            self.age_weight = 0.25
-            self.size_weight = 0.25
-            self.rating_weight = 0.15
-            self.quality_weight = 0.15
-            self.monitored_weight = 0.0  # permanently disabled
-            self.watched_weight = 0.10
+            # Default: all weights equal (5 each, total 25 → 0.2 each)
+            self.age_weight = 0.2
+            self.size_weight = 0.2
+            self.rating_weight = 0.2
+            self.quality_weight = 0.2
+            self.watched_weight = 0.2
+            self.monitored_weight = 0.0
             self.age_max_days = 365
             self.size_max_gb = 100
-
-        self.raw_weights = {
-            "age": int(self.age_weight * 100),
-            "size": int(self.size_weight * 100),
-            "rating": int(self.rating_weight * 100),
-            "quality": int(self.quality_weight * 100),
-            # "monitored" removed from UI weights
-            "watched": int(self.watched_weight * 100),
-        }
 
     def _load_settings(self):
         """Load settings (protection days, collection grouping)."""
@@ -245,29 +255,27 @@ class ScoringEngine:
         factors = [
             {
                 "name": "Age", "key": "age", "raw_score": age_raw,
-                "weight": self.raw_weights["age"], "contribution": age_contrib,
-                "details": f"{age_days} days" + (
-                    f" (protected: {self.protection_days} days)" if age_days < self.protection_days else ""
-                )
+                "contribution": age_contrib,
+                "details": f"{age_days} days" + (f" (protected: {self.protection_days} days)" if age_days < self.protection_days else "")
             },
             {
                 "name": "Size", "key": "size", "raw_score": size_raw,
-                "weight": self.raw_weights["size"], "contribution": size_contrib,
+                "contribution": size_contrib,
                 "details": f"{size_gb:.1f} GB"
             },
             {
                 "name": "Rating", "key": "rating", "raw_score": rating_raw,
-                "weight": self.raw_weights["rating"], "contribution": rating_contrib,
+                "contribution": rating_contrib,
                 "details": f"{tmdb_rating}/10"
             },
             {
                 "name": "Quality", "key": "quality", "raw_score": quality_raw,
-                "weight": self.raw_weights["quality"], "contribution": quality_contrib,
+                "contribution": quality_contrib,
                 "details": current_quality
             },
             {
                 "name": "Watched", "key": "watched", "raw_score": watched_raw,
-                "weight": self.raw_weights["watched"], "contribution": watched_contrib,
+                "contribution": watched_contrib,
                 "details": f"Play count: {play_count if plex_enabled else 'N/A (Plex disabled)'}",
                 "skipped": not plex_enabled,
                 "skip_reason": "Plex not configured" if not plex_enabled else None,
