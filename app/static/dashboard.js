@@ -345,7 +345,6 @@ function startRunStatusPolling() {
                 cancelBtn.classList.add('hidden');
                 runBtn.disabled = false;
                 runBtn.textContent = '🎯 Run Score';
-                showToast('Run completed', 'success');
                 await loadDashboard();
             }
         } catch (e) {
