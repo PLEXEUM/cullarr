@@ -1,6 +1,7 @@
 import asyncio
 import json
 from datetime import datetime, timedelta
+from typing import Optional, Callable
 from app.db.database import get_connection
 from app.core.radarr_client import RadarrClient
 from app.core.plex_client import PlexClient
@@ -179,7 +180,7 @@ def _queue_entries_for_movie(movie: dict, scheduled_date: str) -> list:
     return entries
 
 
-async def run_score_cycle():
+async def run_score_cycle(progress_callback: Optional[Callable] = None):
     """Score all movies and add top N to scheduled deletions queue."""
     lock_acquired = await acquire_run_lock("score")
     if not lock_acquired:
@@ -232,7 +233,12 @@ async def run_score_cycle():
 
         # Score movies (collection grouping handled inside engine if enabled)
         engine = ScoringEngine(conn)
-        scored_movies = engine.get_scored_movies(movies, plex_play_counts, plex_enabled)
+        scored_movies = engine.get_scored_movies(
+            movies, 
+            plex_play_counts, 
+            plex_enabled,
+            progress_callback=progress_callback
+        )
 
         logger.info(f"Scored {len(scored_movies)} entries ({len(movies)} total movies)")
 
