@@ -59,16 +59,6 @@
         margin: 0;
         cursor: pointer;
     }
-    .preset-btn {
-        transition: all 0.2s ease;
-        cursor: pointer;
-    }
-    .preset-btn:hover {
-        background: var(--accent) !important;
-        color: white !important;
-        border-color: var(--accent) !important;
-        transform: translateY(-1px);
-    }
 </style>
 
 <div class="max-w-3xl mx-auto">
@@ -101,7 +91,7 @@
         </div>
     </div>
 
-    <!-- Plex Connection -->
+        <!-- Plex Connection -->
     <div class="card rounded-xl overflow-hidden mb-6">
         <div class="card-header">
             <svg class="card-header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -115,6 +105,7 @@
         <div class="p-6 space-y-4">
             <div id="plex-status" class="connection-status info">⚠ Not configured</div>
             
+            <!-- Plex Server URL -->
             <input type="text" id="plex-url" placeholder="http://192.168.0.34:32400">
             
             <div class="flex gap-3">
@@ -124,6 +115,7 @@
                 <button id="plex-clear-btn" class="px-4 py-2 rounded-lg text-sm border btn-raise" style="border-color: var(--border-color); color: var(--text-secondary);">Clear</button>
             </div>
             
+            <!-- Plex Label with its own Save button -->
             <div class="flex gap-2 items-center">
                 <input type="text" id="plex-label" placeholder="Movies Leaving Soon" value="Movies Leaving Soon" class="flex-1">
                 <button id="plex-save-label-btn" class="px-4 py-2 rounded-lg text-sm border btn-raise" style="border-color: var(--border-color); color: var(--text-secondary);">Save</button>
@@ -147,7 +139,94 @@
         </div>
         <div class="p-6 space-y-6">
 
-            <!-- LIVE PREVIEW (moved to top) -->
+            <!-- CULL FASTER Section -->
+            <div>
+                <div class="text-xs font-semibold uppercase tracking-wide mb-3" style="color: var(--accent);">
+                    🗑️ CULL FASTER (higher = more likely to delete)
+                </div>
+                <div class="space-y-3">
+                    <!-- Age Slider -->
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm w-16">🕰️ Age</span>
+                            <input type="range" id="age-weight" min="0" max="100" step="1" value="25" class="weight-slider flex-1">
+                            <span id="age-weight-val" class="weight-value text-sm w-12 text-right">25%</span>
+                        </div>
+                        <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Older movies score higher</p>
+                    </div>
+
+                    <!-- Size Slider -->
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm w-16">📦 Size</span>
+                            <input type="range" id="size-weight" min="0" max="100" step="1" value="25" class="weight-slider flex-1">
+                            <span id="size-weight-val" class="weight-value text-sm w-12 text-right">25%</span>
+                        </div>
+                        <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Larger files score higher</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PROTECT Section -->
+            <div class="border-t pt-4" style="border-color: var(--border-color);">
+                <div class="text-xs font-semibold uppercase tracking-wide mb-3" style="color: var(--success);">
+                    🛡️ PROTECT (higher = safer from deletion)
+                </div>
+                <div class="space-y-3">
+                    <!-- Rating Slider -->
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm w-16">⭐ Rating</span>
+                            <input type="range" id="rating-weight" min="0" max="100" step="1" value="15" class="weight-slider flex-1">
+                            <span id="rating-weight-val" class="weight-value text-sm w-12 text-right">15%</span>
+                        </div>
+                        <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Low-rated movies are more deletable</p>
+                    </div>
+
+                    <!-- Quality Slider -->
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm w-16">🎬 Quality</span>
+                            <input type="range" id="quality-weight" min="0" max="100" step="1" value="15" class="weight-slider flex-1">
+                            <span id="quality-weight-val" class="weight-value text-sm w-12 text-right">15%</span>
+                        </div>
+                        <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">SD/DVD quality deletes before 4K/1080p</p>
+                    </div>
+
+                    <!-- Watched Slider -->
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm w-16">👀 Watched</span>
+                            <input type="range" id="watched-weight" min="0" max="100" step="1" value="10" class="weight-slider flex-1">
+                            <span id="watched-weight-val" class="weight-value text-sm w-12 text-right">10%</span>
+                        </div>
+                        <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Unwatched movies delete before watched ones</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Total Weight Indicator -->
+            <div class="border-t pt-3" style="border-color: var(--border-color);">
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-semibold">Total: <span id="total-weight">100</span>%</span>
+                    <span id="weight-warning" class="text-xs text-yellow-500 hidden">⚠ Must sum to 100% (auto-balanced)</span>
+                </div>
+            </div>
+
+            <!-- QUICK PRESETS -->
+            <div class="border-t pt-4" style="border-color: var(--border-color);">
+                <div class="text-xs font-semibold uppercase tracking-wide mb-3" style="color: var(--text-secondary);">
+                    ⚡ QUICK PRESETS
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" id="preset-balanced" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-medium transition-all" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">⚖️ Balanced</button>
+                    <button type="button" id="preset-space-saver" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-medium transition-all" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">🗑️ Space Saver</button>
+                    <button type="button" id="preset-quality-keeper" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-medium transition-all" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">⭐ Quality Keeper</button>
+                    <button type="button" id="preset-freshness" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-medium transition-all" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">🎬 Freshness First</button>
+                </div>
+            </div>
+
+            <!-- LIVE PREVIEW CARD -->
             <div class="border rounded-xl p-4" style="border-color: var(--border-color); background: var(--bg-primary);">
                 <div class="flex items-center gap-2 mb-3">
                     <span class="text-sm font-semibold">🔍 Live Preview</span>
@@ -160,145 +239,33 @@
                 </div>
             </div>
 
-            <!-- QUICK PRESETS -->
-            <div>
-                <div class="text-xs font-semibold uppercase tracking-wide mb-3" style="color: var(--text-secondary);">
-                    ⚡ Quick Presets
-                </div>
-                <div class="flex flex-wrap gap-2">
-                    <button type="button" id="preset-balanced" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-medium transition-all" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">⚖️ Balanced</button>
-                    <button type="button" id="preset-space-saver" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-medium transition-all" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">🗑️ Space Saver</button>
-                    <button type="button" id="preset-quality-keeper" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-medium transition-all" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">⭐ Quality Keeper</button>
-                    <button type="button" id="preset-freshness" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-medium transition-all" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">🎬 Freshness First</button>
-                </div>
-            </div>
-
-            <!-- SCORING WEIGHTS SLIDERS -->
-            <div>
-                <!-- CULL FASTER Section -->
-                <div class="mb-4">
-                    <div class="text-xs font-semibold uppercase tracking-wide mb-3" style="color: var(--accent);">
-                        🗑️ CULL FASTER (higher = more likely to delete)
-                    </div>
-                    <div class="space-y-3">
-                        <!-- Age Slider -->
-                        <div>
-                            <div class="flex items-center gap-3">
-                                <span class="text-sm w-16">🕰️ Age</span>
-                                <input type="range" id="age-weight" min="0" max="100" step="1" value="25" class="weight-slider flex-1">
-                                <span id="age-weight-val" class="weight-value text-sm w-12 text-right">25%</span>
-                            </div>
-                            <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Older movies score higher</p>
-                        </div>
-
-                        <!-- Size Slider -->
-                        <div>
-                            <div class="flex items-center gap-3">
-                                <span class="text-sm w-16">📦 Size</span>
-                                <input type="range" id="size-weight" min="0" max="100" step="1" value="25" class="weight-slider flex-1">
-                                <span id="size-weight-val" class="weight-value text-sm w-12 text-right">25%</span>
-                            </div>
-                            <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Larger files score higher</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- PROTECT Section -->
-                <div class="border-t pt-4" style="border-color: var(--border-color);">
-                    <div class="text-xs font-semibold uppercase tracking-wide mb-3" style="color: var(--success);">
-                        🛡️ PROTECT (higher = safer from deletion)
-                    </div>
-                    <div class="space-y-3">
-                        <!-- Rating Slider -->
-                        <div>
-                            <div class="flex items-center gap-3">
-                                <span class="text-sm w-16">⭐ Rating</span>
-                                <input type="range" id="rating-weight" min="0" max="100" step="1" value="15" class="weight-slider flex-1">
-                                <span id="rating-weight-val" class="weight-value text-sm w-12 text-right">15%</span>
-                            </div>
-                            <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Low-rated movies are more deletable</p>
-                        </div>
-
-                        <!-- Quality Slider -->
-                        <div>
-                            <div class="flex items-center gap-3">
-                                <span class="text-sm w-16">🎬 Quality</span>
-                                <input type="range" id="quality-weight" min="0" max="100" step="1" value="15" class="weight-slider flex-1">
-                                <span id="quality-weight-val" class="weight-value text-sm w-12 text-right">15%</span>
-                            </div>
-                            <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">SD/DVD quality deletes before 4K/1080p</p>
-                        </div>
-
-                        <!-- Watched Slider -->
-                        <div>
-                            <div class="flex items-center gap-3">
-                                <span class="text-sm w-16">👀 Watched</span>
-                                <input type="range" id="watched-weight" min="0" max="100" step="1" value="10" class="weight-slider flex-1">
-                                <span id="watched-weight-val" class="weight-value text-sm w-12 text-right">10%</span>
-                            </div>
-                            <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Unwatched movies delete before watched ones</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Total Weight Indicator -->
-                <div class="border-t pt-3 mt-2" style="border-color: var(--border-color);">
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm font-semibold">Total: <span id="total-weight">100</span>%</span>
-                        <span id="weight-warning" class="text-xs text-yellow-500 hidden">⚠ Must sum to 100% (auto-balanced)</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ADVANCED SETTINGS (Combined) -->
+            <!-- ADVANCED SECTION (Collapsed) -->
             <div class="border-t" style="border-color: var(--border-color);">
-                <button type="button" id="advanced-toggle" class="w-full flex items-center justify-between py-2 text-left">
-                    <span class="text-sm font-medium">Advanced Settings</span>
+                <button type="button" id="advanced-toggle" class="w-full flex items-center justify-between py-3 text-left">
+                    <span class="text-sm font-medium">▼ Advanced Settings</span>
                     <span id="advanced-icon" class="text-sm">▶</span>
                 </button>
-                <div id="advanced-content" class="hidden pt-4 space-y-4">
-                    
-                    <!-- Two-column grid for even alignment -->
-                    <div class="grid grid-cols-2 gap-6">
-                        <!-- Left Column -->
-                        <div>
-                            <label class="text-sm block mb-1" style="color: var(--text-secondary);">Age max days:</label>
-                            <input type="number" id="age-max-days" value="365" min="1" max="3650">
-                            <p class="text-xs mt-1" style="color: var(--text-secondary);">Older movies cap at this value</p>
-                        </div>
-                        <!-- Right Column -->
-                        <div>
-                            <label class="text-sm block mb-1" style="color: var(--text-secondary);">Size max GB:</label>
-                            <input type="number" id="size-max-gb" value="100" min="1" max="10000" step="1">
-                            <p class="text-xs mt-1" style="color: var(--text-secondary);">Larger files cap at this value</p>
+                <div id="advanced-content" class="hidden pt-3 pb-2 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm">Age max days:</span>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="age-max-days" value="365" class="w-24 text-right" min="1" max="3650">
+                            <span class="text-xs" style="color: var(--text-secondary);">days</span>
                         </div>
                     </div>
-
-                    <div class="grid grid-cols-2 gap-6">
-                        <!-- Left Column -->
-                        <div>
-                            <label class="text-sm block mb-1" style="color: var(--text-secondary);">Protect movies added in last:</label>
-                            <input type="number" id="protection-days" value="30" min="0" max="365">
-                            <p class="text-xs mt-1" style="color: var(--text-secondary);">Age score = 0 within this window</p>
-                        </div>
-                        <!-- Right Column -->
-                        <div>
-                            <label class="text-sm block mb-1" style="color: var(--text-secondary);">Minimum score to queue:</label>
-                            <input type="number" id="min-score-threshold" value="0" min="0" max="100" step="1">
-                            <p class="text-xs mt-1" style="color: var(--text-secondary);">0 = all movies qualify</p>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm">Size max GB:</span>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="size-max-gb" value="100" class="w-24 text-right" min="1" max="10000" step="1">
+                            <span class="text-xs" style="color: var(--text-secondary);">GB</span>
                         </div>
                     </div>
-
-                    <!-- Recalibrate Button - Full width, centered -->
-                    <div class="border-t pt-4 mt-2" style="border-color: var(--border-color);">
-                        <button id="recalibrate-btn" class="w-full py-2 rounded-lg text-sm font-medium transition-all" style="background: var(--info-bg); color: var(--info); border: 1px solid var(--info);">
-                            📊 Recalibrate from library
-                        </button>
-                        <p class="text-xs mt-2 text-center" style="color: var(--text-secondary);">
-                            Auto-calculates age_max_days (90th percentile × 1.5) and size_max_gb (95th percentile) from your library.
-                        </p>
-                    </div>
-
+                    <button id="recalibrate-btn" class="w-full py-2 rounded-lg text-sm font-medium mt-2" style="background: var(--info-bg); color: var(--info); border: 1px solid var(--info);">
+                        📊 Recalibrate from library
+                    </button>
+                    <p class="text-xs mt-2" style="color: var(--text-secondary);">
+                        Auto-calculates age_max_days (90th percentile × 1.5) and size_max_gb (95th percentile) from your library.
+                    </p>
                 </div>
             </div>
 
@@ -308,7 +275,7 @@
         </div>
     </div>
 
-    <!-- Scheduling & Rules (Simplified) -->
+    <!-- Scheduling & Rules -->
     <div class="card rounded-xl overflow-hidden">
         <div class="card-header">
             <svg class="card-header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -320,50 +287,44 @@
             </div>
         </div>
         <div class="p-6 space-y-4">
-            
-            <!-- Enable Toggle -->
             <div class="checkbox-row">
                 <input type="checkbox" id="cullarr-enabled" class="accent-indigo-500">
                 <label for="cullarr-enabled" class="text-sm font-semibold">Enable Cullarr</label>
             </div>
-
-            <!-- Two-column grid for schedules -->
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-sm block mb-1">Score schedule:</label>
-                    <input type="text" id="score-cron" value="0 3 * * 0">
-                    <p class="text-xs mt-1" style="color: var(--text-secondary);">Sunday 3:00 AM</p>
-                </div>
-                <div>
-                    <label class="text-sm block mb-1">Cull schedule:</label>
-                    <input type="text" id="cull-cron" value="0 2 * * *">
-                    <p class="text-xs mt-1" style="color: var(--text-secondary);">Daily 2:00 AM</p>
-                </div>
+            <div>
+                <label class="text-sm block mb-1">Score schedule:</label>
+                <input type="text" id="score-cron" value="0 3 * * 0">
+                <p class="text-xs mt-1" style="color: var(--text-secondary);">Runs every Sunday at 3:00 AM</p>
             </div>
-
-            <!-- Two-column grid for queue settings -->
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-sm block mb-1">Max queued deletions:</label>
-                    <input type="number" id="max-queued" value="20" min="1" max="500">
-                    <p class="text-xs mt-1" style="color: var(--text-secondary);">Collections count as 1 slot</p>
-                </div>
-                <div>
-                    <label class="text-sm block mb-1">Delete after (days):</label>
-                    <input type="number" id="delete-after-days" value="7" min="1" max="90">
-                    <p class="text-xs mt-1" style="color: var(--text-secondary);">Days before deletion</p>
-                </div>
+            <div>
+                <label class="text-sm block mb-1">Cull schedule:</label>
+                <input type="text" id="cull-cron" value="0 2 * * *">
+                <p class="text-xs mt-1" style="color: var(--text-secondary);">Runs daily at 2:00 AM</p>
             </div>
-
-            <!-- Collection Grouping Toggle -->
+            <div>
+                <label class="text-sm block mb-1">Max queued deletions:</label>
+                <input type="number" id="max-queued" value="20" min="1" max="500">
+                <p class="text-xs mt-1" style="color: var(--text-secondary);">Collections count as 1 slot</p>
+            </div>
+            <div>
+                <label class="text-sm block mb-1">Delete after (days):</label>
+                <input type="number" id="delete-after-days" value="7" min="1" max="90">
+            </div>
+            <div>
+                <label class="text-sm block mb-1">Protect movies added in last (days):</label>
+                <input type="number" id="protection-days" value="30" min="0" max="365">
+                <p class="text-xs mt-1" style="color: var(--text-secondary);">Age score = 0 for movies added within this window</p>
+            </div>
             <div class="checkbox-row">
                 <input type="checkbox" id="collection-grouping" class="accent-indigo-500">
                 <label for="collection-grouping" class="text-sm">Enable collection grouping (delete entire TMDB collections together)</label>
             </div>
-
-            <button id="save-settings-btn" class="w-full py-2 rounded-lg text-sm font-medium text-white btn-raise mt-2" style="background: var(--accent);">
-                💾 Save Settings
-            </button>
+            <div>
+                <label class="text-sm block mb-1">Minimum score to queue:</label>
+                <input type="number" id="min-score-threshold" value="0" min="0" max="100" step="1">
+                <p class="text-xs mt-1" style="color: var(--text-secondary);">Only movies scoring above this value will be queued. 0 = all movies qualify.</p>
+            </div>
+            <button id="save-settings-btn" class="w-full py-2 rounded-lg text-sm font-medium text-white btn-raise mt-2" style="background: var(--accent);">Save Settings</button>
         </div>
     </div>
 </div>
