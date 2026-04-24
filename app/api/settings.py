@@ -19,6 +19,7 @@ class ScoringWeightsInput(BaseModel):
     watched_weight: int
     age_max_days: int
     size_max_gb: int
+    protection_days: int
 
 
 class SettingsInput(BaseModel):
@@ -27,7 +28,6 @@ class SettingsInput(BaseModel):
     cull_cron: str
     max_queued: int
     delete_after_days: int
-    protection_days: int
     collection_grouping: bool
     min_score_threshold: int = 0
 
@@ -76,12 +76,12 @@ async def save_scoring_weights(data: ScoringWeightsInput):
             """UPDATE scoring_weights SET
                 age_weight = ?, size_weight = ?, rating_weight = ?,
                 quality_weight = ?, monitored_weight = ?, watched_weight = ?,
-                age_max_days = ?, size_max_gb = ?,
+                age_max_days = ?, size_max_gb = ?, protection_days = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = 1""",
             (data.age_weight, data.size_weight, data.rating_weight,
             data.quality_weight, data.monitored_weight, data.watched_weight,
-            data.age_max_days, data.size_max_gb)
+            data.age_max_days, data.size_max_gb, data.protection_days)
         )
         conn.commit()
         logger.info("Scoring weights saved")
@@ -109,7 +109,6 @@ async def get_settings():
             "cull_cron": "0 2 * * *",
             "max_queued": 20,
             "delete_after_days": 7,
-            "protection_days": 30,
             "collection_grouping": False,
             "min_score_threshold": 0,
         }
@@ -148,12 +147,12 @@ async def save_settings(data: SettingsInput):
         conn.execute(
             """UPDATE settings SET
                 enabled = ?, score_cron = ?, cull_cron = ?,
-                max_queued = ?, delete_after_days = ?, protection_days = ?,
+                max_queued = ?, delete_after_days = ?,
                 collection_grouping = ?, min_score_threshold = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = 1""",
             (1 if data.enabled else 0, data.score_cron, data.cull_cron,
-             data.max_queued, data.delete_after_days, data.protection_days,
-             1 if data.collection_grouping else 0, data.min_score_threshold)
+            data.max_queued, data.delete_after_days,
+            1 if data.collection_grouping else 0, data.min_score_threshold)
         )
         conn.commit()
 

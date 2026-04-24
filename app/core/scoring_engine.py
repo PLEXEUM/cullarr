@@ -107,10 +107,10 @@ class ScoringEngine:
             rating_raw = weights["rating_weight"]
             quality_raw = weights["quality_weight"]
             watched_raw = weights["watched_weight"]
-        
+    
             # Calculate total for normalization
             total = age_raw + size_raw + rating_raw + quality_raw + watched_raw
-        
+    
             if total > 0:
                 self.age_weight = age_raw / total
                 self.size_weight = size_raw / total
@@ -124,10 +124,11 @@ class ScoringEngine:
                 self.rating_weight = 0.2
                 self.quality_weight = 0.2
                 self.watched_weight = 0.2
-            
+        
             self.monitored_weight = 0.0  # permanently disabled
             self.age_max_days = weights["age_max_days"]
             self.size_max_gb = weights["size_max_gb"]
+            self.protection_days = weights.get("protection_days", 30)  # Load from scoring_weights
         else:
             # Default: all weights equal (5 each, total 25 → 0.2 each)
             self.age_weight = 0.2
@@ -138,18 +139,18 @@ class ScoringEngine:
             self.monitored_weight = 0.0
             self.age_max_days = 365
             self.size_max_gb = 100
+            self.protection_days = 30
 
     def _load_settings(self):
-        """Load settings (protection days, collection grouping)."""
+        """Load settings (collection grouping only)."""
         settings = self.conn.execute(
-            "SELECT protection_days, collection_grouping FROM settings WHERE id = 1"
+            "SELECT collection_grouping FROM settings WHERE id = 1"
         ).fetchone()
         if settings:
-            self.protection_days = settings["protection_days"]
             self.collection_grouping = bool(settings["collection_grouping"])
         else:
-            self.protection_days = 30
             self.collection_grouping = False
+        # protection_days is now loaded from scoring_weights in _load_weights()
 
     def reload_config(self):
         """Reload weights and settings from database."""

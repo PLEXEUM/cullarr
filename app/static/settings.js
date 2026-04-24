@@ -549,6 +549,10 @@ async function loadWeights() {
         
         ageMaxDays.value = data.age_max_days || 365;
         sizeMaxGb.value = data.size_max_gb || 100;
+        const protectionDaysInput = document.getElementById('protection-days');
+        if (protectionDaysInput && data.protection_days !== undefined) {
+            protectionDaysInput.value = data.protection_days;
+        }
         
     } catch (e) {
         console.error('Failed to load weights:', e);
@@ -571,7 +575,8 @@ async function saveWeights() {
         watched_weight: watchedRaw,
         monitored_weight: 0,
         age_max_days: parseInt(ageMaxDays.value),
-        size_max_gb: parseFloat(sizeMaxGb.value)
+        size_max_gb: parseFloat(sizeMaxGb.value),
+        protection_days: parseInt(document.getElementById('protection-days').value)
     };
     
     try {
