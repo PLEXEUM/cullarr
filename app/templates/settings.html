@@ -142,7 +142,7 @@
             </svg>
             <div>
                 <h2 class="card-header-title">Scoring Weights</h2>
-                <p class="card-header-subtitle">Drag any slider — others adjust automatically to keep 100% total</p>
+                <p class="card-header-subtitle">Higher weight = more influence on deletion score</p>
             </div>
         </div>
         <div class="p-6 space-y-6">
@@ -185,8 +185,8 @@
                         <div>
                             <div class="flex items-center gap-3">
                                 <span class="text-sm w-16">🕰️ Age</span>
-                                <input type="range" id="age-weight" min="0" max="100" step="1" value="25" class="weight-slider flex-1">
-                                <span id="age-weight-val" class="weight-value text-sm w-12 text-right">25%</span>
+                                <input type="range" id="age-weight" min="1" max="10" step="1" value="5" class="weight-slider flex-1">
+                                <span id="age-weight-val" class="weight-value text-sm w-12 text-right">5 / 10</span>
                             </div>
                             <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Older movies score higher</p>
                         </div>
@@ -195,8 +195,8 @@
                         <div>
                             <div class="flex items-center gap-3">
                                 <span class="text-sm w-16">📦 Size</span>
-                                <input type="range" id="size-weight" min="0" max="100" step="1" value="25" class="weight-slider flex-1">
-                                <span id="size-weight-val" class="weight-value text-sm w-12 text-right">25%</span>
+                                <input type="range" id="size-weight" min="1" max="10" step="1" value="5" class="weight-slider flex-1">
+                                <span id="size-weight-val" class="weight-value text-sm w-12 text-right">5 / 10</span>
                             </div>
                             <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Larger files score higher</p>
                         </div>
@@ -213,8 +213,8 @@
                         <div>
                             <div class="flex items-center gap-3">
                                 <span class="text-sm w-16">⭐ Rating</span>
-                                <input type="range" id="rating-weight" min="0" max="100" step="1" value="15" class="weight-slider flex-1">
-                                <span id="rating-weight-val" class="weight-value text-sm w-12 text-right">15%</span>
+                                <input type="range" id="rating-weight" min="1" max="10" step="1" value="5" class="weight-slider flex-1">
+                                <span id="rating-weight-val" class="weight-value text-sm w-12 text-right">5 / 10</span>
                             </div>
                             <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Low-rated movies are more deletable</p>
                         </div>
@@ -223,8 +223,8 @@
                         <div>
                             <div class="flex items-center gap-3">
                                 <span class="text-sm w-16">🎬 Quality</span>
-                                <input type="range" id="quality-weight" min="0" max="100" step="1" value="15" class="weight-slider flex-1">
-                                <span id="quality-weight-val" class="weight-value text-sm w-12 text-right">15%</span>
+                                <input type="range" id="quality-weight" min="1" max="10" step="1" value="5" class="weight-slider flex-1">
+                                <span id="quality-weight-val" class="weight-value text-sm w-12 text-right">5 / 10</span>
                             </div>
                             <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">SD/DVD quality deletes before 4K/1080p</p>
                         </div>
@@ -233,19 +233,11 @@
                         <div>
                             <div class="flex items-center gap-3">
                                 <span class="text-sm w-16">👀 Watched</span>
-                                <input type="range" id="watched-weight" min="0" max="100" step="1" value="10" class="weight-slider flex-1">
-                                <span id="watched-weight-val" class="weight-value text-sm w-12 text-right">10%</span>
+                                <input type="range" id="watched-weight" min="1" max="10" step="1" value="5" class="weight-slider flex-1">
+                                <span id="watched-weight-val" class="weight-value text-sm w-12 text-right">5 / 10</span>
                             </div>
                             <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Unwatched movies delete before watched ones</p>
                         </div>
-                    </div>
-                </div>
-
-                <!-- Total Weight Indicator -->
-                <div class="border-t pt-3 mt-2" style="border-color: var(--border-color);">
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm font-semibold">Total: <span id="total-weight">100</span>%</span>
-                        <span id="weight-warning" class="text-xs text-yellow-500 hidden">⚠ Must sum to 100% (auto-balanced)</span>
                     </div>
                 </div>
             </div>
