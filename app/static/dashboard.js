@@ -345,7 +345,12 @@ function startRunStatusPolling() {
                 cancelBtn.classList.add('hidden');
                 runBtn.disabled = false;
                 runBtn.textContent = '🎯 Run Score';
+                showToast('Run completed', 'success');
                 await loadDashboard();
+                
+                // ✅ STOP POLLING HERE
+                clearInterval(runStatusInterval);
+                runStatusInterval = null;
             }
         } catch (e) {
             console.error('Failed to poll run status:', e);
