@@ -106,15 +106,22 @@ function toggleAdvancedSettings() {
 
 // Auto-balance sliders to keep 100% total
 function handleAutoBalance(changedId, newValue) {
+    // Get fresh DOM references each time
+    const ageSliderFresh = document.getElementById('age-weight');
+    const sizeSliderFresh = document.getElementById('size-weight');
+    const ratingSliderFresh = document.getElementById('rating-weight');
+    const qualitySliderFresh = document.getElementById('quality-weight');
+    const watchedSliderFresh = document.getElementById('watched-weight');
+    
     const changedKey = changedId.replace('-weight', '');
     
     // Get all current values
     let values = {
-        age: parseInt(ageSlider.value),
-        size: parseInt(sizeSlider.value),
-        rating: parseInt(ratingSlider.value),
-        quality: parseInt(qualitySlider.value),
-        watched: parseInt(watchedSlider.value)
+        age: parseInt(ageSliderFresh.value),
+        size: parseInt(sizeSliderFresh.value),
+        rating: parseInt(ratingSliderFresh.value),
+        quality: parseInt(qualitySliderFresh.value),
+        watched: parseInt(watchedSliderFresh.value)
     };
     
     const oldValue = values[changedKey];
@@ -133,16 +140,13 @@ function handleAutoBalance(changedId, newValue) {
     }
     
     if (otherSum === 0) {
-        // If all others are 0, just set changed slider to 100
         values[changedKey] = Math.min(100, Math.max(0, newValue));
         for (const key of otherKeys) {
             values[key] = 0;
         }
     } else {
-        // Update the changed slider
         values[changedKey] = newValue;
         
-        // Distribute the delta among other sliders proportionally
         for (const key of otherKeys) {
             const proportion = values[key] / otherSum;
             let adjustment = delta * proportion;
@@ -151,21 +155,20 @@ function handleAutoBalance(changedId, newValue) {
         }
     }
     
-    // Fix any rounding issues - ensure total is exactly 100
+    // Fix rounding issues
     let total = values.age + values.size + values.rating + values.quality + values.watched;
     if (total !== 100 && total > 0) {
-        // Find the largest slider (not the changed one) to adjust
         let adjustKey = otherKeys.length > 0 ? otherKeys.reduce((a, b) => values[a] > values[b] ? a : b) : changedKey;
         values[adjustKey] += (100 - total);
         values[adjustKey] = Math.max(0, Math.min(100, values[adjustKey]));
     }
     
-    // Apply the new values
-    ageSlider.value = values.age;
-    sizeSlider.value = values.size;
-    ratingSlider.value = values.rating;
-    qualitySlider.value = values.quality;
-    watchedSlider.value = values.watched;
+    // Apply the new values using fresh references
+    ageSliderFresh.value = values.age;
+    sizeSliderFresh.value = values.size;
+    ratingSliderFresh.value = values.rating;
+    qualitySliderFresh.value = values.quality;
+    watchedSliderFresh.value = values.watched;
     
     // Update all displays
     updateWeightDisplay('age-weight');
