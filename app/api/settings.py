@@ -19,11 +19,6 @@ class ScoringWeightsInput(BaseModel):
     watched_weight: int
     age_max_days: int
     size_max_gb: int
-    age_raw: Optional[int] = 5
-    size_raw: Optional[int] = 5
-    rating_raw: Optional[int] = 5
-    quality_raw: Optional[int] = 5
-    watched_raw: Optional[int] = 5
 
 
 class SettingsInput(BaseModel):
@@ -56,25 +51,9 @@ async def get_scoring_weights():
             "watched_weight": 10,
             "age_max_days": 365,
             "size_max_gb": 100,
-            "age_raw": 5,
-            "size_raw": 5,
-            "rating_raw": 5,
-            "quality_raw": 5,
-            "watched_raw": 5,
         }
 
     result = dict(weights)
-    # Ensure raw fields are included (they might be NULL in old installs)
-    if result.get("age_raw") is None:
-        result["age_raw"] = 5
-    if result.get("size_raw") is None:
-        result["size_raw"] = 5
-    if result.get("rating_raw") is None:
-        result["rating_raw"] = 5
-    if result.get("quality_raw") is None:
-        result["quality_raw"] = 5
-    if result.get("watched_raw") is None:
-        result["watched_raw"] = 5
 
     return result
 
@@ -98,13 +77,11 @@ async def save_scoring_weights(data: ScoringWeightsInput):
                 age_weight = ?, size_weight = ?, rating_weight = ?,
                 quality_weight = ?, monitored_weight = ?, watched_weight = ?,
                 age_max_days = ?, size_max_gb = ?,
-                age_raw = ?, size_raw = ?, rating_raw = ?, quality_raw = ?, watched_raw = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = 1""",
             (data.age_weight, data.size_weight, data.rating_weight,
             data.quality_weight, data.monitored_weight, data.watched_weight,
-            data.age_max_days, data.size_max_gb,
-            data.age_raw, data.size_raw, data.rating_raw, data.quality_raw, data.watched_raw)
+            data.age_max_days, data.size_max_gb)
         )
         conn.commit()
         logger.info("Scoring weights saved")
