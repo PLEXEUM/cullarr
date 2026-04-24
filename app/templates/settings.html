@@ -147,15 +147,18 @@
         </div>
         <div class="p-6 space-y-6">
 
-            <!-- LIVE PREVIEW (moved to top) -->
+            <!-- LIVE PREVIEW with Refresh Button -->
             <div class="border rounded-xl p-4" style="border-color: var(--border-color); background: var(--bg-primary);">
-                <div class="flex items-center gap-2 mb-3">
-                    <span class="text-sm font-semibold">🔍 Live Preview</span>
-                    <span class="text-xs" style="color: var(--text-secondary);">(updates as you drag)</span>
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-semibold">🔍 Live Preview</span>
+                        <span class="text-xs" style="color: var(--text-secondary);">(click refresh to update)</span>
+                    </div>
+                    <button id="refresh-preview-btn" class="btn-sm btn-outline">⟳ Refresh Preview</button>
                 </div>
                 <div id="live-preview-content">
                     <div class="text-center py-8" style="color: var(--text-secondary);">
-                        Loading preview...
+                        Click Refresh Preview to see score based on current weights
                     </div>
                 </div>
             </div>

@@ -54,16 +54,24 @@ function setupEventListeners() {
     document.getElementById('plex-clear-btn').addEventListener('click', clearPlex);
     document.getElementById('plex-save-label-btn').addEventListener('click', savePlexLabel);
     
-    // Weight sliders - no auto-balance, just update display and preview
+    // Weight sliders - NO auto-preview, just update display
     const sliders = [ageSlider, sizeSlider, ratingSlider, qualitySlider, watchedSlider];
     sliders.forEach(slider => {
         if (slider) {
             slider.addEventListener('input', (e) => {
                 updateWeightDisplay(e.target.id);
-                scheduleLivePreview();
+                // Preview no longer updates automatically while dragging
             });
         }
     });
+    
+    // Refresh Preview button
+    const refreshPreviewBtn = document.getElementById('refresh-preview-btn');
+    if (refreshPreviewBtn) {
+        refreshPreviewBtn.addEventListener('click', () => {
+            updateLivePreview();
+        });
+    }
     
     // Preset buttons
     document.getElementById('preset-balanced')?.addEventListener('click', () => applyPreset('balanced'));
@@ -116,7 +124,6 @@ function applyPreset(presetName) {
     updateWeightDisplay('quality-weight');
     updateWeightDisplay('watched-weight');
     
-    scheduleLivePreview();
     showToast(`Preset "${presetName}" applied`, 'info');
 }
 
@@ -174,12 +181,7 @@ function convertFromPercentages(agePct, sizePct, ratingPct, qualityPct, watchedP
     };
 }
 
-// Debounced live preview
-function scheduleLivePreview() {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => updateLivePreview(), 300);
-}
-
+// Manual preview update (only called when Refresh button is clicked)
 async function updateLivePreview() {
     const previewDiv = document.getElementById('live-preview-content');
     if (!previewDiv) return;
@@ -187,16 +189,39 @@ async function updateLivePreview() {
     previewDiv.innerHTML = '<div class="text-center py-8" style="color: var(--text-secondary);">Updating preview...</div>';
     
     try {
-        // Get current weights
+        // Get raw 1-10 values and convert to percentages for accurate scoring
+        const ageRaw = parseInt(ageSlider.value);
+        const sizeRaw = parseInt(sizeSlider.value);
+        const ratingRaw = parseInt(ratingSlider.value);
+        const qualityRaw = parseInt(qualitySlider.value);
+        const watchedRaw = parseInt(watchedSlider.value);
+        
+        const totalRaw = ageRaw + sizeRaw + ratingRaw + qualityRaw + watchedRaw;
+        
         const weights = {
-            age_weight: parseInt(ageSlider.value),
-            size_weight: parseInt(sizeSlider.value),
-            rating_weight: parseInt(ratingSlider.value),
-            quality_weight: parseInt(qualitySlider.value),
-            watched_weight: parseInt(watchedSlider.value),
+            age_weight: Math.round((ageRaw / totalRaw) * 100),
+            size_weight: Math.round((sizeRaw / totalRaw) * 100),
+            rating_weight: Math.round((ratingRaw / totalRaw) * 100),
+            quality_weight: Math.round((qualityRaw / totalRaw) * 100),
+            watched_weight: Math.round((watchedRaw / totalRaw) * 100),
             age_max_days: parseInt(ageMaxDays.value),
             size_max_gb: parseFloat(sizeMaxGb.value)
         };
+        
+        // Fix rounding to ensure total = 100
+        let total = weights.age_weight + weights.size_weight + weights.rating_weight + weights.quality_weight + weights.watched_weight;
+        if (total !== 100) {
+            let diff = 100 - total;
+            const weightsList = [
+                { key: 'age_weight', val: weights.age_weight },
+                { key: 'size_weight', val: weights.size_weight },
+                { key: 'rating_weight', val: weights.rating_weight },
+                { key: 'quality_weight', val: weights.quality_weight },
+                { key: 'watched_weight', val: weights.watched_weight }
+            ];
+            const largest = weightsList.reduce((a, b) => a.val > b.val ? a : b);
+            weights[largest.key] += diff;
+        }
         
         // Call preview endpoint
         const res = await fetch('/api/settings/preview', {
@@ -290,7 +315,6 @@ async function recalibrateAdvanced() {
             ageMaxDays.value = data.age_max_days;
             sizeMaxGb.value = data.size_max_gb;
             showToast(data.message, 'success');
-            scheduleLivePreview();
         } else {
             showToast(data.detail || 'Recalibration failed', 'error');
         }
@@ -597,7 +621,6 @@ async function loadWeights() {
         ageMaxDays.value = data.age_max_days || 365;
         sizeMaxGb.value = data.size_max_gb || 100;
         
-        scheduleLivePreview();
     } catch (e) {
         console.error('Failed to load weights:', e);
     }
