@@ -609,7 +609,6 @@ async function loadSettings() {
         document.getElementById('cull-cron').value = data.cull_cron || '0 2 * * *';
         document.getElementById('max-queued').value = data.max_queued || 20;
         document.getElementById('delete-after-days').value = data.delete_after_days || 7;
-        document.getElementById('protection-days').value = data.protection_days || 30;
         document.getElementById('collection-grouping').checked = data.collection_grouping || false;
         if (minScoreThreshold) minScoreThreshold.value = data.min_score_threshold || 0;
     } catch (e) {

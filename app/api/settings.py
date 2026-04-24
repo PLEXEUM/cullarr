@@ -134,10 +134,6 @@ async def save_settings(data: SettingsInput):
     is_valid, error = validate_delete_after_days(data.delete_after_days)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)
-
-    is_valid, error = validate_protection_days(data.protection_days)
-    if not is_valid:
-        raise HTTPException(status_code=400, detail=error)
     
     if data.min_score_threshold < 0 or data.min_score_threshold > 100:
         raise HTTPException(status_code=400, detail="Minimum score threshold must be between 0 and 100")
