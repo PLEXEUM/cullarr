@@ -333,12 +333,18 @@ async def run_score_cycle():
         await release_run_lock()
 
 
-async def run_cull_cycle():
-    """Delete movies that have passed their scheduled deletion date."""
+async def run_cull_cycle(dry_run: bool = False):
+    """
+    Delete movies that have passed their scheduled deletion date.
+    If dry_run=True, returns the list of due movies without deleting anything.
+    """
     lock_acquired = await acquire_run_lock("cull")
     if not lock_acquired:
         logger.info("Cull run skipped - another run in progress")
         return
+
+    # Import the global _active_run from run module to store dry run results
+    from app.api.run import _active_run
 
     try:
         conn = get_connection()
@@ -368,7 +374,7 @@ async def run_cull_cycle():
                 logger.warning("Plex connection failed, labels will not be removed")
                 plex_enabled = False
 
-        # Get due movies — fetch all members of due collections together
+        # Get due movies
         now = datetime.now().isoformat()
         due_movies = conn.execute(
             "SELECT * FROM scheduled_deletions WHERE status = 'scheduled' AND scheduled_date <= ?",
@@ -377,10 +383,24 @@ async def run_cull_cycle():
 
         if not due_movies:
             logger.info("No movies due for deletion")
+            # Still need to update _active_run for dry run
+            if dry_run:
+                _active_run["dry_run_results"] = []
+                _active_run["current_movie"] = "Dry run complete — no movies due for deletion"
             return
 
         logger.info(f"Found {len(due_movies)} movies due for deletion")
 
+        # If dry run, just return the list without deleting
+        if dry_run:
+            # Convert rows to dict for JSON serialization
+            results = [dict(movie) for movie in due_movies]
+            _active_run["dry_run_results"] = results
+            _active_run["current_movie"] = f"Dry run complete — {len(results)} movies would be deleted"
+            logger.info(f"Dry cull run complete: {len(results)} movies would be deleted")
+            return
+
+        # Normal deletion logic continues here...
         radarr_client = RadarrClient(radarr_config["url"], radarr_config["api_key"])
 
         deleted = 0

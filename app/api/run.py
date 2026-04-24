@@ -100,6 +100,7 @@ async def _run_dry_score(run_id: str):
         _active_run["current_movie"] = "Fetching movies from Radarr..."
         movies = await radarr_client.get_movies()
         _active_run["total"] = len(movies)
+        _active_run["current"] = 0
 
         conn = get_connection()
         try:
@@ -188,8 +189,8 @@ async def trigger_score_run(dry_run: bool = False, background_tasks: BackgroundT
 
 
 @router.post("/run/cull")
-async def trigger_cull_run(background_tasks: BackgroundTasks = None):
-    """Manually trigger a cull run."""
+async def trigger_cull_run(dry_run: bool = False, background_tasks: BackgroundTasks = None):
+    """Manually trigger a cull run. If dry_run=True, returns which movies would be deleted without actually deleting."""
     conn = get_connection()
     settings = conn.execute("SELECT enabled FROM settings WHERE id = 1").fetchone()
     conn.close()
@@ -197,7 +198,7 @@ async def trigger_cull_run(background_tasks: BackgroundTasks = None):
     if not settings or not settings["enabled"]:
         raise HTTPException(status_code=400, detail="Cullarr is disabled. Enable in Settings first.")
 
-    acquired = await _set_run_active(str(uuid.uuid4()), "cull")
+    acquired = await _set_run_active(str(uuid.uuid4()), "cull", dry_run=dry_run)
     if not acquired:
         raise HTTPException(
             status_code=409,
@@ -206,7 +207,7 @@ async def trigger_cull_run(background_tasks: BackgroundTasks = None):
 
     async def run_and_reset():
         try:
-            await run_cull_cycle()
+            await run_cull_cycle(dry_run=dry_run)
         except Exception as e:
             logger.error(f"Cull run failed: {e}")
         finally:
@@ -221,6 +222,7 @@ async def trigger_cull_run(background_tasks: BackgroundTasks = None):
         "success": True,
         "message": "Cull run started",
         "run_id": _active_run["run_id"],
+        "dry_run": dry_run,
     }
 
 

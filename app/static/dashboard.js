@@ -130,14 +130,6 @@ async function loadScoreQueue(forceRefresh = false) {
         const data = await res.json();
         const tbody = document.getElementById('score-queue-table');
 
-        // Show dry run banner if applicable
-        const dryRunBanner = document.getElementById('dry-run-banner');
-        if (data.dry_run) {
-            dryRunBanner?.classList.remove('hidden');
-        } else {
-            dryRunBanner?.classList.add('hidden');
-        }
-
         if (!data.items || data.items.length === 0) {
             tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No movies found. Run a score cycle or configure Radarr first.</td></tr>';
             document.getElementById('score-queue-pagination').innerHTML = '';
@@ -150,7 +142,6 @@ async function loadScoreQueue(forceRefresh = false) {
             if (movie.normalized_score < 60) scoreClass = 'score-medium';
             if (movie.normalized_score < 30) scoreClass = 'score-low';
             const tmdbRating = movie.tmdb_rating ? movie.tmdb_rating.toFixed(1) : 'N/A';
-            const dryRunStyle = data.dry_run ? 'opacity: 0.75; font-style: italic;' : '';
     
             // Get play count (watched status) - Show plain numbers
             const playCount = movie.plex_play_count || 0;
@@ -162,7 +153,7 @@ async function loadScoreQueue(forceRefresh = false) {
             }
     
             return `
-                <tr style="border-bottom: 1px solid var(--border-color); ${dryRunStyle}">
+                <tr style="border-bottom: 1px solid var(--border-color);">
                     <td class="px-4 py-2"><span class="badge ${scoreClass}">${movie.normalized_score.toFixed(1)}</span></td>
                     <td class="px-4 py-2 font-medium">${escapeHtml(movie.movie_title)}</td>
                     <td class="px-4 py-2" style="color: var(--text-secondary)">${movie.movie_year || 'N/A'}</td>
@@ -182,7 +173,7 @@ async function loadScoreQueue(forceRefresh = false) {
         // Pagination
         const totalPages = data.pages || 1;
         document.getElementById('score-queue-pagination').innerHTML = `
-            <span style="color: var(--text-secondary)">${data.total} total movies${data.dry_run ? ' <span class="badge" style="background: var(--warning-bg); color: var(--warning);">Dry Run Preview</span>' : ''}</span>
+            <span style="color: var(--text-secondary)">${data.total} total movies</span>
             <div class="flex gap-2">
                 <button onclick="changeScoreQueuePage(${scoreQueuePage - 1})" class="btn-sm btn-outline" ${scoreQueuePage <= 1 ? 'disabled' : ''}>← Prev</button>
                 <span class="text-sm">Page ${scoreQueuePage} of ${totalPages}</span>
@@ -291,7 +282,9 @@ async function triggerScoreRun() {
     try {
         const res = await fetch(`/api/run/score?dry_run=${dryRun}`, { method: 'POST' });
         if (res.ok) {
-            showToast(dryRun ? 'Dry run started — results will appear in Score Queue' : 'Score run started', 'success');
+            showToast(dryRun ? 'Dry run started — results will appear when complete' : 'Score run started', 'success');
+            // Store that this is a dry run so polling knows to show modal
+            window.pendingDryRun = dryRun ? 'score' : null;
             startRunStatusPolling();
         } else {
             const err = await res.json();
@@ -308,14 +301,17 @@ async function triggerScoreRun() {
 
 // Trigger cull run
 async function triggerCullRun() {
+    const dryRun = document.getElementById('dry-run-toggle').checked;
     const btn = document.getElementById('run-cull-btn');
     btn.disabled = true;
     btn.textContent = 'Starting...';
 
     try {
-        const res = await fetch('/api/run/cull', { method: 'POST' });
+        const url = dryRun ? '/api/run/cull?dry_run=true' : '/api/run/cull';
+        const res = await fetch(url, { method: 'POST' });
         if (res.ok) {
-            showToast('Cull run started', 'success');
+            showToast(dryRun ? 'Cull dry run started — results will appear when complete' : 'Cull run started', 'success');
+            window.pendingDryRun = dryRun ? 'cull' : null;
             startRunStatusPolling();
         } else {
             const err = await res.json();
@@ -367,19 +363,34 @@ function startRunStatusPolling() {
                 document.getElementById('cull-progress-pct').textContent = '0%';
                 document.getElementById('cull-progress-label').textContent = 'Idle';
                 cancelBtn.classList.add('hidden');
-                runBtn.disabled = false;
-                runBtn.textContent = '🎯 Run Score';
-                
+    
+                // Re-enable both buttons
+                const scoreBtn = document.getElementById('run-score-btn');
                 const cullBtn = document.getElementById('run-cull-btn');
+                if (scoreBtn) {
+                    scoreBtn.disabled = false;
+                    scoreBtn.textContent = '🎯 Run Score';
+                }
                 if (cullBtn) {
                     cullBtn.disabled = false;
                     cullBtn.textContent = '🗑️ Run Cull';
                 }
-                
+    
+                // Check if this was a dry run with results
+                if (data.dry_run && data.dry_run_results && data.dry_run_results.length > 0) {
+                    const title = data.run_type === 'score' ? 'Score Dry Run Preview' : 'Cull Dry Run Preview';
+                    showDryRunModal(title, data.dry_run_results, data.run_type);
+                } else if (data.dry_run) {
+                    showToast('Dry run completed - no items would be affected', 'info');
+                }
+    
                 showToast('Run completed', 'success');
                 await loadDashboard();
-                
-                // ✅ STOP POLLING HERE
+    
+                // Clear pending dry run flag
+                window.pendingDryRun = null;
+    
+                // STOP POLLING HERE
                 clearInterval(runStatusInterval);
                 runStatusInterval = null;
             }
@@ -462,6 +473,95 @@ function showScoreDetails(title, score, factors) {
 function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/[&<>]/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'})[m] || m);
+}
+
+// Show dry run results in a modal popup
+function showDryRunModal(title, items, type = 'score') {
+    // Remove any existing modal
+    const existingModal = document.getElementById('dry-run-modal');
+    if (existingModal) existingModal.remove();
+    
+    if (!items || items.length === 0) {
+        showToast('No items would be affected', 'info');
+        return;
+    }
+    
+    const accentColor = type === 'score' ? 'var(--accent)' : 'var(--danger)';
+    const icon = type === 'score' ? '🎯' : '🗑️';
+    
+    // Build items list HTML
+    const itemsHtml = items.map(item => {
+        if (type === 'score') {
+            return `
+                <div class="border-b pb-2 mb-2" style="border-color: var(--border-color);">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <span class="font-medium">${escapeHtml(item.movie_title)}</span>
+                            ${item.movie_year ? `<span class="text-xs" style="color: var(--text-secondary)"> (${item.movie_year})</span>` : ''}
+                            ${item.is_collection ? '<span class="badge ml-2" style="background: var(--purple-bg); color: var(--purple);">Collection</span>' : ''}
+                        </div>
+                        <span class="badge score-high">${item.normalized_score?.toFixed(1) || item.score?.toFixed(1) || '0'}</span>
+                    </div>
+                    <div class="text-xs mt-1" style="color: var(--text-secondary);">
+                        ${item.size_gb ? `${item.size_gb.toFixed(1)} GB` : ''}
+                        ${item.age_days ? ` • ${item.age_days} days old` : ''}
+                        ${item.is_collection && item.movie_count ? ` • ${item.movie_count} movies` : ''}
+                    </div>
+                </div>
+            `;
+        } else {
+            // Cull run results
+            return `
+                <div class="border-b pb-2 mb-2" style="border-color: var(--border-color);">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <span class="font-medium">${escapeHtml(item.movie_title)}</span>
+                            ${item.movie_year ? `<span class="text-xs" style="color: var(--text-secondary)"> (${item.movie_year})</span>` : ''}
+                        </div>
+                        <span class="badge" style="background: var(--info-bg); color: var(--info);">${new Date(item.scheduled_date).toLocaleDateString()}</span>
+                    </div>
+                    <div class="text-xs mt-1" style="color: var(--text-secondary);">
+                        Score: ${item.score?.toFixed(1) || 'N/A'} • Size: ${item.size_gb?.toFixed(1) || 0} GB
+                    </div>
+                </div>
+            `;
+        }
+    }).join('');
+    
+    const modal = document.createElement('div');
+    modal.id = 'dry-run-modal';
+    modal.className = 'fixed inset-0 flex items-center justify-center z-50';
+    modal.style.background = 'rgba(0,0,0,0.6)';
+    modal.innerHTML = `
+        <div class="card rounded-xl p-6 w-full max-w-2xl mx-4" style="max-height: 80vh; overflow-y: auto;">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h3 class="font-semibold text-lg">${icon} ${title}</h3>
+                    <p class="text-sm mt-1" style="color: var(--text-secondary)">
+                        These ${items.length} item${items.length !== 1 ? 's' : ''} would be affected. No actual changes were made.
+                    </p>
+                </div>
+                <button onclick="document.getElementById('dry-run-modal').remove()"
+                    class="text-lg leading-none" style="color: var(--text-secondary);">✕</button>
+            </div>
+            <div class="border-t pt-4" style="border-color: var(--border-color);">
+                ${itemsHtml}
+            </div>
+            <div class="border-t pt-4 mt-2 flex justify-end" style="border-color: var(--border-color);">
+                <button onclick="document.getElementById('dry-run-modal').remove()"
+                    class="px-4 py-2 rounded-lg text-sm" style="background: var(--accent); color: white;">
+                    Close
+                </button>
+            </div>
+        </div>
+    `;
+    
+    // Close on backdrop click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+    
+    document.body.appendChild(modal);
 }
 
 // Event listeners
