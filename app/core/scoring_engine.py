@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from typing import List, Dict, Optional, Any, Tuple, Callable
+from typing import List, Dict, Optional, Any, Tuple
 from app.utils.logger import get_logger
 
 logger = get_logger()
@@ -357,12 +357,11 @@ class ScoringEngine:
 
         return result
 
-    async def get_scored_movies(
+    def get_scored_movies(
         self,
         movies: List[Dict],
         plex_play_counts: Optional[Dict] = None,
-        plex_enabled: bool = False,
-        progress_callback: Optional[Callable] = None
+        plex_enabled: bool = False
     ) -> List[Dict]:
         """
         Calculate scores for all movies and return sorted list.
@@ -370,19 +369,9 @@ class ScoringEngine:
         single entries scored by their average and counted as one queue slot.
         """
         scored = []
-        total = len(movies)
 
-        # Throttle progress updates to every 50 movies
-        PROGRESS_THROTTLE = 50
-
-        for idx, movie in enumerate(movies):
+        for movie in movies:
             result = self.calculate_movie_score(movie, plex_play_counts, plex_enabled)
-            
-            # Report progress at throttle interval OR on last movie
-            if progress_callback:
-                if (idx + 1) % PROGRESS_THROTTLE == 0 or (idx + 1) == total:
-                    await progress_callback(idx + 1, total, movie.get("title", "Unknown"))
-            
             if result["eligible"]:
                 # Extract collection info from Radarr movie object
                 collection = extract_collection(movie)

@@ -104,19 +104,7 @@ async def _run_dry_score(run_id: str):
         conn = get_connection()
         try:
             engine = ScoringEngine(conn)
-            
-            async def update_progress(current, total, movie_title):
-                _active_run["current"] = current
-                _active_run["total"] = total
-                _active_run["current_movie"] = f"Scoring: {movie_title} ({current}/{total})"
-                await asyncio.sleep(0)
-            
-            scored = await engine.get_scored_movies(
-                movies, 
-                plex_play_counts, 
-                plex_enabled,
-                progress_callback=update_progress
-            )
+            scored = engine.get_scored_movies(movies, plex_play_counts, plex_enabled)
         finally:
             conn.close()
 
@@ -125,24 +113,11 @@ async def _run_dry_score(run_id: str):
         threshold = settings["min_score_threshold"] if settings else 0
         
         # Filter: not already queued AND score > threshold
-        # Handles both individual movies and collections
-        candidates = []
-        for entry in scored:
-            # Check threshold first
-            if entry.get("normalized_score", 0) <= threshold:
-                continue
-            
-            # Check if already queued (handles both individual and collection)
-            if entry.get("is_collection"):
-                member_ids = {m["movie_id"] for m in entry.get("movies", [])}
-                if member_ids.intersection(scheduled_id_set):
-                    continue
-            else:
-                if entry.get("movie_id") in scheduled_id_set:
-                    continue
-            
-            candidates.append(entry)
-        
+        candidates = [
+            m for m in scored 
+            if m["movie_id"] not in scheduled_id_set 
+            and m["normalized_score"] > threshold  # Using raw_score here
+        ]
         would_queue = candidates[:max_queued]
 
         _active_run["dry_run_results"] = would_queue
@@ -181,13 +156,7 @@ async def trigger_score_run(dry_run: bool = False, background_tasks: BackgroundT
                 logger.info(f"Dry score run started (ID: {run_id})")
                 await _run_dry_score(run_id)
             else:
-                async def update_progress(current, total, movie_title):
-                    _active_run["current"] = current
-                    _active_run["total"] = total
-                    _active_run["current_movie"] = f"Scoring: {movie_title} ({current}/{total})"
-                    await asyncio.sleep(0)
-                
-                await run_score_cycle(progress_callback=update_progress)
+                await run_score_cycle()
         except Exception as e:
             logger.error(f"Score run failed: {e}")
         finally:

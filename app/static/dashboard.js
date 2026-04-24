@@ -345,12 +345,13 @@ function startRunStatusPolling() {
                 cancelBtn.classList.add('hidden');
                 runBtn.disabled = false;
                 runBtn.textContent = '🎯 Run Score';
+                showToast('Run completed', 'success');
                 await loadDashboard();
             }
         } catch (e) {
             console.error('Failed to poll run status:', e);
         }
-    }, 500);
+    }, 2000);
 }
 
 async function cancelRun(runId) {
