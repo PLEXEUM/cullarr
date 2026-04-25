@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 import asyncio
 import uuid
+import hashlib
 from app.db.database import get_connection
 from app.core.run_engine import run_score_cycle, run_cull_cycle
 from app.core.scheduler import get_next_score_run, get_next_cull_run
