@@ -15,7 +15,6 @@ class ScoringWeightsInput(BaseModel):
     size_weight: int
     rating_weight: int
     quality_weight: int
-    monitored_weight: int
     watched_weight: int
     age_max_days: int
     size_max_gb: int
@@ -47,7 +46,6 @@ async def get_scoring_weights():
             "size_weight": 25,
             "rating_weight": 15,
             "quality_weight": 15,
-            "monitored_weight": 10,
             "watched_weight": 10,
             "age_max_days": 365,
             "size_max_gb": 100,
@@ -75,12 +73,12 @@ async def save_scoring_weights(data: ScoringWeightsInput):
         conn.execute(
             """UPDATE scoring_weights SET
                 age_weight = ?, size_weight = ?, rating_weight = ?,
-                quality_weight = ?, monitored_weight = ?, watched_weight = ?,
+                quality_weight = ?, watched_weight = ?,
                 age_max_days = ?, size_max_gb = ?, protection_days = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = 1""",
             (data.age_weight, data.size_weight, data.rating_weight,
-            data.quality_weight, data.monitored_weight, data.watched_weight,
+            data.quality_weight, data.watched_weight,
             data.age_max_days, data.size_max_gb, data.protection_days)
         )
         conn.commit()
@@ -341,7 +339,6 @@ async def get_score_preview(weights_data: dict):
             engine.watched_weight = weights_data.get("watched_weight", 10) / 100.0
             engine.age_max_days = weights_data.get("age_max_days", 365)
             engine.size_max_gb = weights_data.get("size_max_gb", 100)
-            engine.monitored_weight = 0.0  # Always disabled
             
             # Calculate score for preview movie
             result = engine.calculate_movie_score(preview_movie, plex_play_counts, plex_enabled)
