@@ -64,13 +64,9 @@ async def _run_dry_score(run_id: str):
 
     try:
         conn = get_connection()
-        radarr_row = conn.execute("SELECT * FROM radarr_config WHERE id = 1").fetchone()
-        plex_row = conn.execute("SELECT * FROM plex_config WHERE id = 1").fetchone()
-        settings_row = conn.execute("SELECT * FROM settings WHERE id = 1").fetchone()
-
-        radarr_config = dict(radarr_row) if radarr_row else None
-        plex_config = dict(plex_row) if plex_row else None
-        settings = dict(settings_row) if settings_row else None
+        radarr_config = conn.execute("SELECT * FROM radarr_config WHERE id = 1").fetchone()
+        plex_config = conn.execute("SELECT * FROM plex_config WHERE id = 1").fetchone()
+        settings = conn.execute("SELECT * FROM settings WHERE id = 1").fetchone()
 
         scheduled_ids = conn.execute(
             "SELECT movie_id FROM scheduled_deletions"
