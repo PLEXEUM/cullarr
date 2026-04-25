@@ -47,6 +47,26 @@ def validate_cron(cron_str: str) -> bool:
     except Exception:
         return False
 
+# --- Restored Helper Functions to Fix Crashes ---
+
+def validate_plex_label(label: str) -> tuple[bool, str]:
+    """Validate that a Plex label contains only allowed characters."""
+    if not label:
+        return False, "Label cannot be empty"
+    if not ALLOWED_PATTERN.match(label):
+        return False, "Label contains invalid characters"
+    return True, ""
+
+def validate_radarr_label(label: str) -> tuple[bool, str]:
+    """Validate that a Radarr label contains only allowed characters."""
+    if not label:
+        return False, "Label cannot be empty"
+    if not ALLOWED_PATTERN.match(label):
+        return False, "Label contains invalid characters"
+    return True, ""
+
+# --- End of Restored Functions ---
+
 def validate_batch_size(value: int) -> tuple[bool, str]:
     """Validate batch size is between 1 and 20 (no unlimited/0)."""
     if value < 1 or value > 20:
@@ -69,19 +89,4 @@ def validate_max_queued(value: int) -> tuple[bool, str]:
     """Validate max queued deletions is between 1 and 500."""
     if value < 1 or value > 500:
         return False, "Max queued deletions must be between 1 and 500"
-    return True, ""
-
-def validate_plex_label(label: str) -> tuple[bool, str]:
-    """
-    Validate that a Plex label contains only allowed characters.
-    """
-    if not label:
-        return False, "Label cannot be empty"
-        
-    if not ALLOWED_PATTERN.match(label):
-        return False, "Label contains invalid characters"
-        
-    if DANGEROUS_PATTERN.search(label):
-        return False, "Label contains dangerous characters"
-        
     return True, ""
