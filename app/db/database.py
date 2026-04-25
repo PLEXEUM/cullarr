@@ -52,7 +52,6 @@ def init_db():
             watched_weight INTEGER DEFAULT 10,
             age_max_days INTEGER DEFAULT 365,
             size_max_gb INTEGER DEFAULT 100,
-            protection_days INTEGER DEFAULT 30,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -196,7 +195,7 @@ def migrate_db():
         )
         print("Migration applied: added collection_name to scheduled_deletions")
     except Exception:
-        pass
+        pass  # Column already exists, safe to ignore
 
     # Migration: add collection columns to scored_movies_cache if upgrading
     for column, definition in [
@@ -210,7 +209,7 @@ def migrate_db():
             )
             print(f"Migration applied: added {column} to scored_movies_cache")
         except Exception:
-            pass
+            pass  # Column already exists, safe to ignore
 
     # Migration: add min_score_threshold to settings table
     try:
@@ -219,14 +218,7 @@ def migrate_db():
         )
         print("Migration applied: added min_score_threshold to settings")
     except Exception:
-        pass
-
-    # Migration: add protection_days to scoring_weights
-    try:
-        cursor.execute("ALTER TABLE scoring_weights ADD COLUMN protection_days INTEGER DEFAULT 30")
-        print("Migration applied: added protection_days to scoring_weights")
-    except Exception:
-        pass
+        pass  # Column already exists, safe to ignore
 
     conn.commit()
     conn.close()

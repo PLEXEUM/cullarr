@@ -19,7 +19,6 @@ class ScoringWeightsInput(BaseModel):
     watched_weight: int
     age_max_days: int
     size_max_gb: int
-    protection_days: int
 
 
 class SettingsInput(BaseModel):
@@ -28,6 +27,7 @@ class SettingsInput(BaseModel):
     cull_cron: str
     max_queued: int
     delete_after_days: int
+    protection_days: int
     collection_grouping: bool
     min_score_threshold: int = 0
 
@@ -53,16 +53,18 @@ async def get_scoring_weights():
             "size_max_gb": 100,
         }
 
-    result = dict(weights)
-
-    return result
+    return dict(weights)
 
 
 @router.post("/settings/weights")
 async def save_scoring_weights(data: ScoringWeightsInput):
     """Save scoring weights."""
-    if not all(1 <= w <= 10 for w in [data.age_weight, data.size_weight, data.rating_weight, data.quality_weight, data.watched_weight]):
-        raise HTTPException(status_code=400, detail="Each weight must be between 1 and 10")
+    total = data.age_weight + data.size_weight + data.rating_weight + data.quality_weight + data.monitored_weight + data.watched_weight
+    if total != 100:
+        raise HTTPException(status_code=400, detail=f"Weights must sum to 100, got {total}")
+
+    if not all(0 <= w <= 100 for w in [data.age_weight, data.size_weight, data.rating_weight, data.quality_weight, data.monitored_weight, data.watched_weight]):
+        raise HTTPException(status_code=400, detail="Each weight must be between 0 and 100")
 
     if data.age_max_days < 1 or data.age_max_days > 3650:
         raise HTTPException(status_code=400, detail="Age max days must be between 1 and 3650")
@@ -76,12 +78,11 @@ async def save_scoring_weights(data: ScoringWeightsInput):
             """UPDATE scoring_weights SET
                 age_weight = ?, size_weight = ?, rating_weight = ?,
                 quality_weight = ?, monitored_weight = ?, watched_weight = ?,
-                age_max_days = ?, size_max_gb = ?, protection_days = ?,
-                updated_at = CURRENT_TIMESTAMP
+                age_max_days = ?, size_max_gb = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = 1""",
             (data.age_weight, data.size_weight, data.rating_weight,
-            data.quality_weight, data.monitored_weight, data.watched_weight,
-            data.age_max_days, data.size_max_gb, data.protection_days)
+             data.quality_weight, data.monitored_weight, data.watched_weight,
+             data.age_max_days, data.size_max_gb)
         )
         conn.commit()
         logger.info("Scoring weights saved")
@@ -109,6 +110,7 @@ async def get_settings():
             "cull_cron": "0 2 * * *",
             "max_queued": 20,
             "delete_after_days": 7,
+            "protection_days": 30,
             "collection_grouping": False,
             "min_score_threshold": 0,
         }
@@ -134,6 +136,10 @@ async def save_settings(data: SettingsInput):
     is_valid, error = validate_delete_after_days(data.delete_after_days)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)
+
+    is_valid, error = validate_protection_days(data.protection_days)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error)
     
     if data.min_score_threshold < 0 or data.min_score_threshold > 100:
         raise HTTPException(status_code=400, detail="Minimum score threshold must be between 0 and 100")
@@ -143,12 +149,12 @@ async def save_settings(data: SettingsInput):
         conn.execute(
             """UPDATE settings SET
                 enabled = ?, score_cron = ?, cull_cron = ?,
-                max_queued = ?, delete_after_days = ?,
+                max_queued = ?, delete_after_days = ?, protection_days = ?,
                 collection_grouping = ?, min_score_threshold = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = 1""",
             (1 if data.enabled else 0, data.score_cron, data.cull_cron,
-            data.max_queued, data.delete_after_days,
-            1 if data.collection_grouping else 0, data.min_score_threshold)
+             data.max_queued, data.delete_after_days, data.protection_days,
+             1 if data.collection_grouping else 0, data.min_score_threshold)
         )
         conn.commit()
 

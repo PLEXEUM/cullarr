@@ -142,23 +142,20 @@
             </svg>
             <div>
                 <h2 class="card-header-title">Scoring Weights</h2>
-                <p class="card-header-subtitle">Higher weight = more influence on deletion score</p>
+                <p class="card-header-subtitle">Drag any slider — others adjust automatically to keep 100% total</p>
             </div>
         </div>
         <div class="p-6 space-y-6">
 
-            <!-- LIVE PREVIEW with Refresh Button -->
+            <!-- LIVE PREVIEW (moved to top) -->
             <div class="border rounded-xl p-4" style="border-color: var(--border-color); background: var(--bg-primary);">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="flex items-center gap-2">
-                        <span class="text-sm font-semibold">🔍 Live Preview</span>
-                        <span class="text-xs" style="color: var(--text-secondary);">(click refresh to update)</span>
-                    </div>
-                    <button id="refresh-preview-btn" class="btn-sm btn-outline">⟳ Refresh Preview</button>
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="text-sm font-semibold">🔍 Live Preview</span>
+                    <span class="text-xs" style="color: var(--text-secondary);">(updates as you drag)</span>
                 </div>
                 <div id="live-preview-content">
                     <div class="text-center py-8" style="color: var(--text-secondary);">
-                        Click Refresh Preview to see score based on current weights
+                        Loading preview...
                     </div>
                 </div>
             </div>
@@ -188,8 +185,8 @@
                         <div>
                             <div class="flex items-center gap-3">
                                 <span class="text-sm w-16">🕰️ Age</span>
-                                <input type="range" id="age-weight" min="1" max="10" step="1" value="5" class="weight-slider flex-1">
-                                <span id="age-weight-val" class="weight-value text-sm w-12 text-right">5 / 10</span>
+                                <input type="range" id="age-weight" min="0" max="100" step="1" value="25" class="weight-slider flex-1">
+                                <span id="age-weight-val" class="weight-value text-sm w-12 text-right">25%</span>
                             </div>
                             <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Older movies score higher</p>
                         </div>
@@ -198,8 +195,8 @@
                         <div>
                             <div class="flex items-center gap-3">
                                 <span class="text-sm w-16">📦 Size</span>
-                                <input type="range" id="size-weight" min="1" max="10" step="1" value="5" class="weight-slider flex-1">
-                                <span id="size-weight-val" class="weight-value text-sm w-12 text-right">5 / 10</span>
+                                <input type="range" id="size-weight" min="0" max="100" step="1" value="25" class="weight-slider flex-1">
+                                <span id="size-weight-val" class="weight-value text-sm w-12 text-right">25%</span>
                             </div>
                             <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Larger files score higher</p>
                         </div>
@@ -216,8 +213,8 @@
                         <div>
                             <div class="flex items-center gap-3">
                                 <span class="text-sm w-16">⭐ Rating</span>
-                                <input type="range" id="rating-weight" min="1" max="10" step="1" value="5" class="weight-slider flex-1">
-                                <span id="rating-weight-val" class="weight-value text-sm w-12 text-right">5 / 10</span>
+                                <input type="range" id="rating-weight" min="0" max="100" step="1" value="15" class="weight-slider flex-1">
+                                <span id="rating-weight-val" class="weight-value text-sm w-12 text-right">15%</span>
                             </div>
                             <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Low-rated movies are more deletable</p>
                         </div>
@@ -226,8 +223,8 @@
                         <div>
                             <div class="flex items-center gap-3">
                                 <span class="text-sm w-16">🎬 Quality</span>
-                                <input type="range" id="quality-weight" min="1" max="10" step="1" value="5" class="weight-slider flex-1">
-                                <span id="quality-weight-val" class="weight-value text-sm w-12 text-right">5 / 10</span>
+                                <input type="range" id="quality-weight" min="0" max="100" step="1" value="15" class="weight-slider flex-1">
+                                <span id="quality-weight-val" class="weight-value text-sm w-12 text-right">15%</span>
                             </div>
                             <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">SD/DVD quality deletes before 4K/1080p</p>
                         </div>
@@ -236,33 +233,31 @@
                         <div>
                             <div class="flex items-center gap-3">
                                 <span class="text-sm w-16">👀 Watched</span>
-                                <input type="range" id="watched-weight" min="1" max="10" step="1" value="5" class="weight-slider flex-1">
-                                <span id="watched-weight-val" class="weight-value text-sm w-12 text-right">5 / 10</span>
+                                <input type="range" id="watched-weight" min="0" max="100" step="1" value="10" class="weight-slider flex-1">
+                                <span id="watched-weight-val" class="weight-value text-sm w-12 text-right">10%</span>
                             </div>
                             <p class="text-xs mt-1 ml-16" style="color: var(--text-secondary);">Unwatched movies delete before watched ones</p>
                         </div>
                     </div>
                 </div>
+
+                <!-- Total Weight Indicator -->
+                <div class="border-t pt-3 mt-2" style="border-color: var(--border-color);">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-semibold">Total: <span id="total-weight">100</span>%</span>
+                        <span id="weight-warning" class="text-xs text-yellow-500 hidden">⚠ Must sum to 100% (auto-balanced)</span>
+                    </div>
+                </div>
             </div>
 
-            <!-- Advanced Settings (Collapsible - matches Logs page style) -->
-            <div class="card rounded-xl overflow-hidden mt-6">
-                <button onclick="toggleAdvancedSettings()" class="w-full flex items-center justify-between p-4 text-left">
-                    <div class="flex items-center gap-3">
-                        <svg class="w-5 h-5" style="color: var(--accent);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                        </svg>
-                        <div>
-                            <h2 class="font-semibold">Advanced Settings</h2>
-                            <p class="text-xs" style="color: var(--text-secondary);">Fine-tune scoring limits and thresholds</p>
-                        </div>
-                    </div>
-                    <svg id="advanced-settings-icon" class="w-5 h-5 transition-transform transform rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                    </svg>
+            <!-- ADVANCED SETTINGS (Combined) -->
+            <div class="border-t" style="border-color: var(--border-color);">
+                <button type="button" id="advanced-toggle" class="w-full flex items-center justify-between py-2 text-left">
+                    <span class="text-sm font-medium">Advanced Settings</span>
+                    <span id="advanced-icon" class="text-sm">▶</span>
                 </button>
-                <div id="advanced-settings-section" class="border-t p-4 space-y-4" style="border-color: var(--border-color); display: none;">
+                <div id="advanced-content" class="hidden pt-4 space-y-4">
+                    
                     <!-- Two-column grid for even alignment -->
                     <div class="grid grid-cols-2 gap-6">
                         <!-- Left Column -->
@@ -294,7 +289,7 @@
                         </div>
                     </div>
 
-                    <!-- Recalibrate Button -->
+                    <!-- Recalibrate Button - Full width, centered -->
                     <div class="border-t pt-4 mt-2" style="border-color: var(--border-color);">
                         <button id="recalibrate-btn" class="w-full py-2 rounded-lg text-sm font-medium transition-all" style="background: var(--info-bg); color: var(--info); border: 1px solid var(--info);">
                             📊 Recalibrate from library
@@ -303,6 +298,7 @@
                             Auto-calculates age_max_days (90th percentile × 1.5) and size_max_gb (95th percentile) from your library.
                         </p>
                     </div>
+
                 </div>
             </div>
 
