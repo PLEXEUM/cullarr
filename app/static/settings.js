@@ -3,26 +3,16 @@
 // DOM Elements
 let ageSlider, sizeSlider, ratingSlider, qualitySlider, watchedSlider;
 let ageVal, sizeVal, ratingVal, qualityVal, watchedVal;
-let totalSpan, warningSpan;
 let ageMaxDays, sizeMaxGb;
 let minScoreThreshold;
 let debounceTimer = null;
 
-// Store current weights for auto-balancing
-let currentWeights = {
-    age: 25,
-    size: 25,
-    rating: 15,
-    quality: 15,
-    watched: 10
-};
-
-// Preset configurations (sum to 100)
+// Preset configurations (1-10 scale, no sum constraint)
 const PRESETS = {
-    balanced: { age: 25, size: 25, rating: 15, quality: 15, watched: 10 },
-    spaceSaver: { age: 30, size: 40, rating: 10, quality: 10, watched: 10 },
-    qualityKeeper: { age: 15, size: 15, rating: 30, quality: 30, watched: 10 },
-    freshness: { age: 40, size: 20, rating: 15, quality: 15, watched: 10 }
+    balanced: { age: 5, size: 5, rating: 5, quality: 5, watched: 5 },
+    spaceSaver: { age: 6, size: 8, rating: 2, quality: 2, watched: 2 },
+    qualityKeeper: { age: 3, size: 3, rating: 8, quality: 8, watched: 3 },
+    freshness: { age: 8, size: 4, rating: 3, quality: 3, watched: 2 }
 };
 
 // Load all settings on page load
@@ -40,8 +30,6 @@ document.addEventListener('DOMContentLoaded', () => {
     qualityVal = document.getElementById('quality-weight-val');
     watchedVal = document.getElementById('watched-weight-val');
     
-    totalSpan = document.getElementById('total-weight');
-    warningSpan = document.getElementById('weight-warning');
     ageMaxDays = document.getElementById('age-max-days');
     sizeMaxGb = document.getElementById('size-max-gb');
     minScoreThreshold = document.getElementById('min-score-threshold');
@@ -66,17 +54,24 @@ function setupEventListeners() {
     document.getElementById('plex-clear-btn').addEventListener('click', clearPlex);
     document.getElementById('plex-save-label-btn').addEventListener('click', savePlexLabel);
     
-    // Weight sliders with auto-balance
+    // Weight sliders - NO auto-preview, just update display
     const sliders = [ageSlider, sizeSlider, ratingSlider, qualitySlider, watchedSlider];
     sliders.forEach(slider => {
         if (slider) {
             slider.addEventListener('input', (e) => {
                 updateWeightDisplay(e.target.id);
-                handleAutoBalance(e.target.id, parseInt(e.target.value));
-                scheduleLivePreview();
+                // Preview no longer updates automatically while dragging
             });
         }
     });
+    
+    // Refresh Preview button
+    const refreshPreviewBtn = document.getElementById('refresh-preview-btn');
+    if (refreshPreviewBtn) {
+        refreshPreviewBtn.addEventListener('click', () => {
+            updateLivePreview();
+        });
+    }
     
     // Preset buttons
     document.getElementById('preset-balanced')?.addEventListener('click', () => applyPreset('balanced'));
@@ -88,108 +83,27 @@ function setupEventListeners() {
     document.getElementById('save-weights-btn').addEventListener('click', saveWeights);
     document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
     
-    // Advanced section toggle
-    const advancedToggle = document.getElementById('advanced-toggle');
-    const advancedContent = document.getElementById('advanced-content');
-    const advancedIcon = document.getElementById('advanced-icon');
-    if (advancedToggle) {
-        advancedToggle.addEventListener('click', () => {
-            const isHidden = advancedContent.classList.toggle('hidden');
-            advancedIcon.textContent = isHidden ? '▶' : '▼';
-        });
-    }
-    
     // Recalibrate button
     document.getElementById('recalibrate-btn')?.addEventListener('click', recalibrateAdvanced);
 }
 
-// Auto-balance sliders to keep 100% total
-function handleAutoBalance(changedId, newValue) {
-    // Get current values
-    const oldValues = {
-        age: parseInt(ageSlider.value),
-        size: parseInt(sizeSlider.value),
-        rating: parseInt(ratingSlider.value),
-        quality: parseInt(qualitySlider.value),
-        watched: parseInt(watchedSlider.value)
-    };
-    
-    // Calculate delta
-    const oldChanged = oldValues[changedId.replace('-weight', '')];
-    const delta = newValue - oldChanged;
-    
-    if (delta === 0) return;
-    
-    // Sum of other sliders
-    const otherSliders = ['age', 'size', 'rating', 'quality', 'watched'].filter(id => id !== changedId.replace('-weight', ''));
-    const otherSum = otherSliders.reduce((sum, id) => sum + oldValues[id], 0);
-    
-    if (otherSum === 0) return;
-    
-    // Distribute delta proportionally
-    const newValues = { ...oldValues };
-    newValues[changedId.replace('-weight', '')] = newValue;
-    
-    for (const id of otherSliders) {
-        const proportion = oldValues[id] / otherSum;
-        let adjustment = delta * proportion;
-        let newVal = oldValues[id] - adjustment;
-        
-        // Clamp to 0-100
-        newVal = Math.max(0, Math.min(100, Math.round(newVal)));
-        newValues[id] = newVal;
+function toggleAdvancedSettings() {
+    const section = document.getElementById('advanced-settings-section');
+    const icon = document.getElementById('advanced-settings-icon');
+    if (section.style.display === 'none' || section.style.display === '') {
+        section.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        section.style.display = 'none';
+        icon.style.transform = 'rotate(0deg)';
     }
-    
-    // Ensure total is exactly 100 (adjust if rounding caused issues)
-    let total = Object.values(newValues).reduce((a, b) => a + b, 0);
-    if (total !== 100 && total > 0) {
-        // Find the largest slider to adjust
-        const largestId = Object.keys(newValues).reduce((a, b) => newValues[a] > newValues[b] ? a : b);
-        newValues[largestId] += (100 - total);
-    }
-    
-    // Apply new values without triggering auto-balance again
-    if (newValues.age !== oldValues.age) ageSlider.value = newValues.age;
-    if (newValues.size !== oldValues.size) sizeSlider.value = newValues.size;
-    if (newValues.rating !== oldValues.rating) ratingSlider.value = newValues.rating;
-    if (newValues.quality !== oldValues.quality) qualitySlider.value = newValues.quality;
-    if (newValues.watched !== oldValues.watched) watchedSlider.value = newValues.watched;
-    
-    // Update displays
-    updateWeightDisplay('age-weight');
-    updateWeightDisplay('size-weight');
-    updateWeightDisplay('rating-weight');
-    updateWeightDisplay('quality-weight');
-    updateWeightDisplay('watched-weight');
-    
-    updateTotalWeight();
 }
 
 function updateWeightDisplay(id) {
     const val = document.getElementById(id).value;
     const displayId = id.replace('-weight', '-weight-val');
     const display = document.getElementById(displayId);
-    if (display) display.textContent = `${val}%`;
-}
-
-function updateTotalWeight() {
-    const age = parseInt(ageSlider.value) || 0;
-    const size = parseInt(sizeSlider.value) || 0;
-    const rating = parseInt(ratingSlider.value) || 0;
-    const quality = parseInt(qualitySlider.value) || 0;
-    const watched = parseInt(watchedSlider.value) || 0;
-    const total = age + size + rating + quality + watched;
-    
-    if (totalSpan) totalSpan.textContent = total;
-    
-    // Auto-balance keeps total at 100, but show warning if not
-    if (warningSpan) {
-        if (total !== 100) {
-            warningSpan.classList.remove('hidden');
-        } else {
-            warningSpan.classList.add('hidden');
-        }
-    }
+    if (display) display.textContent = `${val} / 10`;
 }
 
 function applyPreset(presetName) {
@@ -210,17 +124,64 @@ function applyPreset(presetName) {
     updateWeightDisplay('quality-weight');
     updateWeightDisplay('watched-weight');
     
-    updateTotalWeight();
-    scheduleLivePreview();
     showToast(`Preset "${presetName}" applied`, 'info');
 }
 
-// Debounced live preview
-function scheduleLivePreview() {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => updateLivePreview(), 300);
+// Convert 1-10 slider values to percentages for backend
+function convertToPercentages(age, size, rating, quality, watched) {
+    const total = age + size + rating + quality + watched;
+    
+    let agePercent = (age / total) * 100;
+    let sizePercent = (size / total) * 100;
+    let ratingPercent = (rating / total) * 100;
+    let qualityPercent = (quality / total) * 100;
+    let watchedPercent = (watched / total) * 100;
+    
+    // Round to nearest integer
+    let rounded = {
+        age: Math.round(agePercent),
+        size: Math.round(sizePercent),
+        rating: Math.round(ratingPercent),
+        quality: Math.round(qualityPercent),
+        watched: Math.round(watchedPercent)
+    };
+    
+    // Fix rounding to ensure total = 100
+    let sum = rounded.age + rounded.size + rounded.rating + rounded.quality + rounded.watched;
+    let diff = 100 - sum;
+    if (diff !== 0) {
+        // Find the weight with the largest fractional part to adjust
+        const fractions = {
+            age: agePercent - Math.floor(agePercent),
+            size: sizePercent - Math.floor(sizePercent),
+            rating: ratingPercent - Math.floor(ratingPercent),
+            quality: qualityPercent - Math.floor(qualityPercent),
+            watched: watchedPercent - Math.floor(watchedPercent)
+        };
+        const maxKey = Object.keys(fractions).reduce((a, b) => fractions[a] > fractions[b] ? a : b);
+        rounded[maxKey] += diff;
+    }
+    
+    return rounded;
 }
 
+// Convert backend percentages back to 1-10 scale for display
+function convertFromPercentages(agePct, sizePct, ratingPct, qualityPct, watchedPct) {
+    // Scale percentages to 1-10 range
+    const scale = (val) => {
+        return Math.max(1, Math.min(10, Math.round((val / 100) * 10)));
+    };
+    
+    return {
+        age: scale(agePct),
+        size: scale(sizePct),
+        rating: scale(ratingPct),
+        quality: scale(qualityPct),
+        watched: scale(watchedPct)
+    };
+}
+
+// Manual preview update (only called when Refresh button is clicked)
 async function updateLivePreview() {
     const previewDiv = document.getElementById('live-preview-content');
     if (!previewDiv) return;
@@ -228,18 +189,41 @@ async function updateLivePreview() {
     previewDiv.innerHTML = '<div class="text-center py-8" style="color: var(--text-secondary);">Updating preview...</div>';
     
     try {
-        // Get current weights
+        // Get raw 1-10 values and convert to percentages for accurate scoring
+        const ageRaw = parseInt(ageSlider.value);
+        const sizeRaw = parseInt(sizeSlider.value);
+        const ratingRaw = parseInt(ratingSlider.value);
+        const qualityRaw = parseInt(qualitySlider.value);
+        const watchedRaw = parseInt(watchedSlider.value);
+        
+        const totalRaw = ageRaw + sizeRaw + ratingRaw + qualityRaw + watchedRaw;
+        
         const weights = {
-            age_weight: parseInt(ageSlider.value),
-            size_weight: parseInt(sizeSlider.value),
-            rating_weight: parseInt(ratingSlider.value),
-            quality_weight: parseInt(qualitySlider.value),
-            watched_weight: parseInt(watchedSlider.value),
+            age_weight: Math.round((ageRaw / totalRaw) * 100),
+            size_weight: Math.round((sizeRaw / totalRaw) * 100),
+            rating_weight: Math.round((ratingRaw / totalRaw) * 100),
+            quality_weight: Math.round((qualityRaw / totalRaw) * 100),
+            watched_weight: Math.round((watchedRaw / totalRaw) * 100),
             age_max_days: parseInt(ageMaxDays.value),
             size_max_gb: parseFloat(sizeMaxGb.value)
         };
         
-        // Call preview endpoint (we'll need to add this to backend)
+        // Fix rounding to ensure total = 100
+        let total = weights.age_weight + weights.size_weight + weights.rating_weight + weights.quality_weight + weights.watched_weight;
+        if (total !== 100) {
+            let diff = 100 - total;
+            const weightsList = [
+                { key: 'age_weight', val: weights.age_weight },
+                { key: 'size_weight', val: weights.size_weight },
+                { key: 'rating_weight', val: weights.rating_weight },
+                { key: 'quality_weight', val: weights.quality_weight },
+                { key: 'watched_weight', val: weights.watched_weight }
+            ];
+            const largest = weightsList.reduce((a, b) => a.val > b.val ? a : b);
+            weights[largest.key] += diff;
+        }
+        
+        // Call preview endpoint
         const res = await fetch('/api/settings/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -331,8 +315,6 @@ async function recalibrateAdvanced() {
             ageMaxDays.value = data.age_max_days;
             sizeMaxGb.value = data.size_max_gb;
             showToast(data.message, 'success');
-            // Refresh live preview with new values
-            scheduleLivePreview();
         } else {
             showToast(data.detail || 'Recalibration failed', 'error');
         }
@@ -344,7 +326,7 @@ async function recalibrateAdvanced() {
     }
 }
 
-// ----- Existing functions (keep as is, with modifications) -----
+// ----- Radarr Functions -----
 
 async function loadRadarrConfig() {
     try {
@@ -422,7 +404,8 @@ async function clearRadarr() {
     }
 }
 
-// Plex OAuth (keep existing implementation)
+// ----- Plex Functions -----
+
 let plexPopupWindow = null;
 let plexPollInterval = null;
 let plexTimeoutTimer = null;
@@ -598,17 +581,36 @@ async function clearPlex() {
     }
 }
 
-// Weights
+// ----- Weights Functions -----
+
 async function loadWeights() {
     try {
         const res = await fetch('/api/settings/weights');
         const data = await res.json();
         
-        ageSlider.value = data.age_weight || 25;
-        sizeSlider.value = data.size_weight || 25;
-        ratingSlider.value = data.rating_weight || 15;
-        qualitySlider.value = data.quality_weight || 15;
-        watchedSlider.value = data.watched_weight || 10;
+        // Get percentages from backend
+        const percentages = {
+            age: data.age_weight || 25,
+            size: data.size_weight || 25,
+            rating: data.rating_weight || 15,
+            quality: data.quality_weight || 15,
+            watched: data.watched_weight || 10
+        };
+        
+        // Convert percentages back to 1-10 scale
+        const values = convertFromPercentages(
+            percentages.age,
+            percentages.size,
+            percentages.rating,
+            percentages.quality,
+            percentages.watched
+        );
+        
+        ageSlider.value = values.age;
+        sizeSlider.value = values.size;
+        ratingSlider.value = values.rating;
+        qualitySlider.value = values.quality;
+        watchedSlider.value = values.watched;
         
         updateWeightDisplay('age-weight');
         updateWeightDisplay('size-weight');
@@ -619,29 +621,31 @@ async function loadWeights() {
         ageMaxDays.value = data.age_max_days || 365;
         sizeMaxGb.value = data.size_max_gb || 100;
         
-        updateTotalWeight();
-        scheduleLivePreview();
     } catch (e) {
         console.error('Failed to load weights:', e);
     }
 }
 
 async function saveWeights() {
-    const total = parseInt(totalSpan.textContent);
-    if (total !== 100) {
-        showToast('Weights must sum to 100%', 'error');
-        return;
-    }
+    // Get raw 1-10 values
+    const ageRaw = parseInt(ageSlider.value);
+    const sizeRaw = parseInt(sizeSlider.value);
+    const ratingRaw = parseInt(ratingSlider.value);
+    const qualityRaw = parseInt(qualitySlider.value);
+    const watchedRaw = parseInt(watchedSlider.value);
+    
+    // Convert to percentages
+    const percentages = convertToPercentages(ageRaw, sizeRaw, ratingRaw, qualityRaw, watchedRaw);
     
     const payload = {
-        age_weight: parseInt(ageSlider.value),
-        size_weight: parseInt(sizeSlider.value),
-        rating_weight: parseInt(ratingSlider.value),
-        quality_weight: parseInt(qualitySlider.value),
-        watched_weight: parseInt(watchedSlider.value),
+        age_weight: percentages.age,
+        size_weight: percentages.size,
+        rating_weight: percentages.rating,
+        quality_weight: percentages.quality,
+        watched_weight: percentages.watched,
         age_max_days: parseInt(ageMaxDays.value),
         size_max_gb: parseFloat(sizeMaxGb.value),
-        monitored_weight: 0  // Send 0 for compatibility
+        monitored_weight: 0
     };
     
     try {
@@ -662,7 +666,8 @@ async function saveWeights() {
     }
 }
 
-// Settings
+// ----- Settings Functions -----
+
 async function loadSettings() {
     try {
         const res = await fetch('/api/settings');
