@@ -6,6 +6,8 @@ let scoreQueueSortBy = 'score';
 let scoreQueueSortOrder = 'desc';
 let refreshInterval = null;
 let runStatusInterval = null;
+let currentServerHash = null;
+let runStatusPollingActive = false;
 
 // Load all dashboard data
 async function loadDashboard() {
@@ -586,12 +588,43 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Auto-refresh every 30 seconds — queue status and deletions only, not score queue
+    // --- ISSUE #8: STATE HASH SYNC POLLING ---
+    // Poll every 3 seconds to ensure all tabs stay in sync
+    setInterval(async () => {
+        try {
+            const res = await fetch('/api/run/status');
+            const data = await res.json();
+
+            // Detect if another tab started/stopped an action
+            if (currentServerHash !== null && data.state_hash !== currentServerHash) {
+                console.log("State change detected from another tab. Refreshing...");
+                // Refresh specific data that changes during runs
+                loadQueueStatus();
+                loadScheduledDeletions();
+                if (data.progress === 100 || data.is_running === false) {
+                    loadScoreQueue(); // Refresh list when a run finishes
+                }
+            }
+            
+            currentServerHash = data.state_hash;
+            
+            // If the engine is running, ensure the progress UI is visible/updated
+            if (data.is_running) {
+                showRunStatus(data.current_action, data.progress);
+            } else {
+                hideRunStatus();
+            }
+
+        } catch (err) {
+            console.error("Status sync error:", err);
+        }
+    }, 3000);
+
+    // Standard auto-refresh (30 seconds) for general dashboard stats
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(() => {
         loadQueueStatus();
         loadScheduledDeletions();
         loadFailedDeletions();
-        loadNextRunTimes();
     }, 30000);
 });
