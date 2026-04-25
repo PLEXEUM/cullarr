@@ -70,3 +70,18 @@ def validate_max_queued(value: int) -> tuple[bool, str]:
     if value < 1 or value > 500:
         return False, "Max queued deletions must be between 1 and 500"
     return True, ""
+
+def validate_plex_label(label: str) -> tuple[bool, str]:
+    """
+    Validate that a Plex label contains only allowed characters.
+    """
+    if not label:
+        return False, "Label cannot be empty"
+        
+    if not ALLOWED_PATTERN.match(label):
+        return False, "Label contains invalid characters"
+        
+    if DANGEROUS_PATTERN.search(label):
+        return False, "Label contains dangerous characters"
+        
+    return True, ""
