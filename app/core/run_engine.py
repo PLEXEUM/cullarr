@@ -230,6 +230,25 @@ async def run_score_cycle():
         # Fetch movies from Radarr
         movies = await radarr_client.get_movies()
 
+        # ===== NEW: Clean up orphaned entries in scheduled_deletions =====
+        radarr_movie_ids = {movie["id"] for movie in movies if movie.get("id")}
+        if radarr_movie_ids:
+            placeholders = ",".join("?" * len(radarr_movie_ids))
+            orphaned = conn.execute(
+                f"SELECT id, movie_id, movie_title FROM scheduled_deletions WHERE status = 'scheduled' AND movie_id NOT IN ({placeholders})",
+                tuple(radarr_movie_ids)
+            ).fetchall()
+            
+            if orphaned:
+                conn.execute(
+                    f"DELETE FROM scheduled_deletions WHERE status = 'scheduled' AND movie_id NOT IN ({placeholders})",
+                    tuple(radarr_movie_ids)
+                )
+                logger.info(f"Cleaned {len(orphaned)} orphaned entries from scheduled_deletions (movies no longer in Radarr)")
+                for orphan in orphaned:
+                    logger.debug(f"Orphan removed: {orphan['movie_title']} (ID: {orphan['movie_id']})")
+        # ===== END NEW CODE =====
+
         # Score movies (collection grouping handled inside engine if enabled)
         engine = ScoringEngine(conn)
         scored_movies = engine.get_scored_movies(movies, plex_play_counts, plex_enabled)

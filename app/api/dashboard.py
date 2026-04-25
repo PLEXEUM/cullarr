@@ -236,7 +236,7 @@ async def get_score_queue(
 
 
 async def _rebuild_score_cache():
-    """Fetch movies from Radarr, score them, and write to cache table."""
+    """Fetch movies from Radarr, score them, and write to cache table with transaction safety."""
     conn = get_connection()
     try:
         radarr_config = conn.execute("SELECT url, api_key FROM radarr_config WHERE id = 1").fetchone()
@@ -247,7 +247,6 @@ async def _rebuild_score_cache():
         plex_config = conn.execute("SELECT url, api_key, enabled FROM plex_config WHERE id = 1").fetchone()
         plex_enabled = bool(plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"])
         
-        # DEBUG: Log Plex config status
         logger.info(f"Plex enabled: {plex_enabled}")
         if plex_enabled:
             logger.info(f"Plex URL: {plex_config['url']}")
@@ -269,7 +268,6 @@ async def _rebuild_score_cache():
             if ok:
                 plex_play_counts = await plex_client.get_play_counts_by_tmdb()
                 logger.info(f"Fetched {len(plex_play_counts)} play counts from Plex")
-                # Log a sample of play counts
                 sample_items = list(plex_play_counts.items())[:5]
                 for tmdb_id, data in sample_items:
                     logger.info(f"Sample play count - TMDb: {tmdb_id}, plays: {data.get('play_count', 0)}")
@@ -280,6 +278,9 @@ async def _rebuild_score_cache():
 
         conn = get_connection()
         try:
+            # Start transaction
+            conn.execute("BEGIN TRANSACTION")
+            
             engine = ScoringEngine(conn)
             if settings:
                 engine.protection_days = settings["protection_days"]
@@ -287,12 +288,11 @@ async def _rebuild_score_cache():
 
             scored = engine.get_scored_movies(movies, plex_play_counts, plex_enabled)
 
-            # Rebuild cache atomically
+            # Clear old cache
             conn.execute("DELETE FROM scored_movies_cache")
 
             for entry in scored:
                 if entry.get("is_collection"):
-                    # Store one cache row per collection member but mark as collection
                     for member in entry.get("movies", []):
                         play_count = None
                         if plex_play_counts and member.get("tmdb_id"):
@@ -317,7 +317,7 @@ async def _rebuild_score_cache():
                             member["age_days"],
                             member["quality"],
                             1 if member["monitored"] else 0,
-                            entry["normalized_score"],  # collection score
+                            entry["normalized_score"],
                             entry["raw_score"],
                             json.dumps(member["factors"]),
                             play_count,
@@ -358,6 +358,11 @@ async def _rebuild_score_cache():
 
             conn.commit()
             logger.info(f"Score cache rebuilt with {len(scored)} entries")
+            
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            logger.error(f"Failed to rebuild score cache, transaction rolled back: {e}")
+            raise
         finally:
             conn.close()
 

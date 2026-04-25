@@ -54,13 +54,12 @@ function setupEventListeners() {
     document.getElementById('plex-clear-btn').addEventListener('click', clearPlex);
     document.getElementById('plex-save-label-btn').addEventListener('click', savePlexLabel);
     
-    // Weight sliders - NO auto-preview, just update display
+    // Weight sliders - update display only
     const sliders = [ageSlider, sizeSlider, ratingSlider, qualitySlider, watchedSlider];
     sliders.forEach(slider => {
         if (slider) {
             slider.addEventListener('input', (e) => {
                 updateWeightDisplay(e.target.id);
-                // Preview no longer updates automatically while dragging
             });
         }
     });
@@ -110,14 +109,12 @@ function applyPreset(presetName) {
     const preset = PRESETS[presetName];
     if (!preset) return;
     
-    // Apply preset values
     ageSlider.value = preset.age;
     sizeSlider.value = preset.size;
     ratingSlider.value = preset.rating;
     qualitySlider.value = preset.quality;
     watchedSlider.value = preset.watched;
     
-    // Update displays
     updateWeightDisplay('age-weight');
     updateWeightDisplay('size-weight');
     updateWeightDisplay('rating-weight');
@@ -125,60 +122,6 @@ function applyPreset(presetName) {
     updateWeightDisplay('watched-weight');
     
     showToast(`Preset "${presetName}" applied`, 'info');
-}
-
-// Convert 1-10 slider values to percentages for backend
-function convertToPercentages(age, size, rating, quality, watched) {
-    const total = age + size + rating + quality + watched;
-    
-    let agePercent = (age / total) * 100;
-    let sizePercent = (size / total) * 100;
-    let ratingPercent = (rating / total) * 100;
-    let qualityPercent = (quality / total) * 100;
-    let watchedPercent = (watched / total) * 100;
-    
-    // Round to nearest integer
-    let rounded = {
-        age: Math.round(agePercent),
-        size: Math.round(sizePercent),
-        rating: Math.round(ratingPercent),
-        quality: Math.round(qualityPercent),
-        watched: Math.round(watchedPercent)
-    };
-    
-    // Fix rounding to ensure total = 100
-    let sum = rounded.age + rounded.size + rounded.rating + rounded.quality + rounded.watched;
-    let diff = 100 - sum;
-    if (diff !== 0) {
-        // Find the weight with the largest fractional part to adjust
-        const fractions = {
-            age: agePercent - Math.floor(agePercent),
-            size: sizePercent - Math.floor(sizePercent),
-            rating: ratingPercent - Math.floor(ratingPercent),
-            quality: qualityPercent - Math.floor(qualityPercent),
-            watched: watchedPercent - Math.floor(watchedPercent)
-        };
-        const maxKey = Object.keys(fractions).reduce((a, b) => fractions[a] > fractions[b] ? a : b);
-        rounded[maxKey] += diff;
-    }
-    
-    return rounded;
-}
-
-// Convert backend percentages back to 1-10 scale for display
-function convertFromPercentages(agePct, sizePct, ratingPct, qualityPct, watchedPct) {
-    // Scale percentages to 1-10 range
-    const scale = (val) => {
-        return Math.max(1, Math.min(10, Math.round((val / 100) * 10)));
-    };
-    
-    return {
-        age: scale(agePct),
-        size: scale(sizePct),
-        rating: scale(ratingPct),
-        quality: scale(qualityPct),
-        watched: scale(watchedPct)
-    };
 }
 
 // Manual preview update (only called when Refresh button is clicked)
@@ -189,7 +132,7 @@ async function updateLivePreview() {
     previewDiv.innerHTML = '<div class="text-center py-8" style="color: var(--text-secondary);">Updating preview...</div>';
     
     try {
-        // Get raw 1-10 values and convert to percentages for accurate scoring
+        // Get raw 1-10 values
         const ageRaw = parseInt(ageSlider.value);
         const sizeRaw = parseInt(sizeSlider.value);
         const ratingRaw = parseInt(ratingSlider.value);
@@ -198,6 +141,7 @@ async function updateLivePreview() {
         
         const totalRaw = ageRaw + sizeRaw + ratingRaw + qualityRaw + watchedRaw;
         
+        // Calculate percentages for preview API
         const weights = {
             age_weight: Math.round((ageRaw / totalRaw) * 100),
             size_weight: Math.round((sizeRaw / totalRaw) * 100),
@@ -223,7 +167,6 @@ async function updateLivePreview() {
             weights[largest.key] += diff;
         }
         
-        // Call preview endpoint
         const res = await fetch('/api/settings/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -260,7 +203,6 @@ function renderPreview(movie) {
         ? '<span class="badge" style="background: var(--success-bg); color: var(--success);">✓ Would queue</span>'
         : '<span class="badge" style="background: var(--danger-bg); color: var(--danger);">✗ Below threshold</span>';
     
-    // Build factor bars
     const factors = movie.factors || [];
     const factorHtml = factors.map(f => {
         const pct = (f.contribution * 100).toFixed(1);
@@ -588,29 +530,12 @@ async function loadWeights() {
         const res = await fetch('/api/settings/weights');
         const data = await res.json();
         
-        // Get percentages from backend
-        const percentages = {
-            age: data.age_weight || 25,
-            size: data.size_weight || 25,
-            rating: data.rating_weight || 15,
-            quality: data.quality_weight || 15,
-            watched: data.watched_weight || 10
-        };
-        
-        // Convert percentages back to 1-10 scale
-        const values = convertFromPercentages(
-            percentages.age,
-            percentages.size,
-            percentages.rating,
-            percentages.quality,
-            percentages.watched
-        );
-        
-        ageSlider.value = values.age;
-        sizeSlider.value = values.size;
-        ratingSlider.value = values.rating;
-        qualitySlider.value = values.quality;
-        watchedSlider.value = values.watched;
+        // Read raw values directly (1-10 scale)
+        ageSlider.value = data.age_raw || 5;
+        sizeSlider.value = data.size_raw || 5;
+        ratingSlider.value = data.rating_raw || 5;
+        qualitySlider.value = data.quality_raw || 5;
+        watchedSlider.value = data.watched_raw || 5;
         
         updateWeightDisplay('age-weight');
         updateWeightDisplay('size-weight');
@@ -627,25 +552,15 @@ async function loadWeights() {
 }
 
 async function saveWeights() {
-    // Get raw 1-10 values
-    const ageRaw = parseInt(ageSlider.value);
-    const sizeRaw = parseInt(sizeSlider.value);
-    const ratingRaw = parseInt(ratingSlider.value);
-    const qualityRaw = parseInt(qualitySlider.value);
-    const watchedRaw = parseInt(watchedSlider.value);
-    
-    // Convert to percentages
-    const percentages = convertToPercentages(ageRaw, sizeRaw, ratingRaw, qualityRaw, watchedRaw);
-    
+    // Get raw 1-10 values directly from sliders
     const payload = {
-        age_weight: percentages.age,
-        size_weight: percentages.size,
-        rating_weight: percentages.rating,
-        quality_weight: percentages.quality,
-        watched_weight: percentages.watched,
+        age_raw: parseInt(ageSlider.value),
+        size_raw: parseInt(sizeSlider.value),
+        rating_raw: parseInt(ratingSlider.value),
+        quality_raw: parseInt(qualitySlider.value),
+        watched_raw: parseInt(watchedSlider.value),
         age_max_days: parseInt(ageMaxDays.value),
-        size_max_gb: parseFloat(sizeMaxGb.value),
-        monitored_weight: 0
+        size_max_gb: parseFloat(sizeMaxGb.value)
     };
     
     try {

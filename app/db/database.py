@@ -235,6 +235,46 @@ def migrate_db():
             print(f"Migration applied: added {column} to scoring_weights")
         except Exception:
             pass  # Column already exists, safe to ignore
+    
+    # Migration: Set monitored_weight = 0 (Issue #2)
+    try:
+        cursor.execute("UPDATE scoring_weights SET monitored_weight = 0 WHERE id = 1")
+        print("Migration applied: set monitored_weight = 0")
+    except Exception:
+        pass  # Table may not exist yet
+
+    # Migration: Backfill any NULL raw values from existing percentages (Issue #1)
+    try:
+        # Check if raw columns exist and have NULL values
+        cursor.execute("SELECT age_raw, size_raw, rating_raw, quality_raw, watched_raw FROM scoring_weights WHERE id = 1")
+        row = cursor.fetchone()
+        if row:
+            updates = []
+            if row[0] is None:
+                # Calculate from percentage weight: raw = (percentage / total_percent) * 10
+                # Use default 5 if cannot calculate
+                updates.append("age_raw = 5")
+            if row[1] is None:
+                updates.append("size_raw = 5")
+            if row[2] is None:
+                updates.append("rating_raw = 5")
+            if row[3] is None:
+                updates.append("quality_raw = 5")
+            if row[4] is None:
+                updates.append("watched_raw = 5")
+            
+            if updates:
+                cursor.execute(f"UPDATE scoring_weights SET {', '.join(updates)} WHERE id = 1")
+                print(f"Migration applied: backfilled raw values - {', '.join(updates)}")
+    except Exception:
+        pass  # Columns may not exist yet
+
+    # Migration: Add index on scored_movies_cache.movie_id for faster cleanup (Issue #4)
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_scored_movies_cache_movie_id ON scored_movies_cache(movie_id)")
+        print("Migration applied: added index on scored_movies_cache.movie_id")
+    except Exception:
+        pass  # Table may not exist yet
 
     conn.commit()
     conn.close()

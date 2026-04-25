@@ -11,19 +11,13 @@ logger = get_logger()
 
 
 class ScoringWeightsInput(BaseModel):
-    age_weight: int
-    size_weight: int
-    rating_weight: int
-    quality_weight: int
-    monitored_weight: int
-    watched_weight: int
+    age_raw: int
+    size_raw: int
+    rating_raw: int
+    quality_raw: int
+    watched_raw: int
     age_max_days: int
     size_max_gb: int
-    age_raw: Optional[int] = 5
-    size_raw: Optional[int] = 5
-    rating_raw: Optional[int] = 5
-    quality_raw: Optional[int] = 5
-    watched_raw: Optional[int] = 5
 
 
 class SettingsInput(BaseModel):
@@ -39,7 +33,7 @@ class SettingsInput(BaseModel):
 
 @router.get("/settings/weights")
 async def get_scoring_weights():
-    """Get current scoring weights."""
+    """Get current scoring weights (raw 1-10 values only)."""
     conn = get_connection()
     try:
         weights = conn.execute("SELECT * FROM scoring_weights WHERE id = 1").fetchone()
@@ -48,46 +42,45 @@ async def get_scoring_weights():
 
     if not weights:
         return {
-            "age_weight": 25,
-            "size_weight": 25,
-            "rating_weight": 15,
-            "quality_weight": 15,
-            "monitored_weight": 10,
-            "watched_weight": 10,
-            "age_max_days": 365,
-            "size_max_gb": 100,
             "age_raw": 5,
             "size_raw": 5,
             "rating_raw": 5,
             "quality_raw": 5,
             "watched_raw": 5,
+            "age_max_days": 365,
+            "size_max_gb": 100,
         }
 
-    result = dict(weights)
-    # Ensure raw fields are included (they might be NULL in old installs)
-    if result.get("age_raw") is None:
-        result["age_raw"] = 5
-    if result.get("size_raw") is None:
-        result["size_raw"] = 5
-    if result.get("rating_raw") is None:
-        result["rating_raw"] = 5
-    if result.get("quality_raw") is None:
-        result["quality_raw"] = 5
-    if result.get("watched_raw") is None:
-        result["watched_raw"] = 5
-
-    return result
+    # Return only the fields the frontend actually uses
+    return {
+        "age_raw": weights["age_raw"] if weights["age_raw"] is not None else 5,
+        "size_raw": weights["size_raw"] if weights["size_raw"] is not None else 5,
+        "rating_raw": weights["rating_raw"] if weights["rating_raw"] is not None else 5,
+        "quality_raw": weights["quality_raw"] if weights["quality_raw"] is not None else 5,
+        "watched_raw": weights["watched_raw"] if weights["watched_raw"] is not None else 5,
+        "age_max_days": weights["age_max_days"],
+        "size_max_gb": weights["size_max_gb"],
+    }
 
 
 @router.post("/settings/weights")
 async def save_scoring_weights(data: ScoringWeightsInput):
-    """Save scoring weights."""
-    total = data.age_weight + data.size_weight + data.rating_weight + data.quality_weight + data.monitored_weight + data.watched_weight
-    if total != 100:
-        raise HTTPException(status_code=400, detail=f"Weights must sum to 100, got {total}")
-
-    if not all(0 <= w <= 100 for w in [data.age_weight, data.size_weight, data.rating_weight, data.quality_weight, data.monitored_weight, data.watched_weight]):
-        raise HTTPException(status_code=400, detail="Each weight must be between 0 and 100")
+    """
+    Save scoring weights.
+    Raw values (1-10) are received from frontend.
+    Percentages are calculated and stored in original columns for scoring engine.
+    monitored_weight is permanently set to 0.
+    """
+    # Validate raw values are 1-10
+    for name, val in [
+        ("age_raw", data.age_raw),
+        ("size_raw", data.size_raw),
+        ("rating_raw", data.rating_raw),
+        ("quality_raw", data.quality_raw),
+        ("watched_raw", data.watched_raw),
+    ]:
+        if val < 1 or val > 10:
+            raise HTTPException(status_code=400, detail=f"{name} must be between 1 and 10")
 
     if data.age_max_days < 1 or data.age_max_days > 3650:
         raise HTTPException(status_code=400, detail="Age max days must be between 1 and 3650")
@@ -95,23 +88,62 @@ async def save_scoring_weights(data: ScoringWeightsInput):
     if data.size_max_gb < 1 or data.size_max_gb > 10000:
         raise HTTPException(status_code=400, detail="Size max GB must be between 1 and 10000")
 
+    # Calculate percentages from raw values (sum = 100)
+    total_raw = data.age_raw + data.size_raw + data.rating_raw + data.quality_raw + data.watched_raw
+    
+    age_percent = (data.age_raw / total_raw) * 100
+    size_percent = (data.size_raw / total_raw) * 100
+    rating_percent = (data.rating_raw / total_raw) * 100
+    quality_percent = (data.quality_raw / total_raw) * 100
+    watched_percent = (data.watched_raw / total_raw) * 100
+    
+    # Round to nearest integer and fix any rounding errors
+    age_weight = round(age_percent)
+    size_weight = round(size_percent)
+    rating_weight = round(rating_percent)
+    quality_weight = round(quality_percent)
+    watched_weight = round(watched_percent)
+    
+    # Ensure sum is exactly 100
+    weight_sum = age_weight + size_weight + rating_weight + quality_weight + watched_weight
+    if weight_sum != 100:
+        # Find the largest weight and adjust
+        weights = [
+            ("age_weight", age_weight),
+            ("size_weight", size_weight),
+            ("rating_weight", rating_weight),
+            ("quality_weight", quality_weight),
+            ("watched_weight", watched_weight),
+        ]
+        largest = max(weights, key=lambda x: x[1])
+        diff = 100 - weight_sum
+        if largest[0] == "age_weight":
+            age_weight += diff
+        elif largest[0] == "size_weight":
+            size_weight += diff
+        elif largest[0] == "rating_weight":
+            rating_weight += diff
+        elif largest[0] == "quality_weight":
+            quality_weight += diff
+        else:
+            watched_weight += diff
+
     conn = get_connection()
     try:
         conn.execute(
             """UPDATE scoring_weights SET
-                age_weight = ?, size_weight = ?, rating_weight = ?,
-                quality_weight = ?, monitored_weight = ?, watched_weight = ?,
-                age_max_days = ?, size_max_gb = ?,
                 age_raw = ?, size_raw = ?, rating_raw = ?, quality_raw = ?, watched_raw = ?,
+                age_weight = ?, size_weight = ?, rating_weight = ?, quality_weight = ?, watched_weight = ?,
+                monitored_weight = 0,
+                age_max_days = ?, size_max_gb = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = 1""",
-            (data.age_weight, data.size_weight, data.rating_weight,
-            data.quality_weight, data.monitored_weight, data.watched_weight,
-            data.age_max_days, data.size_max_gb,
-            data.age_raw, data.size_raw, data.rating_raw, data.quality_raw, data.watched_raw)
+            (data.age_raw, data.size_raw, data.rating_raw, data.quality_raw, data.watched_raw,
+             age_weight, size_weight, rating_weight, quality_weight, watched_weight,
+             data.age_max_days, data.size_max_gb)
         )
         conn.commit()
-        logger.info("Scoring weights saved")
+        logger.info(f"Scoring weights saved (raw: age={data.age_raw}, size={data.size_raw}, rating={data.rating_raw}, quality={data.quality_raw}, watched={data.watched_raw})")
         return {"success": True, "message": "Weights saved"}
     except Exception as e:
         logger.error(f"Failed to save weights: {e}")
@@ -198,6 +230,7 @@ async def save_settings(data: SettingsInput):
     finally:
         conn.close()
 
+
 @router.post("/settings/recalibrate")
 async def recalibrate_advanced_settings():
     """
@@ -224,12 +257,10 @@ async def recalibrate_advanced_settings():
 
     conn = get_connection()
     try:
-        # Get Radarr config
         radarr_config = conn.execute("SELECT url, api_key FROM radarr_config WHERE id = 1").fetchone()
         if not radarr_config or not radarr_config["url"] or not radarr_config["api_key"]:
             raise HTTPException(status_code=400, detail="Radarr not configured")
 
-        # Fetch movies
         client = RadarrClient(radarr_config["url"], radarr_config["api_key"])
         radarr_ok, _ = await client.test_connection()
         if not radarr_ok:
@@ -237,7 +268,6 @@ async def recalibrate_advanced_settings():
 
         movies = await client.get_movies()
 
-        # Collect ages and sizes from movies with files
         ages = []
         sizes = []
 
@@ -246,12 +276,10 @@ async def recalibrate_advanced_settings():
             if not movie_file:
                 continue
 
-            # Size in GB
             size_gb = movie_file.get("size", 0) / (1024 ** 3)
             if size_gb > 0:
                 sizes.append(size_gb)
 
-            # Age in days
             added_str = movie_file.get("dateAdded") or movie.get("added")
             if added_str:
                 try:
@@ -268,15 +296,12 @@ async def recalibrate_advanced_settings():
         if not ages or not sizes:
             raise HTTPException(status_code=400, detail="Not enough movie data to calibrate")
 
-        # Calculate percentiles
         age_max_days = int(percentile(ages, 90) * 1.5)
         size_max_gb = float(percentile(sizes, 95))
 
-        # Ensure reasonable bounds
         age_max_days = max(30, min(age_max_days, 3650))
         size_max_gb = max(5, min(size_max_gb, 1000))
 
-        # Update scoring_weights
         conn.execute(
             """UPDATE scoring_weights SET
                 age_max_days = ?, size_max_gb = ?, updated_at = CURRENT_TIMESTAMP
@@ -300,6 +325,7 @@ async def recalibrate_advanced_settings():
     finally:
         conn.close()
 
+
 @router.post("/settings/preview")
 async def get_score_preview(weights_data: dict):
     """
@@ -313,16 +339,13 @@ async def get_score_preview(weights_data: dict):
 
     conn = get_connection()
     try:
-        # Get Radarr config
         radarr_config = conn.execute("SELECT url, api_key FROM radarr_config WHERE id = 1").fetchone()
         if not radarr_config or not radarr_config["url"] or not radarr_config["api_key"]:
             return {"movie": None, "error": "Radarr not configured"}
 
-        # Get Plex config (for watched status)
         plex_config = conn.execute("SELECT enabled, url, api_key FROM plex_config WHERE id = 1").fetchone()
         plex_enabled = bool(plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"])
 
-        # Fetch movies from Radarr
         client = RadarrClient(radarr_config["url"], radarr_config["api_key"])
         radarr_ok, _ = await client.test_connection()
         if not radarr_ok:
@@ -330,7 +353,6 @@ async def get_score_preview(weights_data: dict):
 
         movies = await client.get_movies()
 
-        # Find first movie with a file (for preview)
         preview_movie = None
         for movie in movies:
             if movie.get("movieFile"):
@@ -340,7 +362,6 @@ async def get_score_preview(weights_data: dict):
         if not preview_movie:
             return {"movie": None, "error": "No movies with files found"}
 
-        # Fetch Plex play counts if enabled
         plex_play_counts = None
         if plex_enabled:
             from app.core.plex_client import PlexClient
@@ -349,11 +370,8 @@ async def get_score_preview(weights_data: dict):
             if ok:
                 plex_play_counts = await plex_client.get_play_counts_by_tmdb()
 
-        # Create a temporary scoring engine with the provided weights
-        # We need to temporarily override the weights in the engine
         engine = ScoringEngine(conn)
         
-        # Save original weights
         original_weights = {
             "age_weight": engine.age_weight,
             "size_weight": engine.size_weight,
@@ -365,7 +383,6 @@ async def get_score_preview(weights_data: dict):
         }
         
         try:
-            # Apply preview weights
             engine.age_weight = weights_data.get("age_weight", 25) / 100.0
             engine.size_weight = weights_data.get("size_weight", 25) / 100.0
             engine.rating_weight = weights_data.get("rating_weight", 15) / 100.0
@@ -373,9 +390,8 @@ async def get_score_preview(weights_data: dict):
             engine.watched_weight = weights_data.get("watched_weight", 10) / 100.0
             engine.age_max_days = weights_data.get("age_max_days", 365)
             engine.size_max_gb = weights_data.get("size_max_gb", 100)
-            engine.monitored_weight = 0.0  # Always disabled
+            engine.monitored_weight = 0.0
             
-            # Calculate score for preview movie
             result = engine.calculate_movie_score(preview_movie, plex_play_counts, plex_enabled)
             
             if not result.get("eligible"):
@@ -392,7 +408,6 @@ async def get_score_preview(weights_data: dict):
                 }
             }
         finally:
-            # Restore original weights
             engine.age_weight = original_weights["age_weight"]
             engine.size_weight = original_weights["size_weight"]
             engine.rating_weight = original_weights["rating_weight"]
