@@ -1,8 +1,13 @@
 import sqlite3
 import os
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 DB_PATH = Path("/app/config/cullarr.db")
+
+# Global executor for running synchronous DB calls in a background thread
+db_executor = ThreadPoolExecutor(max_workers=1)
 
 def get_connection():
     """Get a database connection with WAL mode enabled."""
@@ -12,6 +17,41 @@ def get_connection():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+async def run_async(func, *args):
+    """Run a synchronous database function in a background thread."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(db_executor, func, *args)
+
+def prune_stale_data(live_movie_ids: list):
+    """
+    Remove records from the local database for movies that no longer exist in Radarr.
+    This solves Issue #4 (Orphaned Data).
+    """
+    if not live_movie_ids:
+        return 0
+    
+    conn = get_connection()
+    try:
+        # Create a placeholder string for the IN clause (?,?,?)
+        placeholders = ','.join(['?'] * len(live_movie_ids))
+        
+        # 1. Clean up scored movies cache
+        c1 = conn.execute(
+            f"DELETE FROM scored_movies_cache WHERE movie_id NOT IN ({placeholders})", 
+            live_movie_ids
+        ).rowcount
+        
+        # 2. Clean up scheduled deletions (only if not already deleted)
+        c2 = conn.execute(
+            f"DELETE FROM scheduled_deletions WHERE movie_id NOT IN ({placeholders})", 
+            live_movie_ids
+        ).rowcount
+        
+        conn.commit()
+        return c1 + c2
+    finally:
+        conn.close()
 
 def init_db():
     """Create all tables if they don't exist."""
