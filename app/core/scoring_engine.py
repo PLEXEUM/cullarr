@@ -237,6 +237,7 @@ class ScoringEngine:
             "age_days": age_days,
             "tmdb_rating": tmdb_rating,
             "quality": current_quality,
+            "monitored": True,
             "tmdb_id": movie.get("tmdbId") or movie.get("tmdb_id"),
             "factors": factors,
         }
