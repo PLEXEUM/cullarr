@@ -1,5 +1,4 @@
 import re
-from croniter import croniter
 
 # Allowed characters for user inputs
 ALLOWED_PATTERN = re.compile(r'^[a-zA-Z0-9/\-_.:]+$')
@@ -33,39 +32,16 @@ def validate_url(url: str) -> tuple[bool, str]:
 
     return True, ""
 
-def validate_cron(cron_str: str) -> bool:
-    """
-    Validate that a cron expression is syntactically correct and executable.
-    Addresses Issue #7.
-    """
-    if not cron_str:
-        return False
-        
-    try:
-        # Check if the expression is valid (Standard 5-field cron)
-        return croniter.is_valid(cron_str)
-    except Exception:
-        return False
+def validate_cron(expression: str) -> tuple[bool, str]:
+    """Basic cron expression validator (5 fields)."""
+    if not expression:
+        return False, "Cron expression cannot be empty"
 
-# --- Restored Helper Functions to Fix Crashes ---
+    parts = expression.strip().split()
+    if len(parts) != 5:
+        return False, "Cron expression must have exactly 5 fields (e.g. 0 2 * * *)"
 
-def validate_plex_label(label: str) -> tuple[bool, str]:
-    """Validate that a Plex label contains only allowed characters."""
-    if not label:
-        return False, "Label cannot be empty"
-    if not ALLOWED_PATTERN.match(label):
-        return False, "Label contains invalid characters"
     return True, ""
-
-def validate_radarr_label(label: str) -> tuple[bool, str]:
-    """Validate that a Radarr label contains only allowed characters."""
-    if not label:
-        return False, "Label cannot be empty"
-    if not ALLOWED_PATTERN.match(label):
-        return False, "Label contains invalid characters"
-    return True, ""
-
-# --- End of Restored Functions ---
 
 def validate_batch_size(value: int) -> tuple[bool, str]:
     """Validate batch size is between 1 and 20 (no unlimited/0)."""
@@ -89,4 +65,12 @@ def validate_max_queued(value: int) -> tuple[bool, str]:
     """Validate max queued deletions is between 1 and 500."""
     if value < 1 or value > 500:
         return False, "Max queued deletions must be between 1 and 500"
+    return True, ""
+
+def validate_plex_label(label: str) -> tuple[bool, str]:
+    """Validate Plex label length (max 64 characters)."""
+    if not label:
+        return True, ""  # Empty is allowed (no label)
+    if len(label) > 64:
+        return False, "Plex label must be 64 characters or less"
     return True, ""

@@ -3,7 +3,6 @@ from pydantic import BaseModel
 from typing import Optional
 import asyncio
 import uuid
-import hashlib
 from app.db.database import get_connection
 from app.core.run_engine import run_score_cycle, run_cull_cycle
 from app.core.scheduler import get_next_score_run, get_next_cull_run
@@ -227,13 +226,8 @@ async def trigger_cull_run(dry_run: bool = False, background_tasks: BackgroundTa
 
 
 @router.get("/run/status")
-async def status():
-    """Get current engine status with state hashing for UI sync (Issue #8)."""
-    
-    # Issue #8: Hash the local active run state directly
-    state_string = f"{_active_run['is_running']}-{_active_run['current']}-{_active_run['run_id']}"
-    state_hash = hashlib.md5(state_string.encode()).hexdigest()
-    
+async def get_run_status():
+    """Get current run status including dry run results if available."""
     return {
         "is_running": _active_run["is_running"],
         "run_id": _active_run["run_id"],
@@ -244,7 +238,6 @@ async def status():
         "cancelled": _active_run["cancelled"],
         "dry_run": _active_run["dry_run"],
         "dry_run_results": _active_run["dry_run_results"],
-        "state_hash": state_hash
     }
 
 

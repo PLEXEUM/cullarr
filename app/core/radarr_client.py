@@ -7,6 +7,7 @@ from app.utils.redactor import redact
 
 logger = get_logger()
 
+
 class RadarrClient:
     def __init__(self, base_url: str, api_key: str):
         self.base_url = base_url.rstrip("/")
@@ -32,31 +33,33 @@ class RadarrClient:
                 logger.warning(f"Radarr API error (attempt {attempt}/3): {e.response.status_code}")
             except httpx.RequestError as e:
                 last_error = e
-                logger.warning(f"Radarr Request error (attempt {attempt}/3): {e}")
-            
-            await asyncio.sleep(1)
-        
-        raise last_error
+                logger.warning(f"Radarr connection error (attempt {attempt}/3): {redact(str(e))}")
 
-    async def get_all_movie_ids(self) -> list:
-        """
-        Fetch only movie IDs from Radarr. 
-        Optimized for syncing and pruning stale data.
-        """
-        data = await self._request("GET", "movie")
-        if isinstance(data, list):
-            return [m.get("id") for m in data if m.get("id")]
-        return []
+            if attempt < 3:
+                wait = 2 ** attempt
+                await asyncio.sleep(wait)
 
-    async def get_all_movies(self) -> list:
-        """Fetch all movies from Radarr (Detailed)."""
+        raise ConnectionError(f"Radarr API unreachable after 3 attempts")
+
+    async def test_connection(self) -> tuple[bool, str]:
+        """Test connection to Radarr."""
+        try:
+            await self._request("GET", "system/status")
+            return True, "Connection successful"
+        except Exception as e:
+            return False, f"Connection failed: {redact(str(e))}"
+
+    async def get_movies(self) -> list:
+        """Fetch all movies from Radarr."""
         logger.info("Fetching all movies from Radarr...")
         data = await self._request("GET", "movie")
 
+        # Radarr /api/v3/movie always returns a flat list — no pagination
         if isinstance(data, list):
             logger.info(f"Fetched {len(data)} movies total")
             return data
 
+        # Unexpected response shape — log and return empty
         logger.warning(f"Unexpected response shape from Radarr /movie: {type(data)}")
         return []
 
@@ -78,15 +81,8 @@ class RadarrClient:
 
             await self._request("DELETE", f"moviefile/{file_id}", timeout=120)
             logger.info(f"Deleted movie file (ID: {file_id}) for movie {movie_id}")
-            return {"success": True, "message": "File deleted"}
-        except Exception as e:
-            logger.error(f"Failed to delete movie file for {movie_id}: {e}")
-            return {"success": False, "message": str(e)}
+            return {"success": True, "message": f"Deleted file ID: {file_id}"}
 
-    async def test_connection(self) -> tuple[bool, str]:
-        """Test connection to Radarr."""
-        try:
-            await self._request("GET", "system/status", timeout=10)
-            return True, "Successfully connected to Radarr"
         except Exception as e:
-            return False, f"Connection failed: {str(e)}"
+            logger.error(f"Failed to delete movie file: {e}")
+            return {"success": False, "message": str(e)}

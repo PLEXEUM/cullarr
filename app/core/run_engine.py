@@ -179,82 +179,157 @@ def _queue_entries_for_movie(movie: dict, scheduled_date: str) -> list:
     return entries
 
 
-async def run_score_cycle(dry_run: bool = False):
-    """Identify movies for deletion and update scores."""
-    # Ensure only one run happens at a time
-    if not await acquire_run_lock("score"):
+async def run_score_cycle():
+    """Score all movies and add top N to scheduled deletions queue."""
+    lock_acquired = await acquire_run_lock("score")
+    if not lock_acquired:
+        logger.info("Score run skipped - another run in progress")
         return
 
     try:
-        from app.db.database import get_connection, prune_stale_data, run_async
-        
-        # 1. Initialize Clients
         conn = get_connection()
-        radarr_config = conn.execute("SELECT url, api_key FROM radarr_config WHERE id = 1").fetchone()
-        plex_config = conn.execute("SELECT url, api_key, enabled FROM plex_config WHERE id = 1").fetchone()
-        conn.close()
 
-        if not radarr_config or not radarr_config["url"]:
-            logger.error("Radarr not configured, skipping score cycle")
+        # Load configs
+        radarr_config = conn.execute("SELECT * FROM radarr_config WHERE id = 1").fetchone()
+        plex_config = conn.execute("SELECT * FROM plex_config WHERE id = 1").fetchone()
+        settings = conn.execute("SELECT * FROM settings WHERE id = 1").fetchone()
+
+        if not radarr_config or not radarr_config["url"] or not radarr_config["api_key"]:
+            logger.error("Radarr not configured, cannot run score cycle")
             return
 
-        radarr = RadarrClient(radarr_config["url"], radarr_config["api_key"])
-        
-        # --- SYNC STEP: Prune orphaned data ---
-        logger.info("Starting library sync to prune orphaned data...")
-        live_ids = await radarr.get_all_movie_ids()
-        if live_ids:
-            # Run the database cleanup in a background thread
-            pruned_count = await run_async(prune_stale_data, live_ids)
-            if pruned_count > 0:
-                logger.info(f"Pruned {pruned_count} orphaned records from database")
-        # --------------------------------------
-
-        # 2. Fetch Movies and Plex Data
-        movies = await radarr.get_all_movies()
-        if not movies:
-            logger.info("No movies found in Radarr")
+        # Check if Radarr is reachable
+        radarr_client = RadarrClient(radarr_config["url"], radarr_config["api_key"])
+        radarr_ok, radarr_msg = await radarr_client.test_connection()
+        if not radarr_ok:
+            logger.error(f"Radarr connection failed: {radarr_msg}")
             return
 
-        plex_enabled = bool(plex_config["enabled"]) if plex_config else False
-        plex_play_counts = {}
-        if plex_enabled and plex_config["url"] and plex_config["api_key"]:
+        # Get Plex client and data if enabled
+        plex_client = None
+        plex_play_counts = None
+        plex_library_map = {}
+        plex_enabled = bool(
+            plex_config and plex_config["enabled"] and
+            plex_config["url"] and plex_config["api_key"]
+        )
+
+        if plex_enabled:
+            plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
+            plex_ok, plex_msg = await plex_client.test_connection()
+            if plex_ok:
+                plex_library_map, plex_play_counts = await asyncio.gather(
+                    _build_plex_library_map(plex_client),
+                    plex_client.get_play_counts_by_tmdb()
+                )
+                logger.info(f"Fetched Plex data: {len(plex_play_counts)} TMDb play counts")
+            else:
+                logger.warning(f"Plex connection failed: {plex_msg}, continuing without watch data")
+                plex_enabled = False
+
+        # Fetch movies from Radarr
+        movies = await radarr_client.get_movies()
+
+        # Score movies (collection grouping handled inside engine if enabled)
+        engine = ScoringEngine(conn)
+        scored_movies = engine.get_scored_movies(movies, plex_play_counts, plex_enabled)
+
+        logger.info(f"Scored {len(scored_movies)} entries ({len(movies)} total movies)")
+
+        # Get current scheduled deletions count
+        current_queue = conn.execute(
+            "SELECT COUNT(DISTINCT collection_name) as coll_count, "
+            "COUNT(CASE WHEN collection_name IS NULL THEN 1 END) as single_count "
+            "FROM scheduled_deletions WHERE status = 'scheduled'"
+        ).fetchone()
+
+        # Count slots used: each unique collection = 1 slot, each individual = 1 slot
+        used_slots = (
+            (current_queue["coll_count"] if current_queue else 0) +
+            (current_queue["single_count"] if current_queue else 0)
+        )
+        max_queued = settings["max_queued"] if settings else 20
+        available_slots = max_queued - used_slots
+
+        logger.info(f"Queue status: {used_slots}/{max_queued} slots used, {available_slots} available")
+
+        if available_slots <= 0:
+            logger.info("Queue full, no new movies added")
+            return
+
+        # Filter already-queued movie IDs
+        scheduled_ids = conn.execute(
+            "SELECT movie_id FROM scheduled_deletions"
+        ).fetchall()
+        scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
+
+        # Get threshold from settings
+        threshold = settings["min_score_threshold"] if settings else 0
+
+        # Filter out entries where any member is already queued AND apply threshold
+        candidates = []
+        for entry in scored_movies:
+            # Check threshold first (using normalized_score which is raw × 100)
+            if entry.get("normalized_score", 0) <= threshold:
+                continue
+                
+            if entry.get("is_collection"):
+                member_ids = {m["movie_id"] for m in entry.get("movies", [])}
+                if not member_ids.intersection(scheduled_id_set):
+                    candidates.append(entry)
+            else:
+                if entry["movie_id"] not in scheduled_id_set:
+                    candidates.append(entry)
+
+        to_add = candidates[:available_slots]
+
+        # Add to scheduled deletions
+        added = []
+        for movie in to_add:
+            scheduled_date = datetime.now() + timedelta(
+                days=settings["delete_after_days"] if settings else 7
+            )
+            entries = _queue_entries_for_movie(movie, scheduled_date.isoformat())
+
             try:
-                plex = PlexClient(plex_config["url"], plex_config["api_key"])
-                plex_play_counts = await plex.get_all_library_play_counts()
+                for entry in entries:
+                    conn.execute(
+                        """INSERT OR IGNORE INTO scheduled_deletions
+                        (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating, size_gb, quality,
+                         monitored, score, score_factors, scheduled_date, status, collection_name)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)""",
+                        entry
+                    )
+
+                label = movie.get("collection_title") or movie["movie_title"]
+                count = len(entries)
+                logger.info(
+                    f"Added to queue: {label} "
+                    f"({'collection: ' + str(count) + ' movies' if movie.get('is_collection') else 'score: ' + str(movie['normalized_score']):.1f})"
+                )
+                added.append(movie)
             except Exception as e:
-                logger.error(f"Failed to fetch Plex watch history: {e}")
+                label = movie.get("collection_title") or movie.get("movie_title")
+                logger.error(f"Failed to add {label} to queue: {e}")
 
-        # 3. Calculate Scores
-        engine = ScoringEngine()
-        scored_list = engine.score_library(movies, plex_play_counts, plex_enabled)
+        conn.commit()
 
-        # 4. Save Results to Cache asynchronously
-        def save_to_cache(results):
-            db_conn = get_connection()
-            try:
-                db_conn.execute("DELETE FROM scored_movies_cache")
-                for m in results:
-                    db_conn.execute("""
-                        INSERT INTO scored_movies_cache 
-                        (movie_id, movie_title, movie_year, size_gb, score, factors, 
-                         collection_name, collection_id, is_collection)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        m["movie_id"], m["movie_title"], m["movie_year"], m["size_gb"],
-                        m["score"], json.dumps(m["factors"]), m.get("collection"),
-                        m.get("collection_id"), m.get("is_collection", False)
-                    ))
-                db_conn.commit()
-            finally:
-                db_conn.close()
+        # Apply Plex labels to all newly queued movies in one pass
+        if plex_enabled and plex_client and plex_config["label_text"] and added:
+            logger.info(f"Applying Plex labels to {len(added)} queue entries")
+            await _apply_plex_labels(
+                plex_client,
+                plex_config["label_text"],
+                added,
+                plex_library_map
+            )
 
-        await run_async(save_to_cache, scored_list)
-        logger.info(f"Score cycle complete. {len(scored_list)} movies processed.")
+        logger.info(f"Score cycle complete: added {len(added)} queue entries")
 
     except Exception as e:
         logger.error(f"Score cycle failed: {e}")
     finally:
+        conn.close()
         await release_run_lock()
 
 
