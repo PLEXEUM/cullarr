@@ -170,12 +170,12 @@ async function loadScoreQueue(forceRefresh = false) {
             return;
         }
 
-        tbody.innerHTML = data.items.map(movie => {
+        tbody.innerHTML = paginatedItems.map(movie => {
             let scoreClass = 'score-high';
             if (movie.normalized_score < 60) scoreClass = 'score-medium';
             if (movie.normalized_score < 30) scoreClass = 'score-low';
             const tmdbRating = movie.tmdb_rating ? movie.tmdb_rating.toFixed(1) : 'N/A';
-    
+
             const playCount = movie.plex_play_count || 0;
             let watchedDisplay = '';
             if (movie.plex_play_count === null || movie.plex_play_count === undefined) {
@@ -183,21 +183,26 @@ async function loadScoreQueue(forceRefresh = false) {
             } else {
                 watchedDisplay = `<span style="color: var(--text-secondary);">${playCount}</span>`;
             }
-    
+
+            const safeTitle = escapeHtml(movie.movie_title || 'Unknown');
+            const factorsJson = JSON.stringify(movie.factors || []).replace(/'/g, "&#39;");
+
             return `
                 <tr style="border-bottom: 1px solid var(--border-color);">
                     <td class="px-4 py-2"><span class="badge ${scoreClass}">${movie.normalized_score.toFixed(1)}</span></td>
-                    <td class="px-4 py-2 font-medium">${escapeHtml(movie.movie_title)}</td>
+                    <td class="px-4 py-2 font-medium">${safeTitle}</td>
                     <td class="px-4 py-2" style="color: var(--text-secondary)">${movie.movie_year || 'N/A'}</td>
-                    <td class="px-4 py-2" style="color: var(--text-secondary)">${movie.age_days}d</td>
-                    <td class="px-4 py-2">${movie.size_gb.toFixed(1)} GB</td>
-                    <td class="px-4 py-2"><span class="star">★</span> ${tmdbRating}</td>
-                    <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(movie.quality) || 'Unknown'}</td>
-                    <td class="px-4 py-2">${watchedDisplay}</td>
+                    <td class="px-4 py-2" style="color: var(--text-secondary)">${movie.age_days}d</span></td>
+                    <td class="px-4 py-2">${movie.size_gb.toFixed(1)} GB</span></td>
+                    <td class="px-4 py-2"><span class="star">★</span> ${tmdbRating}</span></td>
+                    <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(movie.quality) || 'Unknown'}</span></td>
+                    <td class="px-4 py-2">${watchedDisplay}</span></td>
                     <td class="px-4 py-2">
-                        <button onclick="showScoreDetails(${JSON.stringify(escapeHtml(movie.movie_title))}, ${movie.normalized_score}, ${JSON.stringify(movie.factors)})"
-                            class="btn-sm btn-outline">🔍 Details</button>
-                    </td>
+                        <button data-title="${safeTitle}" 
+                                data-score="${movie.normalized_score}" 
+                                data-factors='${factorsJson}'
+                                class="btn-sm btn-outline details-btn">🔍 Details</button>
+                    </span>
                 </tr>
             `;
         }).join('');
@@ -681,6 +686,30 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Event delegation for details buttons (handles dynamically added rows)
+    const scoreQueueTable = document.getElementById('score-queue-table');
+    if (scoreQueueTable) {
+        scoreQueueTable.addEventListener('click', (e) => {
+            const btn = e.target.closest('.details-btn');
+            if (btn) {
+                e.preventDefault();
+                const title = btn.getAttribute('data-title');
+                const score = parseFloat(btn.getAttribute('data-score'));
+                let factors = [];
+                try {
+                    const factorsAttr = btn.getAttribute('data-factors');
+                    if (factorsAttr && factorsAttr !== 'undefined') {
+                        factors = JSON.parse(factorsAttr);
+                    }
+                } catch (err) {
+                    console.error('Failed to parse factors:', err);
+                    factors = [];
+                }
+                showScoreDetails(title, score, factors);
+            }
+        });
+    }
+    
     // Auto-refresh every 30 seconds — queue status and deletions only, not score queue
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(() => {
