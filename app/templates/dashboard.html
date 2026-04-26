@@ -189,8 +189,9 @@
                 <h2 class="card-header-title">Score Queue</h2>
                 <p class="card-header-subtitle">Next in line for deletion</p>
             </div>
-            <div class="ml-auto flex gap-2">
-                <select id="per-page-select" class="text-sm rounded-lg px-2 py-1" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary);">
+            <div class="ml-auto flex gap-2 items-center">
+                <input type="text" id="score-queue-search" placeholder="🔍 Search movies..." class="text-sm rounded-lg px-3 py-1.5" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); width: 180px;">
+                <select id="per-page-select" class="text-sm rounded-lg px-2 py-1.5" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary);">
                     <option value="10">10 per page</option>
                     <option value="20" selected>20 per page</option>
                     <option value="50">50 per page</option>
@@ -200,7 +201,7 @@
             </div>
         </div>
         <div class="overflow-x-auto">
-            <table class="w-full">
+            <table class="w-full score-queue-table">
                 <thead>
                     <tr>
                         <th class="sortable" data-sort="score" style="cursor: pointer;">Score <span class="sort-icon">↕</span></th>

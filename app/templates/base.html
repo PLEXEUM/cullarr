@@ -248,6 +248,19 @@
             transform: translateY(-4px);
             box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.3);
         }
+
+        /* Score queue table - fixed column widths and text wrapping */
+        .score-queue-table th:nth-child(2),
+        .score-queue-table td:nth-child(2) {
+            max-width: 250px;
+            word-wrap: break-word;
+            white-space: normal;
+        }
+        
+        .score-queue-table td {
+            vertical-align: top;
+            padding: 0.75rem 0.5rem;
+        }  
     </style>
 </head>
 <body class="min-h-screen">

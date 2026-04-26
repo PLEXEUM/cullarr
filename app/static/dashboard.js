@@ -4,6 +4,8 @@ let scoreQueuePage = 1;
 let scoreQueuePerPage = 20;
 let scoreQueueSortBy = 'score';
 let scoreQueueSortOrder = 'desc';
+let scoreQueueSearch = '';
+let scoreQueueFullData = []; 
 let refreshInterval = null;
 let runStatusInterval = null;
 
@@ -135,13 +137,72 @@ async function loadScoreQueue(forceRefresh = false) {
     }
     
     try {
-        const url = `/api/dashboard/score-queue?page=${scoreQueuePage}&per_page=${scoreQueuePerPage}&sort_by=${scoreQueueSortBy}&sort_order=${scoreQueueSortOrder}${forceRefresh ? '&refresh=true' : ''}`;
+        // Always fetch fresh data when forceRefresh is true, otherwise use cached
+        let url = `/api/dashboard/score-queue?page=1&per_page=10000&sort_by=${scoreQueueSortBy}&sort_order=${scoreQueueSortOrder}`;
+        if (forceRefresh) {
+            url += '&refresh=true';
+        }
+        
         const res = await fetch(url);
         const data = await res.json();
+        
+        // Store full data for filtering (if not a forced refresh and we already have data, skip)
+        if (forceRefresh || scoreQueueFullData.length === 0) {
+            scoreQueueFullData = data.items || [];
+        }
+        
+        // Apply search filter to full dataset
+        let filteredData = scoreQueueFullData;
+        if (scoreQueueSearch && scoreQueueSearch.trim() !== '') {
+            const searchTerm = scoreQueueSearch.toLowerCase().trim();
+            filteredData = scoreQueueFullData.filter(movie => {
+                const title = (movie.movie_title || '').toLowerCase();
+                const collectionName = (movie.collection_name || '').toLowerCase();
+                // Search collection member titles if it's a collection
+                let memberMatches = false;
+                if (movie.is_collection && movie.movies) {
+                    memberMatches = movie.movies.some(m => (m.movie_title || '').toLowerCase().includes(searchTerm));
+                }
+                return title.includes(searchTerm) || collectionName.includes(searchTerm) || memberMatches;
+            });
+        }
+        
+        // Apply sorting (client-side since we have full data)
+        const sortMapping = {
+            'score': 'normalized_score',
+            'title': 'movie_title',
+            'year': 'movie_year',
+            'age': 'age_days',
+            'size': 'size_gb',
+            'rating': 'tmdb_rating',
+            'quality': 'quality',
+            'watched': 'plex_play_count'
+        };
+        const sortField = sortMapping[scoreQueueSortBy] || 'normalized_score';
+        const sortOrderMultiplier = scoreQueueSortOrder === 'desc' ? -1 : 1;
+        
+        filteredData.sort((a, b) => {
+            let aVal = a[sortField] || 0;
+            let bVal = b[sortField] || 0;
+            if (typeof aVal === 'string') {
+                aVal = aVal.toLowerCase();
+                bVal = bVal.toLowerCase();
+            }
+            if (aVal < bVal) return -1 * sortOrderMultiplier;
+            if (aVal > bVal) return 1 * sortOrderMultiplier;
+            return 0;
+        });
+        
+        // Paginate filtered data
+        const totalFiltered = filteredData.length;
+        const totalPages = Math.ceil(totalFiltered / scoreQueuePerPage);
+        const startIndex = (scoreQueuePage - 1) * scoreQueuePerPage;
+        const paginatedItems = filteredData.slice(startIndex, startIndex + scoreQueuePerPage);
+        
         const tbody = document.getElementById('score-queue-table');
 
-        if (!data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No movies found. Run a score cycle or configure Radarr first.</td></tr>';
+        if (paginatedItems.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No movies found. Run a score cycle or configure Radarr first.顶铺换行';
             document.getElementById('score-queue-pagination').innerHTML = '';
             if (forceRefresh) {
                 showToast('Score queue refreshed - no movies found', 'info');
@@ -149,14 +210,12 @@ async function loadScoreQueue(forceRefresh = false) {
             return;
         }
 
-        tbody.innerHTML = data.items.map(movie => {
-            // Score badges based on raw score (0-100 scale)
+        tbody.innerHTML = paginatedItems.map(movie => {
             let scoreClass = 'score-high';
             if (movie.normalized_score < 60) scoreClass = 'score-medium';
             if (movie.normalized_score < 30) scoreClass = 'score-low';
             const tmdbRating = movie.tmdb_rating ? movie.tmdb_rating.toFixed(1) : 'N/A';
     
-            // Get play count (watched status) - Show plain numbers
             const playCount = movie.plex_play_count || 0;
             let watchedDisplay = '';
             if (movie.plex_play_count === null || movie.plex_play_count === undefined) {
@@ -183,16 +242,37 @@ async function loadScoreQueue(forceRefresh = false) {
             `;
         }).join('');
 
-        // Pagination
-        const totalPages = data.pages || 1;
+        // Pagination with page number input
         document.getElementById('score-queue-pagination').innerHTML = `
-            <span style="color: var(--text-secondary)">${data.total} total movies</span>
-            <div class="flex gap-2">
-                <button onclick="changeScoreQueuePage(${scoreQueuePage - 1})" class="btn-sm btn-outline" ${scoreQueuePage <= 1 ? 'disabled' : ''}>← Prev</button>
-                <span class="text-sm">Page ${scoreQueuePage} of ${totalPages}</span>
-                <button onclick="changeScoreQueuePage(${scoreQueuePage + 1})" class="btn-sm btn-outline" ${scoreQueuePage >= totalPages ? 'disabled' : ''}>Next →</button>
+            <div class="flex justify-between items-center w-full">
+                <span style="color: var(--text-secondary)">${totalFiltered} total movies${scoreQueueSearch ? ` (filtered from ${scoreQueueFullData.length})` : ''}</span>
+                <div class="flex items-center gap-3">
+                    <button onclick="changeScoreQueuePage(${scoreQueuePage - 1})" class="btn-sm btn-outline" ${scoreQueuePage <= 1 ? 'disabled' : ''}>← Prev</button>
+                    <div class="flex items-center gap-1">
+                        <span class="text-sm">Page</span>
+                        <input type="number" id="page-number-input" value="${scoreQueuePage}" min="1" max="${totalPages}" 
+                            style="width: 60px; text-align: center; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 0.375rem; padding: 0.25rem 0.5rem; font-size: 0.875rem; color: var(--text-primary);">
+                        <span class="text-sm">of ${totalPages}</span>
+                    </div>
+                    <button onclick="changeScoreQueuePage(${scoreQueuePage + 1})" class="btn-sm btn-outline" ${scoreQueuePage >= totalPages ? 'disabled' : ''}>Next →</button>
+                </div>
             </div>
         `;
+        
+        // Add event listener for page number input
+        const pageInput = document.getElementById('page-number-input');
+        if (pageInput) {
+            pageInput.addEventListener('change', (e) => {
+                let newPage = parseInt(e.target.value);
+                if (isNaN(newPage)) newPage = 1;
+                if (newPage < 1) newPage = 1;
+                if (newPage > totalPages) newPage = totalPages;
+                if (newPage !== scoreQueuePage) {
+                    scoreQueuePage = newPage;
+                    loadScoreQueue();
+                }
+            });
+        }
 
         // Update sort icons
         updateSortIcons();
@@ -207,7 +287,6 @@ async function loadScoreQueue(forceRefresh = false) {
             showToast('Refresh failed: ' + e.message, 'error');
         }
     } finally {
-        // Restore refresh button state
         if (forceRefresh && refreshBtn) {
             refreshBtn.disabled = false;
             refreshBtn.innerHTML = originalBtnHtml;
@@ -223,15 +302,13 @@ function changeScoreQueuePage(page) {
 // Add sort function here
 function sortScoreQueue(sortBy) {
     if (scoreQueueSortBy === sortBy) {
-        // Toggle order if same column
         scoreQueueSortOrder = scoreQueueSortOrder === 'desc' ? 'asc' : 'desc';
     } else {
-        // New column, default to desc for score, asc for others
         scoreQueueSortBy = sortBy;
         scoreQueueSortOrder = sortBy === 'score' ? 'desc' : 'asc';
     }
-    scoreQueuePage = 1; // Reset to first page
-    loadScoreQueue();
+    scoreQueuePage = 1;
+    loadScoreQueue();  // This will re-sort the full data client-side
 }
 
 function updateSortIcons() {
@@ -440,14 +517,21 @@ async function cancelRun(runId) {
 // Score details modal
 function showScoreDetails(title, score, factors) {
     // Remove any existing modal
-    document.getElementById('score-modal')?.remove();
+    const existingModal = document.getElementById('score-modal');
+    if (existingModal) existingModal.remove();
 
-    const factorRows = (factors && factors.length)
-        ? factors.map(f => {
+    let factorRows = '';
+    
+    if (factors && factors.length > 0) {
+        for (let i = 0; i < factors.length; i++) {
+            const f = factors[i];
             const pct = (f.contribution * 100).toFixed(1);
             const barWidth = Math.min(Math.round(f.raw_score * 100), 100);
-            const skippedNote = f.skipped ? `<span class="text-xs ml-2" style="color: var(--text-secondary)">(${f.skip_reason})</span>` : '';
-            return `
+            let skippedNote = '';
+            if (f.skipped) {
+                skippedNote = '<span class="text-xs ml-2" style="color: var(--text-secondary)">(' + (f.skip_reason || 'skipped') + ')</span>';
+            }
+            factorRows += `
                 <div class="mb-3">
                     <div class="flex justify-between text-sm mb-1">
                         <span class="font-medium">${f.name}${skippedNote}</span>
@@ -463,8 +547,10 @@ function showScoreDetails(title, score, factors) {
                     </div>
                 </div>
             `;
-        }).join('')
-        : '<p style="color: var(--text-secondary)">No factor data available.</p>';
+        }
+    } else {
+        factorRows = '<p style="color: var(--text-secondary)">No factor data available.</p>';
+    }
 
     const modal = document.createElement('div');
     modal.id = 'score-modal';
@@ -476,7 +562,7 @@ function showScoreDetails(title, score, factors) {
                 <div>
                     <h3 class="font-semibold text-lg">${escapeHtml(title)}</h3>
                     <p class="text-sm mt-1" style="color: var(--text-secondary)">
-                        Total score: <span class="font-mono font-bold" style="color: var(--accent)">${score.toFixed(1)}</span>
+                        Total score: <span class="font-mono font-bold" style="color: var(--accent)">${Number(score).toFixed(1)}</span>
                     </p>
                 </div>
                 <button onclick="document.getElementById('score-modal').remove()"
@@ -485,11 +571,17 @@ function showScoreDetails(title, score, factors) {
             <div class="border-t pt-4" style="border-color: var(--border-color)">
                 ${factorRows}
             </div>
+            <div class="border-t pt-4 mt-2 flex justify-end" style="border-color: var(--border-color)">
+                <button onclick="document.getElementById('score-modal').remove()"
+                    class="px-4 py-2 rounded-lg text-sm" style="background: var(--accent); color: white;">
+                    Close
+                </button>
+            </div>
         </div>
     `;
 
     // Close on backdrop click
-    modal.addEventListener('click', (e) => {
+    modal.addEventListener('click', function(e) {
         if (e.target === modal) modal.remove();
     });
 
@@ -603,6 +695,7 @@ document.addEventListener('DOMContentLoaded', () => {
         scoreQueuePage = 1;
         loadScoreQueue();
     });
+    
 
     // Add sort event listeners
     document.querySelectorAll('.sortable').forEach(header => {
@@ -611,6 +704,15 @@ document.addEventListener('DOMContentLoaded', () => {
             sortScoreQueue(sortBy);
         });
     });
+
+    const searchInput = document.getElementById('score-queue-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            scoreQueueSearch = e.target.value;
+            scoreQueuePage = 1;  // Reset to first page when searching
+            loadScoreQueue();
+        });
+    }
 
     // Auto-refresh every 30 seconds — queue status and deletions only, not score queue
     if (refreshInterval) clearInterval(refreshInterval);
