@@ -170,7 +170,7 @@ async function loadScoreQueue(forceRefresh = false) {
             return;
         }
 
-        tbody.innerHTML = paginatedItems.map(movie => {
+        tbody.innerHTML = data.items.map(movie => {
             let scoreClass = 'score-high';
             if (movie.normalized_score < 60) scoreClass = 'score-medium';
             if (movie.normalized_score < 30) scoreClass = 'score-low';
