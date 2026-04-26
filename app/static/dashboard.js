@@ -5,7 +5,7 @@ let scoreQueuePerPage = 20;
 let scoreQueueSortBy = 'score';
 let scoreQueueSortOrder = 'desc';
 let scoreQueueSearch = '';
-let scoreQueueFullData = []; 
+let scoreQueueSearchActive = false;
 let refreshInterval = null;
 let runStatusInterval = null;
 
@@ -137,72 +137,32 @@ async function loadScoreQueue(forceRefresh = false) {
     }
     
     try {
-        // Always fetch fresh data when forceRefresh is true, otherwise use cached
-        let url = `/api/dashboard/score-queue?page=1&per_page=10000&sort_by=${scoreQueueSortBy}&sort_order=${scoreQueueSortOrder}`;
-        if (forceRefresh) {
-            url += '&refresh=true';
+        let url;
+        
+        // If search is active, use search endpoint
+        if (scoreQueueSearchActive && scoreQueueSearch.trim() !== '') {
+            url = `/api/dashboard/score-queue/search?q=${encodeURIComponent(scoreQueueSearch)}&page=${scoreQueuePage}&per_page=${scoreQueuePerPage}&sort_by=${scoreQueueSortBy}&sort_order=${scoreQueueSortOrder}`;
+            if (forceRefresh) {
+                url += '&refresh=true';
+            }
+        } else {
+            // Normal pagination (only load current page)
+            url = `/api/dashboard/score-queue?page=${scoreQueuePage}&per_page=${scoreQueuePerPage}&sort_by=${scoreQueueSortBy}&sort_order=${scoreQueueSortOrder}`;
+            if (forceRefresh) {
+                url += '&refresh=true';
+            }
         }
         
         const res = await fetch(url);
         const data = await res.json();
-        
-        // Store full data for filtering (if not a forced refresh and we already have data, skip)
-        if (forceRefresh || scoreQueueFullData.length === 0) {
-            scoreQueueFullData = data.items || [];
-        }
-        
-        // Apply search filter to full dataset
-        let filteredData = scoreQueueFullData;
-        if (scoreQueueSearch && scoreQueueSearch.trim() !== '') {
-            const searchTerm = scoreQueueSearch.toLowerCase().trim();
-            filteredData = scoreQueueFullData.filter(movie => {
-                const title = (movie.movie_title || '').toLowerCase();
-                const collectionName = (movie.collection_name || '').toLowerCase();
-                // Search collection member titles if it's a collection
-                let memberMatches = false;
-                if (movie.is_collection && movie.movies) {
-                    memberMatches = movie.movies.some(m => (m.movie_title || '').toLowerCase().includes(searchTerm));
-                }
-                return title.includes(searchTerm) || collectionName.includes(searchTerm) || memberMatches;
-            });
-        }
-        
-        // Apply sorting (client-side since we have full data)
-        const sortMapping = {
-            'score': 'normalized_score',
-            'title': 'movie_title',
-            'year': 'movie_year',
-            'age': 'age_days',
-            'size': 'size_gb',
-            'rating': 'tmdb_rating',
-            'quality': 'quality',
-            'watched': 'plex_play_count'
-        };
-        const sortField = sortMapping[scoreQueueSortBy] || 'normalized_score';
-        const sortOrderMultiplier = scoreQueueSortOrder === 'desc' ? -1 : 1;
-        
-        filteredData.sort((a, b) => {
-            let aVal = a[sortField] || 0;
-            let bVal = b[sortField] || 0;
-            if (typeof aVal === 'string') {
-                aVal = aVal.toLowerCase();
-                bVal = bVal.toLowerCase();
-            }
-            if (aVal < bVal) return -1 * sortOrderMultiplier;
-            if (aVal > bVal) return 1 * sortOrderMultiplier;
-            return 0;
-        });
-        
-        // Paginate filtered data
-        const totalFiltered = filteredData.length;
-        const totalPages = Math.ceil(totalFiltered / scoreQueuePerPage);
-        const startIndex = (scoreQueuePage - 1) * scoreQueuePerPage;
-        const paginatedItems = filteredData.slice(startIndex, startIndex + scoreQueuePerPage);
-        
         const tbody = document.getElementById('score-queue-table');
 
-        if (paginatedItems.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No movies found. Run a score cycle or configure Radarr first.顶铺换行';
+        if (!data.items || data.items.length === 0) {
+            if (scoreQueueSearchActive) {
+                tbody.innerHTML = `<tr><td colspan="9" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No movies match "${escapeHtml(scoreQueueSearch)}".</td></tr>`;
+            } else {
+                tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No movies found. Run a score cycle or configure Radarr first.</td></tr>';
+            }
             document.getElementById('score-queue-pagination').innerHTML = '';
             if (forceRefresh) {
                 showToast('Score queue refreshed - no movies found', 'info');
@@ -210,7 +170,7 @@ async function loadScoreQueue(forceRefresh = false) {
             return;
         }
 
-        tbody.innerHTML = paginatedItems.map(movie => {
+        tbody.innerHTML = data.items.map(movie => {
             let scoreClass = 'score-high';
             if (movie.normalized_score < 60) scoreClass = 'score-medium';
             if (movie.normalized_score < 30) scoreClass = 'score-low';
@@ -243,9 +203,11 @@ async function loadScoreQueue(forceRefresh = false) {
         }).join('');
 
         // Pagination with page number input
+        const totalPages = data.pages || 1;
+        const searchInfo = scoreQueueSearchActive ? ` (matching "${escapeHtml(scoreQueueSearch)}")` : '';
         document.getElementById('score-queue-pagination').innerHTML = `
             <div class="flex justify-between items-center w-full">
-                <span style="color: var(--text-secondary)">${totalFiltered} total movies${scoreQueueSearch ? ` (filtered from ${scoreQueueFullData.length})` : ''}</span>
+                <span style="color: var(--text-secondary)">${data.total} total movies${searchInfo}</span>
                 <div class="flex items-center gap-3">
                     <button onclick="changeScoreQueuePage(${scoreQueuePage - 1})" class="btn-sm btn-outline" ${scoreQueuePage <= 1 ? 'disabled' : ''}>← Prev</button>
                     <div class="flex items-center gap-1">
@@ -707,10 +669,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const searchInput = document.getElementById('score-queue-search');
     if (searchInput) {
+        let debounceTimer;
         searchInput.addEventListener('input', (e) => {
-            scoreQueueSearch = e.target.value;
-            scoreQueuePage = 1;  // Reset to first page when searching
-            loadScoreQueue();
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                scoreQueueSearch = e.target.value;
+                scoreQueuePage = 1;
+                scoreQueueSearchActive = scoreQueueSearch.trim() !== '';
+                loadScoreQueue();
+            }, 300);  // Debounce to avoid too many API calls
         });
     }
 

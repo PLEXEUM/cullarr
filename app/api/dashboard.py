@@ -475,6 +475,140 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
         "plex_enabled": plex_enabled,
     }
 
+@router.get("/dashboard/score-queue/search")
+async def search_score_queue(
+    q: str = Query("", min_length=1, max_length=100, description="Search query"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    sort_by: str = Query("score", description="Sort column: score, title, year, age, size, rating, quality, watched"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc")
+):
+    """
+    Search scored movies cache by title or collection name.
+    Returns paginated results matching the search query.
+    """
+    conn = get_connection()
+    try:
+        # Check if Plex is enabled
+        plex_config = conn.execute("SELECT enabled FROM plex_config WHERE id = 1").fetchone()
+        plex_enabled = bool(plex_config and plex_config["enabled"]) if plex_config else False
+        
+        # Get scheduled movie IDs to exclude
+        scheduled_ids = conn.execute(
+            "SELECT movie_id FROM scheduled_deletions"
+        ).fetchall()
+        scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
+        
+        # Build search query - search in movie_title and collection_name
+        search_term = f"%{q.lower()}%"
+        
+        # First, get all matching movies (for count and pagination)
+        # We need to handle collections properly - a collection matches if any member matches
+        matching_movies = conn.execute("""
+            SELECT DISTINCT movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
+                   size_gb, age_days, quality, monitored, normalized_score,
+                   raw_score, factors, plex_play_count,
+                   collection_name, collection_id, is_collection
+            FROM scored_movies_cache
+            WHERE LOWER(movie_title) LIKE ? 
+               OR LOWER(collection_name) LIKE ?
+            ORDER BY 
+                CASE WHEN ? = 'score' THEN normalized_score END {sort_order},
+                CASE WHEN ? = 'title' THEN movie_title END {sort_order},
+                CASE WHEN ? = 'year' THEN movie_year END {sort_order},
+                CASE WHEN ? = 'age' THEN age_days END {sort_order},
+                CASE WHEN ? = 'size' THEN size_gb END {sort_order},
+                CASE WHEN ? = 'rating' THEN tmdb_rating END {sort_order},
+                CASE WHEN ? = 'quality' THEN quality END {sort_order},
+                CASE WHEN ? = 'watched' THEN plex_play_count END {sort_order}
+        """.format(sort_order="ASC" if sort_order.lower() == "asc" else "DESC"),
+            (search_term, search_term, sort_by, sort_by, sort_by, sort_by, sort_by, sort_by, sort_by, sort_by)
+        ).fetchall()
+        
+        # Filter out already-scheduled movies and group collections
+        collections: dict = {}
+        individuals: list = []
+        
+        for row in matching_movies:
+            item = dict(row)
+            item["factors"] = json.loads(item["factors"]) if item["factors"] else []
+            
+            # Skip if already scheduled
+            if item["movie_id"] in scheduled_id_set:
+                continue
+            
+            if item["is_collection"] and item["collection_name"]:
+                cname = item["collection_name"]
+                if cname not in collections:
+                    collections[cname] = {
+                        "is_collection": True,
+                        "collection_name": cname,
+                        "collection_id": item["collection_id"],
+                        "movie_title": cname,
+                        "movie_year": None,
+                        "normalized_score": item["normalized_score"],
+                        "raw_score": item["raw_score"],
+                        "size_gb": 0.0,
+                        "age_days": 0,
+                        "tmdb_rating": 0.0,
+                        "quality": item["quality"],
+                        "movies": [],
+                        "movie_count": 0,
+                        "plex_play_count": 0,
+                    }
+                collections[cname]["movies"].append(item)
+                collections[cname]["movie_count"] += 1
+                collections[cname]["size_gb"] += item["size_gb"] or 0.0
+                collections[cname]["age_days"] = max(
+                    collections[cname]["age_days"], item["age_days"] or 0
+                )
+                collections[cname]["tmdb_rating"] = (
+                    collections[cname]["tmdb_rating"] + (item["tmdb_rating"] or 0.0)
+                ) / collections[cname]["movie_count"]
+                # Aggregate play count (sum of all members)
+                collections[cname]["plex_play_count"] += item["plex_play_count"] or 0
+            else:
+                individuals.append(item)
+        
+        # Merge and sort
+        available = individuals + list(collections.values())
+        
+        # Apply sorting
+        sort_mapping = {
+            "score": "normalized_score",
+            "title": "movie_title",
+            "year": "movie_year",
+            "age": "age_days",
+            "size": "size_gb",
+            "rating": "tmdb_rating",
+            "quality": "quality",
+            "watched": "plex_play_count",
+        }
+        sort_column = sort_mapping.get(sort_by, "normalized_score")
+        reverse = sort_order.lower() == "desc"
+        available.sort(key=lambda x: x.get(sort_column) or (0 if isinstance(x.get(sort_column), (int, float)) else ""), reverse=reverse)
+        
+        # Paginate
+        total = len(available)
+        offset = (page - 1) * per_page
+        paginated = available[offset:offset + per_page]
+        pages = (total + per_page - 1) // per_page if total > 0 else 1
+        
+        return {
+            "items": paginated,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "pages": pages,
+            "plex_enabled": plex_enabled,
+            "search_query": q,
+        }
+        
+    except Exception as e:
+        logger.error(f"Search score queue failed: {e}")
+        raise HTTPException(status_code=500, detail="Search failed")
+    finally:
+        conn.close()
 
 @router.get("/dashboard/failed")
 async def get_failed_deletions():
