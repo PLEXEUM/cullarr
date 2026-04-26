@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from app.db.database import get_connection
 from app.utils.logger import get_logger
-from app.utils.validators import validate_cron, validate_delete_after_days, validate_protection_days, validate_max_queued
+from app.utils.validators import validate_cron, validate_delete_after_days, validate_max_queued
 from app.core.scheduler import update_score_schedule, update_cull_schedule
 
 router = APIRouter()
@@ -27,7 +27,6 @@ class SettingsInput(BaseModel):
     cull_cron: str
     max_queued: int
     delete_after_days: int
-    protection_days: int
     collection_grouping: bool
     min_score_threshold: int = 0
 
@@ -149,7 +148,7 @@ async def save_scoring_weights(data: ScoringWeightsInput):
             "UPDATE settings SET protection_days = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
             (data.protection_days,)
         )
-        
+
         conn.commit()
         logger.info(f"Scoring weights saved (raw: age={data.age_raw}, size={data.size_raw}, rating={data.rating_raw}, quality={data.quality_raw}, watched={data.watched_raw})")
         return {"success": True, "message": "Weights saved"}
@@ -202,10 +201,6 @@ async def save_settings(data: SettingsInput):
     is_valid, error = validate_delete_after_days(data.delete_after_days)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)
-
-    is_valid, error = validate_protection_days(data.protection_days)
-    if not is_valid:
-        raise HTTPException(status_code=400, detail=error)
     
     if data.min_score_threshold < 0 or data.min_score_threshold > 100:
         raise HTTPException(status_code=400, detail="Minimum score threshold must be between 0 and 100")
@@ -215,12 +210,12 @@ async def save_settings(data: SettingsInput):
         conn.execute(
             """UPDATE settings SET
                 enabled = ?, score_cron = ?, cull_cron = ?,
-                max_queued = ?, delete_after_days = ?, protection_days = ?,
+                max_queued = ?, delete_after_days = ?,
                 collection_grouping = ?, min_score_threshold = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = 1""",
             (1 if data.enabled else 0, data.score_cron, data.cull_cron,
-             data.max_queued, data.delete_after_days, data.protection_days,
-             1 if data.collection_grouping else 0, data.min_score_threshold)
+            data.max_queued, data.delete_after_days,
+            1 if data.collection_grouping else 0, data.min_score_threshold)
         )
         conn.commit()
 
