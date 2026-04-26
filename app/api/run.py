@@ -4,6 +4,7 @@ from typing import Optional
 import asyncio
 import uuid
 from app.db.database import get_connection
+from datetime import datetime
 from app.core.run_engine import run_score_cycle, run_cull_cycle
 from app.core.scheduler import get_next_score_run, get_next_cull_run
 from app.utils.logger import get_logger
@@ -25,6 +26,8 @@ _active_run = {
     "cancelled": False,
     "dry_run": False,
     "dry_run_results": None,
+    "run_sequence": 0,  
+    "last_updated": None, 
 }
 
 
@@ -42,6 +45,8 @@ async def _set_run_active(run_id: str, run_type: str, dry_run: bool = False):
         _active_run["current"] = 0
         _active_run["total"] = 0
         _active_run["current_movie"] = ""
+        _active_run["run_sequence"] += 1  
+        _active_run["last_updated"] = datetime.now().isoformat()
         return True
 
 
@@ -51,6 +56,7 @@ async def _set_run_inactive():
         _active_run["is_running"] = False
         _active_run["run_id"] = None
         _active_run["run_type"] = None
+        _active_run["last_updated"] = datetime.now().isoformat()
 
 
 async def _run_dry_score(run_id: str):
@@ -238,6 +244,8 @@ async def get_run_status():
         "cancelled": _active_run["cancelled"],
         "dry_run": _active_run["dry_run"],
         "dry_run_results": _active_run["dry_run_results"],
+        "run_sequence": _active_run["run_sequence"], 
+        "last_updated": _active_run["last_updated"], 
     }
 
 

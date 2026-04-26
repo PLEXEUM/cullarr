@@ -18,6 +18,7 @@ class ScoringWeightsInput(BaseModel):
     watched_raw: int
     age_max_days: int
     size_max_gb: int
+    protection_days: int
 
 
 class SettingsInput(BaseModel):
@@ -142,6 +143,13 @@ async def save_scoring_weights(data: ScoringWeightsInput):
              age_weight, size_weight, rating_weight, quality_weight, watched_weight,
              data.age_max_days, data.size_max_gb)
         )
+
+        # Save protection_days to settings table
+        conn.execute(
+            "UPDATE settings SET protection_days = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
+            (data.protection_days,)
+        )
+        
         conn.commit()
         logger.info(f"Scoring weights saved (raw: age={data.age_raw}, size={data.size_raw}, rating={data.rating_raw}, quality={data.quality_raw}, watched={data.watched_raw})")
         return {"success": True, "message": "Weights saved"}

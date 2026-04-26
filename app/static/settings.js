@@ -560,7 +560,8 @@ async function saveWeights() {
         quality_raw: parseInt(qualitySlider.value),
         watched_raw: parseInt(watchedSlider.value),
         age_max_days: parseInt(ageMaxDays.value),
-        size_max_gb: parseFloat(sizeMaxGb.value)
+        size_max_gb: parseFloat(sizeMaxGb.value),
+        protection_days: parseInt(document.getElementById('protection-days').value)
     };
     
     try {
@@ -608,7 +609,6 @@ async function saveSettings() {
         cull_cron: document.getElementById('cull-cron').value,
         max_queued: parseInt(document.getElementById('max-queued').value),
         delete_after_days: parseInt(document.getElementById('delete-after-days').value),
-        protection_days: parseInt(document.getElementById('protection-days').value),
         collection_grouping: document.getElementById('collection-grouping').checked,
         min_score_threshold: parseInt(minScoreThreshold?.value || 0)
     };
