@@ -6,6 +6,7 @@ from app.core.radarr_client import RadarrClient
 from app.core.plex_client import PlexClient
 from app.core.scoring_engine import ScoringEngine
 from app.utils.logger import get_logger
+from app.api.run import _active_run
 
 logger = get_logger()
 
@@ -223,12 +224,23 @@ async def run_score_cycle():
                     plex_client.get_play_counts_by_tmdb()
                 )
                 logger.info(f"Fetched Plex data: {len(plex_play_counts)} TMDb play counts")
+            
+                # ===== PROGRESS UPDATE: Plex data fetched =====
+                _active_run["current_movie"] = f"Fetched Plex watch history for {len(plex_play_counts)} movies"
+                _active_run["current"] = 20
+                # ===== END PROGRESS UPDATE =====
             else:
                 logger.warning(f"Plex connection failed: {plex_msg}, continuing without watch data")
                 plex_enabled = False
 
         # Fetch movies from Radarr
         movies = await radarr_client.get_movies()
+
+        # ===== PROGRESS UPDATE: Movies fetched =====
+        _active_run["current_movie"] = f"Fetched {len(movies)} movies from Radarr"
+        _active_run["current"] = 10
+        _active_run["total"] = 100  # Using percentage scale (0-100)
+        # ===== END PROGRESS UPDATE =====
 
         # ===== NEW: Clean up orphaned entries in scheduled_deletions =====
         radarr_movie_ids = {movie["id"] for movie in movies if movie.get("id")}
@@ -251,8 +263,19 @@ async def run_score_cycle():
 
         # Score movies (collection grouping handled inside engine if enabled)
         engine = ScoringEngine(conn)
+        
+        # ===== PROGRESS UPDATE: Starting scoring =====
+        _active_run["current_movie"] = f"Scoring {len(movies)} movies..."
+        _active_run["current"] = 30
+        # ===== END PROGRESS UPDATE =====
+        
         scored_movies = engine.get_scored_movies(movies, plex_play_counts, plex_enabled)
 
+        # ===== PROGRESS UPDATE: Scoring complete =====
+        _active_run["current_movie"] = f"Scored {len(scored_movies)} entries"
+        _active_run["current"] = 60
+        # ===== END PROGRESS UPDATE =====
+        
         logger.info(f"Scored {len(scored_movies)} entries ({len(movies)} total movies)")
 
         # ===== WRAP HEAVY DB OPERATIONS IN THREAD POOL =====
@@ -286,6 +309,10 @@ async def run_score_cycle():
 
             # Get threshold from settings
             threshold = settings["min_score_threshold"] if settings else 0
+
+            # ===== PROGRESS UPDATE: Filtering candidates =====
+            # This runs in thread pool, so we need to update via a flag or accept that progress won't show during filtering
+            # We'll skip updating during filtering since it's fast
 
             # Filter out entries where any member is already queued AND apply threshold
             candidates = []
@@ -356,6 +383,11 @@ async def run_score_cycle():
             return added
 
         added = await asyncio.to_thread(_add_to_queue)
+
+        # ===== PROGRESS UPDATE: Queue addition complete =====
+        _active_run["current_movie"] = f"Added {len(added)} movies to deletion queue"
+        _active_run["current"] = 90
+        # ===== END PROGRESS UPDATE =====
         # ===== END THREAD POOL WRAPPER =====
 
         # ===== NEW: Clean up Plex labels for movies that left the queue =====
@@ -399,6 +431,11 @@ async def run_score_cycle():
                 added,
                 plex_library_map
             )
+
+        # ===== PROGRESS UPDATE: Complete =====
+        _active_run["current_movie"] = f"Score cycle complete: added {len(added)} queue entries"
+        _active_run["current"] = 100
+        # ===== END PROGRESS UPDATE =====
 
         logger.info(f"Score cycle complete: added {len(added)} queue entries")
 
@@ -467,6 +504,12 @@ async def run_cull_cycle(dry_run: bool = False):
 
         logger.info(f"Found {len(due_movies)} movies due for deletion")
 
+        # ===== PROGRESS UPDATE: Starting cull =====
+        _active_run["total"] = 100
+        _active_run["current"] = 0
+        _active_run["current_movie"] = f"Preparing to delete {len(due_movies)} movies..."
+        # ===== END PROGRESS UPDATE =====
+        
         # If dry run, just return the list without deleting
         if dry_run:
             # Convert rows to dict for JSON serialization
@@ -505,6 +548,12 @@ async def run_cull_cycle(dry_run: bool = False):
                     deleted += 1
                     logger.info(f"Deleted: {movie['movie_title']}")
 
+                    # ===== PROGRESS UPDATE: Movie deleted =====
+                    percent_complete = int(((deleted + failed) / len(due_movies)) * 100) if due_movies else 0
+                    _active_run["current"] = percent_complete
+                    _active_run["current_movie"] = f"Deleted: {movie['movie_title']} ({deleted + failed} of {len(due_movies)})"
+                    # ===== END PROGRESS UPDATE =====
+
                     # Remove Plex label after successful deletion
                     if plex_enabled and plex_client and plex_config["label_text"]:
                         await _remove_plex_labels(
@@ -531,6 +580,12 @@ async def run_cull_cycle(dry_run: bool = False):
                     conn.execute("DELETE FROM scheduled_deletions WHERE id = ?", (movie["id"],))
                     failed += 1
 
+                    # ===== PROGRESS UPDATE: Movie failed =====
+                    percent_complete = int(((deleted + failed) / len(due_movies)) * 100) if due_movies else 0
+                    _active_run["current"] = percent_complete
+                    _active_run["current_movie"] = f"Failed: {movie['movie_title']} ({deleted + failed} of {len(due_movies)})"
+                    # ===== END PROGRESS UPDATE =====
+
                 conn.commit()
                 await asyncio.sleep(1)
 
@@ -541,6 +596,11 @@ async def run_cull_cycle(dry_run: bool = False):
                 conn.commit()
 
         logger.info(f"Cull cycle complete: deleted {deleted}, failed {failed}")
+
+        # ===== PROGRESS UPDATE: Complete =====
+        _active_run["current_movie"] = f"Cull cycle complete: deleted {deleted}, failed {failed}"
+        _active_run["current"] = 100
+        # ===== END PROGRESS UPDATE =====
 
     except Exception as e:
         logger.error(f"Cull cycle failed: {e}")
