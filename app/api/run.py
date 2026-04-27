@@ -90,13 +90,19 @@ async def _run_dry_score(run_id: str):
 
         _active_run["current_movie"] = "Fetching movies from Radarr..."
         movies = await radarr_client.get_movies()
-        _active_run["total"] = len(movies)
-        _active_run["current"] = 0
+        _active_run["total"] = 100
+        _active_run["current"] = 10
 
         conn = get_connection()
         try:
+            _active_run["current_movie"] = "Scoring movies..."
+            _active_run["current"] = 30
+            
             engine = ScoringEngine(conn)
             scored = engine.get_scored_movies(movies, plex_play_counts, plex_enabled)
+            
+            _active_run["current_movie"] = "Filtering candidates..."
+            _active_run["current"] = 60
         finally:
             conn.close()
 
@@ -125,7 +131,7 @@ async def _run_dry_score(run_id: str):
         would_queue = candidates[:max_queued]
 
         _active_run["dry_run_results"] = would_queue
-        _active_run["current"] = len(movies)
+        _active_run["current"] = 100
         _active_run["current_movie"] = f"Dry run complete — {len(would_queue)} movies would be queued"
         logger.info(f"Dry score run complete: {len(would_queue)} movies would be queued")
 
