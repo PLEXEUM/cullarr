@@ -6,7 +6,7 @@ from app.core.radarr_client import RadarrClient
 from app.core.plex_client import PlexClient
 from app.core.scoring_engine import ScoringEngine
 from app.utils.logger import get_logger
-from app.api.run import _active_run
+from app.core.run_state import _active_run
 
 logger = get_logger()
 
