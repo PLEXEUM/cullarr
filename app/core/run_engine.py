@@ -63,6 +63,9 @@ async def _apply_plex_collections(
     Handles both individual movies and collection groups.
     Uses title + year to find the Plex rating key.
     """
+    import httpx
+    import urllib.parse
+    
     # Flatten collections into individual movies
     flat_movies = []
     for movie in movies:
@@ -74,17 +77,36 @@ async def _apply_plex_collections(
     if not flat_movies:
         return
 
-    # Get or create the collection once - pass first movie's rating key if available
-    first_rating_key = None
-    if flat_movies:
-        first_movie = flat_movies[0]
-        title = first_movie.get("movie_title")
-        year = first_movie.get("movie_year")
-        if title and year:
-            key = f"{title.lower()}|{year}"
-            first_rating_key = library_map.get(key)
+    # Get library section ID
+    library_id = await plex_client.get_movie_library_section_id()
+    if not library_id:
+        logger.error("No movie library section found")
+        return
+
+    # Find or create collection using raw HTTP (bypasses plexapi bug)
+    from plexapi.server import PlexServer
+    server = PlexServer(plex_client.base_url, plex_client.api_key)
+    section = server.library.sectionByID(int(library_id))
     
-    collection_key = await plex_client.get_or_create_collection(collection_name, first_rating_key)
+    collection_key = None
+    for collection in section.collections():
+        if collection.title == collection_name:
+            collection_key = str(collection.ratingKey)
+            logger.info(f"Found existing collection: {collection_name} (key: {collection_key})")
+            break
+    
+    if not collection_key:
+        # Create using raw HTTP (bypasses plexapi bug)
+        encoded_name = urllib.parse.quote(collection_name)
+        url = f"{plex_client.base_url}/library/collections?type=1&title={encoded_name}&sectionId={library_id}&X-Plex-Token={plex_client.api_key}"
+        
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(url)
+            response.raise_for_status()
+            data = response.json()
+            collection_key = data.get("MediaContainer", {}).get("Metadata", [{}])[0].get("ratingKey")
+            logger.info(f"Created collection: {collection_name} (key: {collection_key})")
+
     if not collection_key:
         logger.error(f"Failed to get or create Plex collection: {collection_name}")
         return
@@ -105,7 +127,6 @@ async def _apply_plex_collections(
             logger.debug(f"No Plex rating key found for '{title} ({year})'")
             continue
 
-        logger.info(f"DEBUG: About to add rating_key={rating_key} to collection_key={collection_key}")
         success = await plex_client.add_to_collection(collection_key, rating_key)
         if success:
             logger.info(f"Added '{title}' to Plex collection '{collection_name}'")
