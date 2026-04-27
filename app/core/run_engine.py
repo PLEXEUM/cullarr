@@ -456,9 +456,6 @@ async def run_cull_cycle(dry_run: bool = False):
         logger.info("Cull run skipped - another run in progress")
         return
 
-    # Import the global _active_run from run module to store dry run results
-    from app.api.run import _active_run
-
     try:
         conn = get_connection()
 
