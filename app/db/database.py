@@ -278,6 +278,18 @@ def migrate_db():
     except Exception:
         pass  # Table may not exist yet
 
+    # Migration: Rename label_text to collection_name in plex_config
+    try:
+        cursor.execute("PRAGMA table_info(plex_config)")
+        columns = cursor.fetchall()
+        column_names = [col[1] for col in columns]
+        
+        if "label_text" in column_names and "collection_name" not in column_names:
+            cursor.execute("ALTER TABLE plex_config RENAME COLUMN label_text TO collection_name")
+            print("Migration applied: renamed label_text to collection_name in plex_config")
+    except Exception:
+        pass  # Column may not exist or already renamed
+
     conn.commit()
     conn.close()
 

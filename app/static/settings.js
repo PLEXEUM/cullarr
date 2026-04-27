@@ -52,7 +52,7 @@ function setupEventListeners() {
     // Plex
     document.getElementById('plex-auth-btn').addEventListener('click', authenticateAndSavePlex);
     document.getElementById('plex-clear-btn').addEventListener('click', clearPlex);
-    document.getElementById('plex-save-label-btn').addEventListener('click', savePlexLabel);
+    document.getElementById('plex-save-collection-btn').addEventListener('click', savePlexCollection);
     
     // Weight sliders - update display only
     const sliders = [ageSlider, sizeSlider, ratingSlider, qualitySlider, watchedSlider];
@@ -358,7 +358,7 @@ async function loadPlexConfig() {
         const data = await res.json();
         
         document.getElementById('plex-url').value = data.url || '';
-        document.getElementById('plex-label').value = data.label_text || 'Movies Leaving Soon';
+        document.getElementById('plex-collection').value = data.collection_name || 'Cullarr - Pending Deletion';
         
         const statusDiv = document.getElementById('plex-status');
         if (data.configured && data.url && data.api_key === '[REDACTED]') {
@@ -375,7 +375,7 @@ async function loadPlexConfig() {
 
 async function authenticateAndSavePlex() {
     const url = document.getElementById('plex-url').value;
-    const labelText = document.getElementById('plex-label').value;
+    const collectionName = document.getElementById('plex-collection').value;
     
     if (!url) {
         showToast('Please enter Plex server URL', 'error');
@@ -438,7 +438,7 @@ async function authenticateAndSavePlex() {
                     const saveRes = await fetch('/api/plex/config', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ url: url, label_text: labelText, enabled: true })
+                        body: JSON.stringify({ url: url, collection_name: collectionName, enabled: true })
                     });
                     
                     if (saveRes.ok) {
@@ -479,9 +479,9 @@ async function authenticateAndSavePlex() {
     }
 }
 
-async function savePlexLabel() {
+async function savePlexCollection() {
     const url = document.getElementById('plex-url').value;
-    const labelText = document.getElementById('plex-label').value;
+    const collectionName = document.getElementById('plex-collection').value;
     
     if (!url) {
         showToast('Please enter Plex server URL first', 'error');
@@ -492,15 +492,15 @@ async function savePlexLabel() {
         const res = await fetch('/api/plex/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: url, label_text: labelText, enabled: true })
+            body: JSON.stringify({ url: url, collection_name: collectionName, enabled: true })
         });
         
         if (res.ok) {
-            showToast('Label saved successfully', 'success');
+            showToast('Collection name saved successfully', 'success');
             await loadPlexConfig();
         } else {
             const err = await res.json();
-            showToast(err.detail || 'Failed to save label', 'error');
+            showToast(err.detail || 'Failed to save collection name', 'error');
         }
     } catch (e) {
         showToast('Error: ' + e.message, 'error');
@@ -515,7 +515,7 @@ async function clearPlex() {
         if (res.ok) {
             showToast('Plex configuration cleared', 'success');
             document.getElementById('plex-url').value = '';
-            document.getElementById('plex-label').value = 'Movies Leaving Soon';
+            document.getElementById('plex-collection').value = 'Cullarr - Pending Deletion';
             await loadPlexConfig();
         }
     } catch (e) {

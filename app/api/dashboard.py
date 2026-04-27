@@ -180,34 +180,43 @@ async def remove_from_queue(movie_id: int):
             conn.commit()
             logger.info(f"Manually removed from queue: {existing['movie_title']}")
             
-            # ===== NEW: Remove Plex label for manually removed movie =====
+            # ===== NEW: Remove from Plex collection for manually removed movie =====
             try:
                 # Get Plex config
                 plex_config = conn.execute("SELECT url, api_key, enabled, label_text FROM plex_config WHERE id = 1").fetchone()
                 if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["label_text"]:
-                    # Get movie details for label removal
+                    # Get movie details (need title and year for collection removal)
                     movie_data = conn.execute(
-                        "SELECT movie_id, movie_title, tmdb_id FROM scored_movies_cache WHERE movie_id = ?",
+                        "SELECT movie_id, movie_title, movie_year FROM scored_movies_cache WHERE movie_id = ?",
                         (movie_id,)
                     ).fetchone()
                     
-                    if movie_data and movie_data["tmdb_id"]:
+                    if movie_data and movie_data["movie_title"] and movie_data["movie_year"]:
                         plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
                         plex_ok, _ = await plex_client.test_connection()
                         if plex_ok:
-                            # Build library map for TMDb to rating key
+                            # Build library map for title|year to rating key
                             library_items = await plex_client.get_library_items()
                             library_map = {}
                             for item in library_items:
-                                if item.get("tmdb_id"):
-                                    library_map[str(item["tmdb_id"])] = item["rating_key"]
+                                title = item.get("title")
+                                year = item.get("year")
+                                rating_key = item.get("rating_key")
+                                if title and year and rating_key:
+                                    key = f"{title.lower()}|{year}"
+                                    library_map[key] = rating_key
                             
-                            rating_key = library_map.get(str(movie_data["tmdb_id"]))
+                            key = f"{movie_data['movie_title'].lower()}|{movie_data['movie_year']}"
+                            rating_key = library_map.get(key)
+                            
                             if rating_key:
-                                await plex_client.remove_label(rating_key, plex_config["label_text"])
-                                logger.info(f"Removed Plex label from manually removed movie: {movie_data['movie_title']}")
+                                # Get or create collection (existing collection)
+                                collection_key = await plex_client.get_or_create_collection(plex_config["label_text"])
+                                if collection_key:
+                                    await plex_client.remove_from_collection(collection_key, rating_key)
+                                    logger.info(f"Removed '{movie_data['movie_title']}' from Plex collection '{plex_config['label_text']}'")
             except Exception as plex_error:
-                logger.warning(f"Failed to remove Plex label for manually removed movie: {plex_error}")
+                logger.warning(f"Failed to remove from Plex collection for manually removed movie: {plex_error}")
             # ===== END PLEX CLEANUP =====
             
             return {"success": True, "message": f"Removed {existing['movie_title']} from queue"}

@@ -217,3 +217,145 @@ class PlexClient:
         except Exception as e:
             logger.error(f"Failed to remove label from Plex: {redact(str(e))}")
             return False
+        
+    async def get_library_sections(self) -> List[Dict]:
+        """Get all library sections from Plex to find the movie library ID."""
+        try:
+            import httpx
+            url = f"{self.base_url}/library/sections?X-Plex-Token={self.api_key}"
+            
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                
+                # Parse XML response
+                import xml.etree.ElementTree as ET
+                root = ET.fromstring(response.text)
+                
+                sections = []
+                for directory in root.findall(".//Directory"):
+                    if directory.get("type") == "movie":
+                        sections.append({
+                            "key": directory.get("key"),
+                            "title": directory.get("title"),
+                        })
+                return sections
+        except Exception as e:
+            logger.error(f"Failed to get library sections: {redact(str(e))}")
+            return []
+
+    async def get_or_create_collection(self, collection_name: str) -> Optional[str]:
+        """Get existing collection by name or create a new one. Returns collection ratingKey."""
+        try:
+            import httpx
+            import xml.etree.ElementTree as ET
+            
+            # First, try to find existing collection
+            url = f"{self.base_url}/library/collections?X-Plex-Token={self.api_key}"
+            
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                
+                root = ET.fromstring(response.text)
+                for directory in root.findall(".//Directory"):
+                    if directory.get("title") == collection_name and directory.get("type") == "collection":
+                        logger.info(f"Found existing collection: {collection_name} (Key: {directory.get('ratingKey')})")
+                        return directory.get("ratingKey")
+            
+            # Collection doesn't exist, create it
+            # Need a library section ID - get first movie library
+            sections = await self.get_library_sections()
+            if not sections:
+                logger.error("No movie library sections found to create collection")
+                return None
+            
+            library_id = sections[0]["key"]
+            
+            # Create collection
+            import urllib.parse
+            encoded_name = urllib.parse.quote(collection_name)
+            create_url = f"{self.base_url}/library/collections?type=1&title={encoded_name}&sectionId={library_id}&X-Plex-Token={self.api_key}"
+            
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(create_url)
+                response.raise_for_status()
+                
+                # Parse response to get collection key
+                root = ET.fromstring(response.text)
+                collection = root.find(".//Directory")
+                if collection is not None:
+                    rating_key = collection.get("ratingKey")
+                    logger.info(f"Created new collection: {collection_name} (Key: {rating_key})")
+                    return rating_key
+                
+                return None
+                
+        except Exception as e:
+            logger.error(f"Failed to get or create collection '{collection_name}': {redact(str(e))}")
+            return None
+
+    async def add_to_collection(self, collection_key: str, rating_key: str) -> bool:
+        """Add a movie (by rating_key) to a collection (by collection_key)."""
+        try:
+            import httpx
+            import urllib.parse
+            
+            # Get machine ID first
+            machine_id = await self._get_machine_id()
+            if not machine_id:
+                logger.error("Could not get machine ID for Plex")
+                return False
+            
+            # Plex API requires server://machine-id/com.plexapp.plugins.library/library/metadata/ratingKey format
+            uri = f"server://{machine_id}/com.plexapp.plugins.library/library/metadata/{rating_key}"
+            encoded_uri = urllib.parse.quote(uri, safe='')
+            
+            url = f"{self.base_url}/library/collections/{collection_key}/items?uri={encoded_uri}&X-Plex-Token={self.api_key}"
+            
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.put(url)
+                response.raise_for_status()
+                logger.info(f"Added item {rating_key} to collection {collection_key}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Failed to add to collection: {redact(str(e))}")
+            return False
+
+    async def remove_from_collection(self, collection_key: str, rating_key: str) -> bool:
+        """Remove a movie (by rating_key) from a collection (by collection_key)."""
+        try:
+            import httpx
+            
+            url = f"{self.base_url}/library/collections/{collection_key}/children/{rating_key}?X-Plex-Token={self.api_key}"
+            
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.delete(url)
+                response.raise_for_status()
+                logger.info(f"Removed item {rating_key} from collection {collection_key}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Failed to remove from collection: {redact(str(e))}")
+            return False
+
+    async def _get_machine_id(self) -> Optional[str]:
+        """Get Plex server machine identifier."""
+        try:
+            import httpx
+            import xml.etree.ElementTree as ET
+            
+            url = f"{self.base_url}/identity?X-Plex-Token={self.api_key}"
+            
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                
+                root = ET.fromstring(response.text)
+                machine_id = root.get("machineIdentifier")
+                return machine_id
+                
+        except Exception as e:
+            logger.error(f"Failed to get machine ID: {redact(str(e))}")
+            return None

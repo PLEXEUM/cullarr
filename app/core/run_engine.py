@@ -52,58 +52,18 @@ async def release_run_lock():
         conn.close()
 
 
-async def _apply_plex_labels(
+async def _apply_plex_collections(
     plex_client: PlexClient,
-    label_text: str,
+    collection_name: str,
     movies: list,
     library_map: dict
 ) -> None:
     """
-    Add a Plex label to each movie in the list.
-    Handles both individual movies and collection groups.
-    """
-    # Flatten collections into individual movies for label application
-    flat_movies = []
-    for movie in movies:
-        if movie.get("is_collection"):
-            flat_movies.extend(movie.get("movies", []))
-        else:
-            flat_movies.append(movie)
-
-    for movie in flat_movies:
-        title = movie.get("movie_title")
-        year = movie.get("movie_year")
-        
-        if not title or not year:
-            logger.debug(f"Missing title or year for {movie['movie_title']}, skipping Plex label")
-            continue
-        
-        key = f"{title.lower()}|{year}"
-        rating_key = library_map.get(key)
-        
-        if not rating_key:
-            logger.debug(f"No Plex rating key found for '{title} ({year})'")
-            continue
-
-        success = await plex_client.add_label(rating_key, label_text)
-        if success:
-            logger.info(f"Added Plex label '{label_text}' to {movie['movie_title']}")
-        else:
-            logger.warning(f"Failed to add Plex label to {movie['movie_title']}")
-
-
-async def _remove_plex_labels(
-    plex_client: PlexClient,
-    label_text: str,
-    movies: list,
-    library_map: dict
-) -> None:
-    """
-    Remove a Plex label from each movie in the list.
+    Add movies to a Plex collection.
     Handles both individual movies and collection groups.
     Uses title + year to find the Plex rating key.
     """
-    # Flatten collections into individual movies for label removal
+    # Flatten collections into individual movies
     flat_movies = []
     for movie in movies:
         if movie.get("is_collection"):
@@ -111,12 +71,22 @@ async def _remove_plex_labels(
         else:
             flat_movies.append(movie)
 
+    if not flat_movies:
+        return
+
+    # Get or create the collection once
+    collection_key = await plex_client.get_or_create_collection(collection_name)
+    if not collection_key:
+        logger.error(f"Failed to get or create Plex collection: {collection_name}")
+        return
+
+    # Add each movie to the collection
     for movie in flat_movies:
         title = movie.get("movie_title")
         year = movie.get("movie_year")
         
         if not title or not year:
-            logger.debug(f"Missing title or year for movie, skipping Plex label removal")
+            logger.debug(f"Missing title or year for movie, skipping Plex collection")
             continue
         
         key = f"{title.lower()}|{year}"
@@ -126,11 +96,59 @@ async def _remove_plex_labels(
             logger.debug(f"No Plex rating key found for '{title} ({year})'")
             continue
 
-        success = await plex_client.remove_label(rating_key, label_text)
+        success = await plex_client.add_to_collection(collection_key, rating_key)
         if success:
-            logger.info(f"Removed Plex label '{label_text}' from {title}")
+            logger.info(f"Added '{title}' to Plex collection '{collection_name}'")
         else:
-            logger.warning(f"Failed to remove Plex label from {title}")
+            logger.warning(f"Failed to add '{title}' to Plex collection")
+
+
+async def _remove_plex_collections(
+    plex_client: PlexClient,
+    collection_name: str,
+    movies: list,
+    library_map: dict
+) -> None:
+    """
+    Remove movies from a Plex collection.
+    Handles both individual movies and collection groups.
+    Uses title + year to find the Plex rating key.
+    """
+    # Flatten collections into individual movies
+    flat_movies = []
+    for movie in movies:
+        if movie.get("is_collection"):
+            flat_movies.extend(movie.get("movies", []))
+        else:
+            flat_movies.append(movie)
+
+    if not flat_movies:
+        return
+
+    # Get the collection key (don't create if doesn't exist)
+    collection_key = await plex_client.get_or_create_collection(collection_name)
+    if not collection_key:
+        # Collection doesn't exist, nothing to remove
+        return
+
+    for movie in flat_movies:
+        title = movie.get("movie_title")
+        year = movie.get("movie_year")
+        
+        if not title or not year:
+            continue
+        
+        key = f"{title.lower()}|{year}"
+        rating_key = library_map.get(key)
+        
+        if not rating_key:
+            continue
+
+        success = await plex_client.remove_from_collection(collection_key, rating_key)
+        if success:
+            logger.info(f"Removed '{title}' from Plex collection '{collection_name}'")
+        else:
+            logger.warning(f"Failed to remove '{title}' from Plex collection")
 
 
 async def _build_plex_library_map(plex_client: PlexClient) -> dict:
@@ -405,7 +423,7 @@ async def run_score_cycle():
         # ===== END PROGRESS UPDATE =====
         # ===== END THREAD POOL WRAPPER =====
 
-        # ===== NEW: Clean up Plex labels for movies that left the queue =====
+        # ===== NEW: Clean up Plex collections for movies that left the queue =====
         # Get the new queue IDs after additions
         new_queue_ids = set()
         updated_queued = conn.execute(
@@ -418,18 +436,18 @@ async def run_score_cycle():
         removed_movie_ids = current_queue_ids - new_queue_ids
         
         if removed_movie_ids and plex_enabled and plex_client and plex_config["label_text"]:
-            # Get movie details for removed movies
+            # Get movie details for removed movies (need title and year for mapping)
             placeholders = ",".join("?" * len(removed_movie_ids))
             removed_movies_data = conn.execute(
-                f"SELECT movie_id, movie_title, tmdb_id FROM scored_movies_cache WHERE movie_id IN ({placeholders})",
+                f"SELECT movie_id, movie_title, movie_year FROM scored_movies_cache WHERE movie_id IN ({placeholders})",
                 tuple(removed_movie_ids)
             ).fetchall()
             
             if removed_movies_data:
-                # Convert to list of dicts for _remove_plex_labels
+                # Convert to list of dicts for _remove_plex_collections
                 removed_movies_list = [dict(row) for row in removed_movies_data]
-                logger.info(f"Removing Plex labels for {len(removed_movies_list)} movies that left the queue")
-                await _remove_plex_labels(
+                logger.info(f"Removing {len(removed_movies_list)} movies from Plex collection '{plex_config['label_text']}'")
+                await _remove_plex_collections(
                     plex_client,
                     plex_config["label_text"],
                     removed_movies_list,
@@ -437,10 +455,10 @@ async def run_score_cycle():
                 )
         # ===== END PLEX CLEANUP =====
 
-        # Apply Plex labels to all newly queued movies in one pass
+        # Add newly queued movies to Plex collection
         if plex_enabled and plex_client and plex_config["label_text"] and added:
-            logger.info(f"Applying Plex labels to {len(added)} queue entries")
-            await _apply_plex_labels(
+            logger.info(f"Adding {len(added)} movies to Plex collection '{plex_config['label_text']}'")
+            await _apply_plex_collections(
                 plex_client,
                 plex_config["label_text"],
                 added,
@@ -566,9 +584,9 @@ async def run_cull_cycle(dry_run: bool = False):
                     _active_run["current_movie"] = f"Deleted: {movie['movie_title']} ({deleted + failed} of {len(due_movies)})"
                     # ===== END PROGRESS UPDATE =====
 
-                    # Remove Plex label after successful deletion
+                    # Remove from Plex collection after successful deletion
                     if plex_enabled and plex_client and plex_config["label_text"]:
-                        await _remove_plex_labels(
+                        await _remove_plex_collections(
                             plex_client,
                             plex_config["label_text"],
                             [dict(movie)],
