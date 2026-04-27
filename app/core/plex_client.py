@@ -301,8 +301,12 @@ class PlexClient:
             import httpx
             import urllib.parse
             
+            logger.info(f"DEBUG: add_to_collection called with collection_key={collection_key}, rating_key={rating_key}")
+            
             # Get machine ID first
             machine_id = await self._get_machine_id()
+            logger.info(f"DEBUG: Got machine_id={machine_id}")
+            
             if not machine_id:
                 logger.error("Could not get machine ID for Plex")
                 return False
@@ -312,15 +316,18 @@ class PlexClient:
             encoded_uri = urllib.parse.quote(uri, safe='')
             
             url = f"{self.base_url}/library/collections/{collection_key}/items?uri={encoded_uri}&X-Plex-Token={self.api_key}"
+            logger.info(f"DEBUG: URL = {url}")
             
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.put(url)
+                logger.info(f"DEBUG: Response status = {response.status_code}")
                 response.raise_for_status()
                 logger.info(f"Added item {rating_key} to collection {collection_key}")
                 return True
                 
         except Exception as e:
             logger.error(f"Failed to add to collection: {redact(str(e))}")
+            logger.error(f"DEBUG: Exception details: {e}")
             return False
 
     async def remove_from_collection(self, collection_key: str, rating_key: str) -> bool:
