@@ -74,8 +74,17 @@ async def _apply_plex_collections(
     if not flat_movies:
         return
 
-    # Get or create the collection once
-    collection_key = await plex_client.get_or_create_collection(collection_name)
+    # Get or create the collection once - pass first movie's rating key if available
+    first_rating_key = None
+    if flat_movies:
+        first_movie = flat_movies[0]
+        title = first_movie.get("movie_title")
+        year = first_movie.get("movie_year")
+        if title and year:
+            key = f"{title.lower()}|{year}"
+            first_rating_key = library_map.get(key)
+    
+    collection_key = await plex_client.get_or_create_collection(collection_name, first_rating_key)
     if not collection_key:
         logger.error(f"Failed to get or create Plex collection: {collection_name}")
         return

@@ -226,7 +226,7 @@ class PlexClient:
             logger.error("machineIdentifier not found in /identity response")
         return machine_id
 
-    async def get_or_create_collection(self, collection_name: str) -> Optional[str]:
+    async def get_or_create_collection(self, collection_name: str, first_movie_rating_key: str = None) -> Optional[str]:
         """
         Get existing Plex collection by name or create a new one.
         Returns collection ratingKey or None on failure.
@@ -248,9 +248,14 @@ class PlexClient:
                 logger.info(f"Found existing collection: {collection_name} (key: {rating_key})")
                 return rating_key
     
-        # Create new collection with exact name (plexapi handles encoding correctly)
+        # Create new collection - Plex requires at least one item
         try:
-            new_collection = section.createCollection(title=collection_name)
+            if first_movie_rating_key:
+                movie = server.fetchItem(int(first_movie_rating_key))
+                new_collection = section.createCollection(title=collection_name, items=[movie])
+            else:
+                new_collection = section.createCollection(title=collection_name)
+            
             rating_key = str(new_collection.ratingKey)
             logger.info(f"Created collection: {collection_name} (key: {rating_key})")
             return rating_key
