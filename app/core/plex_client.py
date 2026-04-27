@@ -84,6 +84,7 @@ class PlexClient:
                     "rating_key": rating_key,
                     "tmdb_id": tmdb_id,
                     "title": item.get("title", ""),
+                    "year": item.get("year"),
                     "type": item.get("type"),
                 })
 

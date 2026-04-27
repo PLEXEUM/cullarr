@@ -71,14 +71,18 @@ async def _apply_plex_labels(
             flat_movies.append(movie)
 
     for movie in flat_movies:
-        tmdb_id = movie.get("tmdb_id")
-        if not tmdb_id:
-            logger.debug(f"No TMDb ID for {movie['movie_title']}, skipping Plex label")
+        title = movie.get("movie_title")
+        year = movie.get("movie_year")
+        
+        if not title or not year:
+            logger.debug(f"Missing title or year for {movie['movie_title']}, skipping Plex label")
             continue
-
-        rating_key = library_map.get(str(tmdb_id))
+        
+        key = f"{title.lower()}|{year}"
+        rating_key = library_map.get(key)
+        
         if not rating_key:
-            logger.debug(f"No Plex rating key found for {movie['movie_title']} (TMDb: {tmdb_id})")
+            logger.debug(f"No Plex rating key found for '{title} ({year})'")
             continue
 
         success = await plex_client.add_label(rating_key, label_text)
@@ -97,6 +101,7 @@ async def _remove_plex_labels(
     """
     Remove a Plex label from each movie in the list.
     Handles both individual movies and collection groups.
+    Uses title + year to find the Plex rating key.
     """
     # Flatten collections into individual movies for label removal
     flat_movies = []
@@ -107,32 +112,38 @@ async def _remove_plex_labels(
             flat_movies.append(movie)
 
     for movie in flat_movies:
-        tmdb_id = movie.get("tmdb_id") or movie.get("tmdb_id")
-        if not tmdb_id:
+        title = movie.get("movie_title")
+        year = movie.get("movie_year")
+        
+        if not title or not year:
+            logger.debug(f"Missing title or year for movie, skipping Plex label removal")
             continue
-
-        rating_key = library_map.get(str(tmdb_id))
+        
+        key = f"{title.lower()}|{year}"
+        rating_key = library_map.get(key)
+        
         if not rating_key:
+            logger.debug(f"No Plex rating key found for '{title} ({year})'")
             continue
 
         success = await plex_client.remove_label(rating_key, label_text)
         if success:
-            logger.info(f"Removed Plex label '{label_text}' from {movie['movie_title']}")
+            logger.info(f"Removed Plex label '{label_text}' from {title}")
         else:
-            logger.warning(f"Failed to remove Plex label from {movie['movie_title']}")
+            logger.warning(f"Failed to remove Plex label from {title}")
 
 
 async def _build_plex_library_map(plex_client: PlexClient) -> dict:
-    """
-    Build a single tmdb_id -> rating_key map from the Plex library.
-    Called once per cycle to avoid repeated full library scans.
-    """
     library_items = await plex_client.get_library_items()
     library_map = {}
     for item in library_items:
-        if item.get("tmdb_id"):
-            library_map[str(item["tmdb_id"])] = item["rating_key"]
-    logger.info(f"Built Plex library map with {len(library_map)} items")
+        title = item.get("title")
+        year = item.get("year")
+        rating_key = item.get("rating_key")
+        if title and year and rating_key:
+            key = f"{title.lower()}|{year}"
+            library_map[key] = rating_key
+    logger.info(f"Built Plex library map with {len(library_map)} items (by title|year)")
     return library_map
 
 
