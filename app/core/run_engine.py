@@ -95,17 +95,29 @@ async def _apply_plex_collections(
             logger.info(f"Found existing collection: {collection_name} (key: {collection_key})")
             break
     
-    if not collection_key:
-        # Create using raw HTTP (bypasses plexapi bug)
-        encoded_name = urllib.parse.quote(collection_name)
-        url = f"{plex_client.base_url}/library/collections?type=1&title={encoded_name}&sectionId={library_id}&X-Plex-Token={plex_client.api_key}"
+        if not collection_key:
+            # Create using raw HTTP (bypasses plexapi bug)
+            encoded_name = urllib.parse.quote(collection_name)
+            url = f"{plex_client.base_url}/library/collections?type=1&title={encoded_name}&sectionId={library_id}&X-Plex-Token={plex_client.api_key}"
         
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(url)
-            response.raise_for_status()
-            data = response.json()
-            collection_key = data.get("MediaContainer", {}).get("Metadata", [{}])[0].get("ratingKey")
-            logger.info(f"Created collection: {collection_name} (key: {collection_key})")
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(url)
+            
+                # Handle empty response (204 No Content)
+                if response.status_code in [200, 201, 204]:
+                    # Search for the newly created collection by name
+                    for collection in section.collections():
+                        if collection.title == collection_name:
+                            collection_key = str(collection.ratingKey)
+                            logger.info(f"Created collection: {collection_name} (key: {collection_key})")
+                            break
+                
+                    if not collection_key:
+                        logger.error(f"Collection created but not found: {collection_name}")
+                        return
+                else:
+                    logger.error(f"Failed to create collection: HTTP {response.status_code}")
+                    return
 
     if not collection_key:
         logger.error(f"Failed to get or create Plex collection: {collection_name}")
