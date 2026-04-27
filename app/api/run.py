@@ -92,11 +92,13 @@ async def _run_dry_score(run_id: str):
         movies = await radarr_client.get_movies()
         _active_run["total"] = 100
         _active_run["current"] = 10
+        logger.info(f"DEBUG: Set total=100, current=10, movie={_active_run['current_movie']}")  # ← ADD THIS
 
         conn = get_connection()
         try:
             _active_run["current_movie"] = "Scoring movies..."
             _active_run["current"] = 30
+            logger.info(f"DEBUG: Set current=30, movie={_active_run['current_movie']}")  # ← ADD THIS
             
             engine = ScoringEngine(conn)
             scored = engine.get_scored_movies(movies, plex_play_counts, plex_enabled)
