@@ -306,111 +306,39 @@ class PlexClient:
 
     async def add_to_collection(self, collection_key: str, rating_key: str) -> bool:
         """
-        Add a movie to a Plex collection.
-        Tries multiple API approaches in order until one succeeds,
-        logging each attempt to help identify the correct Plex API format.
+        Add a movie to a Plex collection using the correct endpoint format
+        confirmed from Maintainerr: PUT /library/collection/{collectionId}/child/{childId}
+        No URI parameter or machine ID needed — just the two rating keys in the path.
         """
         import httpx
 
-        machine_id = await self._get_machine_id()
-        if not machine_id:
-            logger.error("Could not get machine ID, cannot add to collection")
-            return False
-
-        uri = f"server://{machine_id}/com.plexapp.plugins.library/library/metadata/{rating_key}"
-        base_url = f"{self.base_url}/library/collections/{collection_key}/items"
-        token_param = f"X-Plex-Token={self.api_key}"
-
-        headers_json = {
-            "Accept": "application/json",
-            "X-Plex-Product": "Cullarr",
-            "X-Plex-Client-Identifier": "cullarr-695b47f5-3c61-4cbd-8eb3-bcc3d6d06ac5",
-            "X-Plex-Platform": "Web",
-            "X-Plex-Device-Name": "Cullarr",
-        }
-        headers_form = {**headers_json, "Content-Type": "application/x-www-form-urlencoded"}
-
-        attempts = [
-            # Attempt 1: PUT with uri in query string (current approach)
-            {
-                "label": "PUT uri=query_string",
-                "method": "PUT",
-                "url": f"{base_url}?uri={uri}&{token_param}",
-                "headers": headers_json,
-                "data": None,
-            },
-            # Attempt 2: PUT with uri in form body
-            {
-                "label": "PUT uri=form_body",
-                "method": "PUT",
-                "url": f"{base_url}?{token_param}",
-                "headers": headers_form,
-                "data": f"uri={uri}",
-            },
-            # Attempt 3: POST with uri in query string
-            {
-                "label": "POST uri=query_string",
-                "method": "POST",
-                "url": f"{base_url}?uri={uri}&{token_param}",
-                "headers": headers_json,
-                "data": None,
-            },
-            # Attempt 4: POST with uri in form body
-            {
-                "label": "POST uri=form_body",
-                "method": "POST",
-                "url": f"{base_url}?{token_param}",
-                "headers": headers_form,
-                "data": f"uri={uri}",
-            },
-            # Attempt 5: PUT with Content-Type header and uri in query string
-            {
-                "label": "PUT uri=query_string content-type=form",
-                "method": "PUT",
-                "url": f"{base_url}?uri={uri}&{token_param}",
-                "headers": headers_form,
-                "data": None,
-            },
-        ]
-
-        async with httpx.AsyncClient(timeout=30) as client:
-            for attempt in attempts:
-                try:
-                    logger.info(f"Collection add attempt [{attempt['label']}]: {attempt['url']}")
-                    if attempt["method"] == "PUT":
-                        response = await client.put(
-                            attempt["url"],
-                            headers=attempt["headers"],
-                            content=attempt["data"],
-                        )
-                    else:
-                        response = await client.post(
-                            attempt["url"],
-                            headers=attempt["headers"],
-                            content=attempt["data"],
-                        )
-
-                    logger.info(f"Collection add [{attempt['label']}] response: {response.status_code}")
-
-                    if response.status_code in (200, 201):
-                        logger.info(f"SUCCESS [{attempt['label']}]: Added item {rating_key} to collection {collection_key}")
-                        return True
-                    else:
-                        logger.warning(f"FAILED [{attempt['label']}]: {response.status_code} — {response.text[:200]}")
-
-                except Exception as e:
-                    logger.warning(f"EXCEPTION [{attempt['label']}]: {redact(str(e))}")
-
-        logger.error(f"All attempts failed to add item {rating_key} to collection {collection_key}")
-        return False
-
-    async def remove_from_collection(self, collection_key: str, rating_key: str) -> bool:
-        """Remove a movie from a Plex collection."""
-        import httpx
         url = (
-            f"{self.base_url}/library/collections/{collection_key}/children/{rating_key}"
+            f"{self.base_url}/library/collection/{collection_key}/child/{rating_key}"
             f"?X-Plex-Token={self.api_key}"
         )
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.put(url)
+                response.raise_for_status()
+                logger.info(f"Added item {rating_key} to collection {collection_key}")
+                return True
+        except Exception as e:
+            logger.error(f"Failed to add item {rating_key} to collection {collection_key}: {redact(str(e))}")
+            return False
+
+    async def remove_from_collection(self, collection_key: str, rating_key: str) -> bool:
+        """
+        Remove a movie from a Plex collection.
+        DELETE /library/collection/{collectionId}/child/{childId}
+        """
+        import httpx
+
+        url = (
+            f"{self.base_url}/library/collection/{collection_key}/child/{rating_key}"
+            f"?X-Plex-Token={self.api_key}"
+        )
+
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.delete(url)
