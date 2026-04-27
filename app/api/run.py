@@ -8,13 +8,27 @@ from datetime import datetime
 from app.core.run_engine import run_score_cycle, run_cull_cycle
 from app.core.scheduler import get_next_score_run, get_next_cull_run
 from app.utils.logger import get_logger
-from app.core.run_state import _active_run
 
 router = APIRouter()
 logger = get_logger()
 
 # AsyncIO lock to prevent race conditions on _active_run
 _run_lock = asyncio.Lock()
+
+# Global state for tracking active runs
+_active_run = {
+    "is_running": False,
+    "run_id": None,
+    "run_type": None,
+    "current": 0,
+    "total": 0,
+    "current_movie": "",
+    "cancelled": False,
+    "dry_run": False,
+    "dry_run_results": None,
+    "run_sequence": 0,  
+    "last_updated": None, 
+}
 
 
 async def _set_run_active(run_id: str, run_type: str, dry_run: bool = False):
@@ -29,6 +43,7 @@ async def _set_run_active(run_id: str, run_type: str, dry_run: bool = False):
         _active_run["dry_run"] = dry_run
         _active_run["dry_run_results"] = None
         _active_run["current"] = 0
+        _active_run["total"] = 0
         _active_run["current_movie"] = ""
         _active_run["run_sequence"] += 1  
         _active_run["last_updated"] = datetime.now().isoformat()
@@ -41,9 +56,6 @@ async def _set_run_inactive():
         _active_run["is_running"] = False
         _active_run["run_id"] = None
         _active_run["run_type"] = None
-        _active_run["current"] = 0
-        _active_run["total"] = 0
-        _active_run["current_movie"] = "Idle"
         _active_run["last_updated"] = datetime.now().isoformat()
 
 
@@ -78,61 +90,27 @@ async def _run_dry_score(run_id: str):
             logger.error(f"Radarr connection failed: {radarr_msg}")
             return
 
-        # ===== PROGRESS: Set initial state BEFORE any slow operations =====
-        _active_run["current_movie"] = "Starting dry run..."
-        _active_run["total"] = 100
-        _active_run["current"] = 0
-        logger.info(f"DEBUG: Progress 0% - Starting dry run")
-
         # Plex play counts if enabled
         plex_play_counts = None
         plex_enabled = bool(
             plex_config and plex_config["enabled"] and
             plex_config["url"] and plex_config["api_key"]
         )
-        
         if plex_enabled:
-            _active_run["current_movie"] = "Connecting to Plex..."
-            _active_run["current"] = 5
-            logger.info(f"DEBUG: Progress 5% - Connecting to Plex")
-            
             plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
             ok, _ = await plex_client.test_connection()
             if ok:
-                _active_run["current_movie"] = "Fetching Plex watch history..."
-                _active_run["current"] = 10
-                logger.info(f"DEBUG: Progress 10% - Fetching Plex watch history")
                 plex_play_counts = await plex_client.get_play_counts_by_tmdb()
-                logger.info(f"Fetched {len(plex_play_counts) if plex_play_counts else 0} play counts from Plex")
-            else:
-                logger.warning("Plex connection failed, continuing without watch data")
-                plex_enabled = False
-        else:
-            logger.info("Plex not enabled, skipping play counts")
 
-        # ===== PROGRESS: Fetch movies from Radarr =====
         _active_run["current_movie"] = "Fetching movies from Radarr..."
-        _active_run["current"] = 20
-        logger.info(f"DEBUG: Progress 20% - Fetching movies from Radarr")
-        
         movies = await radarr_client.get_movies()
-        logger.info(f"Fetched {len(movies)} movies from Radarr")
-
-        # ===== PROGRESS: Scoring movies =====
-        _active_run["current_movie"] = f"Scoring {len(movies)} movies..."
-        _active_run["current"] = 40
-        logger.info(f"DEBUG: Progress 40% - Scoring movies")
+        _active_run["total"] = len(movies)
+        _active_run["current"] = 0
 
         conn = get_connection()
         try:
             engine = ScoringEngine(conn)
             scored = engine.get_scored_movies(movies, plex_play_counts, plex_enabled)
-            logger.info(f"Scored {len(scored)} entries")
-            
-            # ===== PROGRESS: Filtering candidates =====
-            _active_run["current_movie"] = "Filtering candidates..."
-            _active_run["current"] = 70
-            logger.info(f"DEBUG: Progress 70% - Filtering candidates")
         finally:
             conn.close()
 
@@ -160,11 +138,9 @@ async def _run_dry_score(run_id: str):
         
         would_queue = candidates[:max_queued]
 
-        # ===== PROGRESS: Complete =====
         _active_run["dry_run_results"] = would_queue
-        _active_run["current"] = 100
+        _active_run["current"] = len(movies)
         _active_run["current_movie"] = f"Dry run complete — {len(would_queue)} movies would be queued"
-        logger.info(f"DEBUG: Progress 100% - Complete, {len(would_queue)} movies would be queued")
         logger.info(f"Dry score run complete: {len(would_queue)} movies would be queued")
 
     except Exception as e:

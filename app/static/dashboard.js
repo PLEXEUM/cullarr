@@ -399,7 +399,12 @@ async function triggerCullRun() {
 // Run status polling — updates progress bar and re-loads queue when done
 function startRunStatusPolling() {
     const cancelBtn = document.getElementById('cancel-run-btn');
-    const runBtn = document.getElementById('run-score-btn');
+    const scoreProgressBar = document.getElementById('score-progress-bar');
+    const cullProgressBar = document.getElementById('cull-progress-bar');
+    const scoreProgressPct = document.getElementById('score-progress-pct');
+    const cullProgressPct = document.getElementById('cull-progress-pct');
+    const scoreProgressLabel = document.getElementById('score-progress-label');
+    const cullProgressLabel = document.getElementById('cull-progress-label');
 
     cancelBtn.classList.remove('hidden');
 
@@ -411,27 +416,47 @@ function startRunStatusPolling() {
             const data = await res.json();
 
             if (data.is_running) {
-                const pct = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
-    
+                // Show indeterminate (pulsing) animation for the active run type
                 if (data.run_type === 'score') {
-                    document.getElementById('score-progress-bar').style.width = `${pct}%`;
-                    document.getElementById('score-progress-pct').textContent = `${pct}%`;
-                    document.getElementById('score-progress-label').textContent = data.current_movie || 'Scoring movies...';
+                    // Score run active
+                    scoreProgressBar.classList.add('progress-indeterminate');
+                    scoreProgressBar.style.width = '';
+                    scoreProgressPct.textContent = '⟳';
+                    scoreProgressLabel.textContent = data.current_movie || 'Running score cycle...';
+                    
+                    // Reset cull run display
+                    cullProgressBar.classList.remove('progress-indeterminate');
+                    cullProgressBar.style.width = '0%';
+                    cullProgressPct.textContent = '0%';
+                    cullProgressLabel.textContent = 'Idle';
                 } else if (data.run_type === 'cull') {
-                    document.getElementById('cull-progress-bar').style.width = `${pct}%`;
-                    document.getElementById('cull-progress-pct').textContent = `${pct}%`;
-                    document.getElementById('cull-progress-label').textContent = data.current_movie || 'Deleting movies...';
+                    // Cull run active
+                    cullProgressBar.classList.add('progress-indeterminate');
+                    cullProgressBar.style.width = '';
+                    cullProgressPct.textContent = '⟳';
+                    cullProgressLabel.textContent = data.current_movie || 'Running cull cycle...';
+                    
+                    // Reset score run display
+                    scoreProgressBar.classList.remove('progress-indeterminate');
+                    scoreProgressBar.style.width = '0%';
+                    scoreProgressPct.textContent = '0%';
+                    scoreProgressLabel.textContent = 'Idle';
                 }
     
                 cancelBtn.onclick = () => cancelRun(data.run_id);
             } else {
-                // Reset both progress bars when idle
-                document.getElementById('score-progress-bar').style.width = '0%';
-                document.getElementById('score-progress-pct').textContent = '0%';
-                document.getElementById('score-progress-label').textContent = 'Idle';
-                document.getElementById('cull-progress-bar').style.width = '0%';
-                document.getElementById('cull-progress-pct').textContent = '0%';
-                document.getElementById('cull-progress-label').textContent = 'Idle';
+                // Remove indeterminate animation and reset both progress bars
+                scoreProgressBar.classList.remove('progress-indeterminate');
+                cullProgressBar.classList.remove('progress-indeterminate');
+                
+                scoreProgressBar.style.width = '0%';
+                scoreProgressPct.textContent = '0%';
+                scoreProgressLabel.textContent = 'Idle';
+                
+                cullProgressBar.style.width = '0%';
+                cullProgressPct.textContent = '0%';
+                cullProgressLabel.textContent = 'Idle';
+                
                 cancelBtn.classList.add('hidden');
     
                 // Re-enable both buttons
@@ -452,9 +477,11 @@ function startRunStatusPolling() {
                     showDryRunModal(title, data.dry_run_results, window.pendingDryRun || 'score');
                 } else if (data.dry_run) {
                     showToast('Dry run completed - no items would be affected', 'info');
+                } else if (!data.dry_run && data.is_running === false && data.current === 0 && data.total === 0) {
+                    // Only show completion toast for non-dry runs that actually did something
+                    showToast('Run completed', 'success');
                 }
     
-                showToast('Run completed', 'success');
                 await loadDashboard();
     
                 // Clear pending dry run flag
