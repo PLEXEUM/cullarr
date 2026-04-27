@@ -318,11 +318,13 @@ class PlexClient:
             logger.error("Could not get machine ID, cannot add to collection")
             return False
 
+        import urllib.parse
         uri = f"server://{machine_id}/com.plexapp.plugins.library/library/metadata/{rating_key}"
+        encoded_uri = urllib.parse.quote(uri, safe='')
 
         url = (
             f"{self.base_url}/library/collections/{collection_key}/items"
-            f"?uri={uri}"
+            f"?uri={encoded_uri}"
         )
 
         headers = {
