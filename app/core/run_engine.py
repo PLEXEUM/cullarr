@@ -313,6 +313,15 @@ async def run_score_cycle():
         
         to_add, scheduled_id_set = result
 
+        # ===== NEW: Track current queue IDs before adding new movies =====
+        current_queue_ids = set()
+        existing_queued = conn.execute(
+            "SELECT movie_id FROM scheduled_deletions WHERE status = 'scheduled'"
+        ).fetchall()
+        for row in existing_queued:
+            current_queue_ids.add(row["movie_id"])
+        # ===== END TRACK CURRENT QUEUE =====
+        
         # Add to scheduled deletions (another DB-heavy operation)
         def _add_to_queue():
             added = []
@@ -348,6 +357,38 @@ async def run_score_cycle():
 
         added = await asyncio.to_thread(_add_to_queue)
         # ===== END THREAD POOL WRAPPER =====
+
+        # ===== NEW: Clean up Plex labels for movies that left the queue =====
+        # Get the new queue IDs after additions
+        new_queue_ids = set()
+        updated_queued = conn.execute(
+            "SELECT movie_id FROM scheduled_deletions WHERE status = 'scheduled'"
+        ).fetchall()
+        for row in updated_queued:
+            new_queue_ids.add(row["movie_id"])
+        
+        # Find movies that were removed (in old but not in new)
+        removed_movie_ids = current_queue_ids - new_queue_ids
+        
+        if removed_movie_ids and plex_enabled and plex_client and plex_config["label_text"]:
+            # Get movie details for removed movies
+            placeholders = ",".join("?" * len(removed_movie_ids))
+            removed_movies_data = conn.execute(
+                f"SELECT movie_id, movie_title, tmdb_id FROM scored_movies_cache WHERE movie_id IN ({placeholders})",
+                tuple(removed_movie_ids)
+            ).fetchall()
+            
+            if removed_movies_data:
+                # Convert to list of dicts for _remove_plex_labels
+                removed_movies_list = [dict(row) for row in removed_movies_data]
+                logger.info(f"Removing Plex labels for {len(removed_movies_list)} movies that left the queue")
+                await _remove_plex_labels(
+                    plex_client,
+                    plex_config["label_text"],
+                    removed_movies_list,
+                    plex_library_map
+                )
+        # ===== END PLEX CLEANUP =====
 
         # Apply Plex labels to all newly queued movies in one pass
         if plex_enabled and plex_client and plex_config["label_text"] and added:
@@ -445,7 +486,7 @@ async def run_cull_cycle(dry_run: bool = False):
             logger.info(f"Deleting: {movie['movie_title']} (scheduled: {movie['scheduled_date']})")
 
             try:
-                result = await radarr_client.delete_movie_file_only(movie["movie_id"])
+                result = await radarr_client.delete_movie_entirely(movie["movie_id"])
 
                 if result["success"]:
                     conn.execute(

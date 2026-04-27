@@ -179,6 +179,37 @@ async def remove_from_queue(movie_id: int):
             )
             conn.commit()
             logger.info(f"Manually removed from queue: {existing['movie_title']}")
+            
+            # ===== NEW: Remove Plex label for manually removed movie =====
+            try:
+                # Get Plex config
+                plex_config = conn.execute("SELECT url, api_key, enabled, label_text FROM plex_config WHERE id = 1").fetchone()
+                if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["label_text"]:
+                    # Get movie details for label removal
+                    movie_data = conn.execute(
+                        "SELECT movie_id, movie_title, tmdb_id FROM scored_movies_cache WHERE movie_id = ?",
+                        (movie_id,)
+                    ).fetchone()
+                    
+                    if movie_data and movie_data["tmdb_id"]:
+                        plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
+                        plex_ok, _ = await plex_client.test_connection()
+                        if plex_ok:
+                            # Build library map for TMDb to rating key
+                            library_items = await plex_client.get_library_items()
+                            library_map = {}
+                            for item in library_items:
+                                if item.get("tmdb_id"):
+                                    library_map[str(item["tmdb_id"])] = item["rating_key"]
+                            
+                            rating_key = library_map.get(str(movie_data["tmdb_id"]))
+                            if rating_key:
+                                await plex_client.remove_label(rating_key, plex_config["label_text"])
+                                logger.info(f"Removed Plex label from manually removed movie: {movie_data['movie_title']}")
+            except Exception as plex_error:
+                logger.warning(f"Failed to remove Plex label for manually removed movie: {plex_error}")
+            # ===== END PLEX CLEANUP =====
+            
             return {"success": True, "message": f"Removed {existing['movie_title']} from queue"}
 
     except HTTPException:

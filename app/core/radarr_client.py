@@ -86,3 +86,24 @@ class RadarrClient:
         except Exception as e:
             logger.error(f"Failed to delete movie file: {e}")
             return {"success": False, "message": str(e)}
+        
+    async def delete_movie_entirely(self, movie_id: int) -> dict:
+        """Delete the entire movie entry from Radarr (file + database entry)."""
+        try:
+            # DELETE /api/v3/movie/{id}?deleteFiles=true
+            # First verify the movie exists
+            movie = await self.get_movie(movie_id)
+            if not movie:
+                logger.warning(f"Movie {movie_id} not found in Radarr")
+                return {"success": False, "message": "Movie not found in Radarr"}
+            
+            movie_title = movie.get("title", "Unknown")
+            
+            # Perform full deletion with deleteFiles=true
+            await self._request("DELETE", f"movie/{movie_id}?deleteFiles=true", timeout=120)
+            logger.info(f"Deleted entire movie entry: {movie_title} (ID: {movie_id}) from Radarr")
+            return {"success": True, "message": f"Deleted movie: {movie_title}"}
+            
+        except Exception as e:
+            logger.error(f"Failed to delete movie {movie_id} entirely: {e}")
+            return {"success": False, "message": str(e)}
