@@ -306,20 +306,38 @@ class PlexClient:
 
     async def add_to_collection(self, collection_key: str, rating_key: str) -> bool:
         """
-        Add a movie to a Plex collection using the correct endpoint format
-        confirmed from Maintainerr: PUT /library/collection/{collectionId}/child/{childId}
-        No URI parameter or machine ID needed — just the two rating keys in the path.
+        Add a movie to a Plex collection.
+        Endpoint confirmed from Maintainerr source:
+        PUT /library/collections/{collectionId}/items?uri=server://{machineId}/com.plexapp.plugins.library/library/metadata/{childId}
+        Token must be passed as a header, not a query parameter, for this endpoint.
         """
         import httpx
 
+        machine_id = await self._get_machine_id()
+        if not machine_id:
+            logger.error("Could not get machine ID, cannot add to collection")
+            return False
+
+        uri = f"server://{machine_id}/com.plexapp.plugins.library/library/metadata/{rating_key}"
+
         url = (
-            f"{self.base_url}/library/collection/{collection_key}/child/{rating_key}"
-            f"?X-Plex-Token={self.api_key}"
+            f"{self.base_url}/library/collections/{collection_key}/items"
+            f"?uri={uri}"
         )
+
+        headers = {
+            "Accept": "application/json",
+            "X-Plex-Token": self.api_key,
+            "X-Plex-Product": "Cullarr",
+            "X-Plex-Version": "1.0.0",
+            "X-Plex-Client-Identifier": "cullarr-695b47f5-3c61-4cbd-8eb3-bcc3d6d06ac5",
+            "X-Plex-Platform": "Web",
+            "X-Plex-Device-Name": "Cullarr",
+        }
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.put(url)
+                response = await client.put(url, headers=headers)
                 response.raise_for_status()
                 logger.info(f"Added item {rating_key} to collection {collection_key}")
                 return True
