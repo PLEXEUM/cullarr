@@ -249,38 +249,38 @@ class PlexClient:
         try:
             import httpx
             import xml.etree.ElementTree as ET
-            
-            # First, try to find existing collection
-            url = f"{self.base_url}/library/collections?X-Plex-Token={self.api_key}"
-            
+        
+            # Get movie library section ID first
+            sections = await self.get_library_sections()
+            if not sections:
+                logger.error("No movie library sections found to get/create collection")
+                return None
+        
+            library_id = sections[0]["key"]
+        
+            # First, try to find existing collection using section-specific endpoint
+            url = f"{self.base_url}/library/sections/{library_id}/collections?X-Plex-Token={self.api_key}"
+        
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.get(url)
                 response.raise_for_status()
-                
+            
                 root = ET.fromstring(response.text)
                 for directory in root.findall(".//Directory"):
                     if directory.get("title") == collection_name and directory.get("type") == "collection":
-                        logger.info(f"Found existing collection: {collection_name} (Key: {directory.get('ratingKey')})")
-                        return directory.get("ratingKey")
-            
-            # Collection doesn't exist, create it
-            # Need a library section ID - get first movie library
-            sections = await self.get_library_sections()
-            if not sections:
-                logger.error("No movie library sections found to create collection")
-                return None
-            
-            library_id = sections[0]["key"]
-            
-            # Create collection
+                        rating_key = directory.get("ratingKey")
+                        logger.info(f"Found existing collection: {collection_name} (Key: {rating_key})")
+                        return rating_key
+        
+            # Collection doesn't exist, create it using the POST endpoint
             import urllib.parse
             encoded_name = urllib.parse.quote(collection_name)
             create_url = f"{self.base_url}/library/collections?type=1&title={encoded_name}&sectionId={library_id}&X-Plex-Token={self.api_key}"
-            
+        
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.post(create_url)
                 response.raise_for_status()
-                
+            
                 # Parse response to get collection key
                 root = ET.fromstring(response.text)
                 collection = root.find(".//Directory")
@@ -288,9 +288,9 @@ class PlexClient:
                     rating_key = collection.get("ratingKey")
                     logger.info(f"Created new collection: {collection_name} (Key: {rating_key})")
                     return rating_key
-                
+            
                 return None
-                
+            
         except Exception as e:
             logger.error(f"Failed to get or create collection '{collection_name}': {redact(str(e))}")
             return None
