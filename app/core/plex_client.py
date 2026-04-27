@@ -226,38 +226,6 @@ class PlexClient:
             logger.error("machineIdentifier not found in /identity response")
         return machine_id
 
-    async def add_label(self, rating_key: str, label: str) -> bool:
-        """Add a label to a Plex item."""
-        import urllib.parse
-        encoded_label = urllib.parse.quote(label)
-        url = (
-            f"{self.base_url}/library/metadata/{rating_key}/label"
-            f"?label%5B0%5D.tag.tag={encoded_label}&label.locked=1"
-            f"&X-Plex-Token={self.api_key}"
-        )
-        success = await self._request_put(url)
-        if success:
-            logger.info(f"Added label '{label}' to Plex item {rating_key}")
-        else:
-            logger.error(f"Failed to add label '{label}' to Plex item {rating_key}")
-        return success
-
-    async def remove_label(self, rating_key: str, label: str) -> bool:
-        """Remove a label from a Plex item."""
-        import urllib.parse
-        encoded_label = urllib.parse.quote(label)
-        url = (
-            f"{self.base_url}/library/metadata/{rating_key}/label"
-            f"?label%5B0%5D.tag.tag-={encoded_label}&label.locked=1"
-            f"&X-Plex-Token={self.api_key}"
-        )
-        success = await self._request_put(url)
-        if success:
-            logger.info(f"Removed label '{label}' from Plex item {rating_key}")
-        else:
-            logger.error(f"Failed to remove label '{label}' from Plex item {rating_key}")
-        return success
-
     async def get_or_create_collection(self, collection_name: str) -> Optional[str]:
         """
         Get existing Plex collection by name or create a new one.
@@ -306,22 +274,34 @@ class PlexClient:
 
     async def add_to_collection(self, collection_key: str, rating_key: str) -> bool:
         """
-        Add a movie to a Plex collection using python-plexapi.
-        Uses the library's battle-tested collection management instead of raw HTTP.
+        Add a movie to a Plex collection.
+        Explicitly unlocks the collection field if locked before adding.
         """
         try:
             from plexapi.server import PlexServer
-
+        
             server = PlexServer(self.base_url, self.api_key)
             movie = server.fetchItem(int(rating_key))
             collection = server.fetchItem(int(collection_key))
+        
+            # Step 1: Unlock the collection field if it's locked
+            # Check if the movie has the collection field locked
+            try:
+                # Attempt to unlock - this is idempotent (safe to call even if already unlocked)
+                movie.edit(**{"collection.locked": False})
+                logger.debug(f"Unlocked collection field for item {rating_key}")
+            except Exception as unlock_err:
+                # If unlocking fails, it's likely already unlocked - continue anyway
+                logger.debug(f"Unlock attempt had no effect (likely already unlocked): {unlock_err}")
+        
+            # Step 2: Add to collection
             collection.addItems([movie])
             logger.info(f"Added item {rating_key} to collection {collection_key}")
             return True
+        
         except Exception as e:
             logger.error(f"Failed to add item {rating_key} to collection {collection_key}: {redact(str(e))}")
             return False
-
 
     async def remove_from_collection(self, collection_key: str, rating_key: str) -> bool:
         """
