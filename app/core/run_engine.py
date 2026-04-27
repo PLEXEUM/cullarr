@@ -61,7 +61,6 @@ async def _apply_plex_collections(
     """
     Add movies to a Plex collection.
     Handles both individual movies and collection groups.
-    Uses title + year to find the Plex rating key.
     """
     import httpx
     import urllib.parse
@@ -83,41 +82,48 @@ async def _apply_plex_collections(
         logger.error("No movie library section found")
         return
 
-    # Find or create collection using raw HTTP (bypasses plexapi bug)
     from plexapi.server import PlexServer
     server = PlexServer(plex_client.base_url, plex_client.api_key)
     section = server.library.sectionByID(int(library_id))
+    
+    # Log all collections and their titles for debugging
+    logger.info("=== All collections in Plex ===")
+    for c in section.collections():
+        logger.info(f"  Key: {c.ratingKey} | Title: {repr(c.title)}")
+    logger.info("================================")
+    logger.info(f"Looking for collection name: {repr(collection_name)}")
     
     collection_key = None
     for collection in section.collections():
         if collection.title == collection_name:
             collection_key = str(collection.ratingKey)
-            logger.info(f"Found existing collection: {collection_name} (key: {collection_key})")
+            logger.info(f"Found match: {collection_name} (key: {collection_key})")
             break
+        else:
+            logger.info(f"No match: '{collection.title}' vs '{collection_name}'")
     
-        if not collection_key:
-            # Create using raw HTTP (bypasses plexapi bug)
-            encoded_name = urllib.parse.quote(collection_name)
-            url = f"{plex_client.base_url}/library/collections?type=1&title={encoded_name}&sectionId={library_id}&X-Plex-Token={plex_client.api_key}"
+    if not collection_key:
+        # Create using raw HTTP
+        encoded_name = urllib.parse.quote(collection_name)
+        url = f"{plex_client.base_url}/library/collections?type=1&title={encoded_name}&sectionId={library_id}&X-Plex-Token={plex_client.api_key}"
         
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(url)
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(url)
             
-                # Handle empty response (204 No Content)
-                if response.status_code in [200, 201, 204]:
-                    # Search for the newly created collection by name
-                    for collection in section.collections():
-                        if collection.title == collection_name:
-                            collection_key = str(collection.ratingKey)
-                            logger.info(f"Created collection: {collection_name} (key: {collection_key})")
-                            break
+            if response.status_code in [200, 201, 204]:
+                # Refresh and find by name
+                for collection in section.collections():
+                    if collection.title == collection_name:
+                        collection_key = str(collection.ratingKey)
+                        logger.info(f"Created collection: {collection_name} (key: {collection_key})")
+                        break
                 
-                    if not collection_key:
-                        logger.error(f"Collection created but not found: {collection_name}")
-                        return
-                else:
-                    logger.error(f"Failed to create collection: HTTP {response.status_code}")
+                if not collection_key:
+                    logger.error(f"Collection created but not found: {collection_name}")
                     return
+            else:
+                logger.error(f"Failed to create collection: HTTP {response.status_code}")
+                return
 
     if not collection_key:
         logger.error(f"Failed to get or create Plex collection: {collection_name}")
@@ -129,14 +135,12 @@ async def _apply_plex_collections(
         year = movie.get("movie_year")
         
         if not title or not year:
-            logger.debug(f"Missing title or year for movie, skipping Plex collection")
             continue
         
         key = f"{title.lower()}|{year}"
         rating_key = library_map.get(key)
         
         if not rating_key:
-            logger.debug(f"No Plex rating key found for '{title} ({year})'")
             continue
 
         success = await plex_client.add_to_collection(collection_key, rating_key)
