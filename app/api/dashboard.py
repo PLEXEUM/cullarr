@@ -183,8 +183,8 @@ async def remove_from_queue(movie_id: int):
             # ===== NEW: Remove from Plex collection for manually removed movie =====
             try:
                 # Get Plex config
-                plex_config = conn.execute("SELECT url, api_key, enabled, label_text FROM plex_config WHERE id = 1").fetchone()
-                if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["label_text"]:
+                plex_config = conn.execute("SELECT url, api_key, enabled, collection_name FROM plex_config WHERE id = 1").fetchone()
+                if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_name"]:
                     # Get movie details (need title and year for collection removal)
                     movie_data = conn.execute(
                         "SELECT movie_id, movie_title, movie_year FROM scored_movies_cache WHERE movie_id = ?",
@@ -211,10 +211,10 @@ async def remove_from_queue(movie_id: int):
                             
                             if rating_key:
                                 # Get or create collection (existing collection)
-                                collection_key = await plex_client.get_or_create_collection(plex_config["label_text"])
+                                collection_key = await plex_client.get_or_create_collection(plex_config["collection_name"])
                                 if collection_key:
                                     await plex_client.remove_from_collection(collection_key, rating_key)
-                                    logger.info(f"Removed '{movie_data['movie_title']}' from Plex collection '{plex_config['label_text']}'")
+                                    logger.info(f"Removed '{movie_data['movie_title']}' from Plex collection '{plex_config['collection_name']}'")
             except Exception as plex_error:
                 logger.warning(f"Failed to remove from Plex collection for manually removed movie: {plex_error}")
             # ===== END PLEX CLEANUP =====

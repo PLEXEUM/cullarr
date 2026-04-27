@@ -36,7 +36,7 @@ def init_db():
             id INTEGER PRIMARY KEY CHECK (id = 1),
             url TEXT,
             api_key TEXT,
-            label_text TEXT DEFAULT 'Cullarr - Pending Deletion',
+            collection_name TEXT DEFAULT 'Cullarr - Pending Deletion',
             enabled BOOLEAN DEFAULT 0,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
@@ -284,7 +284,7 @@ def migrate_db():
         columns = cursor.fetchall()
         column_names = [col[1] for col in columns]
         
-        if "label_text" in column_names and "collection_name" not in column_names:
+        if "collection_name" in column_names and "collection_name" not in column_names:
             cursor.execute("ALTER TABLE plex_config RENAME COLUMN label_text TO collection_name")
             print("Migration applied: renamed label_text to collection_name in plex_config")
     except Exception:

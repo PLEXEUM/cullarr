@@ -96,6 +96,7 @@ async def _apply_plex_collections(
             logger.debug(f"No Plex rating key found for '{title} ({year})'")
             continue
 
+        logger.info(f"DEBUG: About to add rating_key={rating_key} to collection_key={collection_key}")
         success = await plex_client.add_to_collection(collection_key, rating_key)
         if success:
             logger.info(f"Added '{title}' to Plex collection '{collection_name}'")
@@ -435,7 +436,7 @@ async def run_score_cycle():
         # Find movies that were removed (in old but not in new)
         removed_movie_ids = current_queue_ids - new_queue_ids
         
-        if removed_movie_ids and plex_enabled and plex_client and plex_config["label_text"]:
+        if removed_movie_ids and plex_enabled and plex_client and plex_config["collection_name"]:
             # Get movie details for removed movies (need title and year for mapping)
             placeholders = ",".join("?" * len(removed_movie_ids))
             removed_movies_data = conn.execute(
@@ -446,21 +447,21 @@ async def run_score_cycle():
             if removed_movies_data:
                 # Convert to list of dicts for _remove_plex_collections
                 removed_movies_list = [dict(row) for row in removed_movies_data]
-                logger.info(f"Removing {len(removed_movies_list)} movies from Plex collection '{plex_config['label_text']}'")
+                logger.info(f"Removing {len(removed_movies_list)} movies from Plex collection '{plex_config['collection_name']}'")
                 await _remove_plex_collections(
                     plex_client,
-                    plex_config["label_text"],
+                    plex_config["collection_name"],
                     removed_movies_list,
                     plex_library_map
                 )
         # ===== END PLEX CLEANUP =====
 
         # Add newly queued movies to Plex collection
-        if plex_enabled and plex_client and plex_config["label_text"] and added:
-            logger.info(f"Adding {len(added)} movies to Plex collection '{plex_config['label_text']}'")
+        if plex_enabled and plex_client and plex_config["collection_name"] and added:
+            logger.info(f"Adding {len(added)} movies to Plex collection '{plex_config['collection_name']}'")
             await _apply_plex_collections(
                 plex_client,
-                plex_config["label_text"],
+                plex_config["collection_name"],
                 added,
                 plex_library_map
             )
@@ -585,10 +586,10 @@ async def run_cull_cycle(dry_run: bool = False):
                     # ===== END PROGRESS UPDATE =====
 
                     # Remove from Plex collection after successful deletion
-                    if plex_enabled and plex_client and plex_config["label_text"]:
+                    if plex_enabled and plex_client and plex_config["collection_name"]:
                         await _remove_plex_collections(
                             plex_client,
-                            plex_config["label_text"],
+                            plex_config["collection_name"],
                             [dict(movie)],
                             plex_library_map
                         )
