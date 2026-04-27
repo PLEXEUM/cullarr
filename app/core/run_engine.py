@@ -372,10 +372,10 @@ async def run_score_cycle():
 
                         label = movie.get("collection_title") or movie["movie_title"]
                         count = len(entries)
-                        logger.info(
-                            f"Added to queue: {label} "
-                            f"({'collection: ' + str(count) + ' movies' if movie.get('is_collection') else 'score: ' + str(movie['normalized_score']):.1f})"
-                        )
+                        if movie.get("is_collection"):
+                            logger.info(f"Added to queue: {label} (collection: {count} movies)")
+                        else:
+                            logger.info(f"Added to queue: {label} (score: {movie['normalized_score']:.1f})")
                         added.append(movie)
                     except Exception as e:
                         label = movie.get("collection_title") or movie.get("movie_title")
