@@ -285,17 +285,15 @@ class PlexClient:
             collection = server.fetchItem(int(collection_key))
         
             # Step 1: Unlock the collection field if it's locked
-            # Check if the movie has the collection field locked
             try:
-                # Attempt to unlock - this is idempotent (safe to call even if already unlocked)
                 movie.edit(**{"collection.locked": False})
                 logger.debug(f"Unlocked collection field for item {rating_key}")
             except Exception as unlock_err:
                 # If unlocking fails, it's likely already unlocked - continue anyway
                 logger.debug(f"Unlock attempt had no effect (likely already unlocked): {unlock_err}")
         
-            # Step 2: Add to collection
-            collection.addItems([movie])
+            # Step 2: Add to collection using the correct plexapi method
+            movie.addCollection(collection)
             logger.info(f"Added item {rating_key} to collection {collection_key}")
             return True
         
