@@ -231,43 +231,29 @@ class PlexClient:
         Get existing Plex collection by name or create a new one.
         Returns collection ratingKey or None on failure.
         """
-        import urllib.parse
-
+        from plexapi.server import PlexServer
+    
         library_id = await self.get_movie_library_section_id()
         if not library_id:
             logger.error("No movie library section found, cannot get/create collection")
             return None
-
-        # Check for existing collection
-        collections_data = await self._request(f"/library/sections/{library_id}/collections")
-        if collections_data:
-            for item in collections_data.get("MediaContainer", {}).get("Metadata", []):
-                if item.get("title") == collection_name and item.get("type") == "collection":
-                    rating_key = item.get("ratingKey")
-                    logger.info(f"Found existing collection: {collection_name} (key: {rating_key})")
-                    return rating_key
-
-        # Create new collection
-        import httpx
-        encoded_name = urllib.parse.quote(collection_name)
-        url = (
-            f"{self.base_url}/library/collections"
-            f"?type=1&title={encoded_name}&sectionId={library_id}"
-            f"&X-Plex-Token={self.api_key}"
-        )
-
+    
+        server = PlexServer(self.base_url, self.api_key)
+        section = server.library.sectionByID(int(library_id))
+    
+        # Check for existing collection by exact name
+        for collection in section.collections():
+            if collection.title == collection_name:
+                rating_key = str(collection.ratingKey)
+                logger.info(f"Found existing collection: {collection_name} (key: {rating_key})")
+                return rating_key
+    
+        # Create new collection with exact name (plexapi handles encoding correctly)
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(url)
-                response.raise_for_status()
-                data = response.json()
-                item = data.get("MediaContainer", {}).get("Metadata", [{}])[0]
-                rating_key = item.get("ratingKey")
-                if rating_key:
-                    logger.info(f"Created collection: {collection_name} (key: {rating_key})")
-                    return rating_key
-                logger.error(f"Collection created but no ratingKey in response")
-                return None
+            new_collection = section.createCollection(title=collection_name)
+            rating_key = str(new_collection.ratingKey)
+            logger.info(f"Created collection: {collection_name} (key: {rating_key})")
+            return rating_key
         except Exception as e:
             logger.error(f"Failed to create collection '{collection_name}': {redact(str(e))}")
             return None
