@@ -5,6 +5,7 @@ from app.core.plex_client import PlexClient
 from app.core.scoring_engine import ScoringEngine
 from app.utils.logger import get_logger
 import json
+import asyncio
 
 router = APIRouter()
 logger = get_logger()
@@ -276,27 +277,60 @@ async def _rebuild_score_cache():
         else:
             logger.info("Plex not enabled, skipping play counts")
 
-        conn = get_connection()
-        try:
-            # Start transaction
-            conn.execute("BEGIN TRANSACTION")
-            
-            engine = ScoringEngine(conn)
-            if settings:
-                engine.protection_days = settings["protection_days"]
-                engine.collection_grouping = bool(settings["collection_grouping"])
+        # ===== WRAP HEAVY DB OPERATIONS IN THREAD POOL =====
+        def _rebuild_db_operations():
+            conn = get_connection()
+            try:
+                # Start transaction
+                conn.execute("BEGIN TRANSACTION")
+                
+                engine = ScoringEngine(conn)
+                if settings:
+                    engine.protection_days = settings["protection_days"]
+                    engine.collection_grouping = bool(settings["collection_grouping"])
 
-            scored = engine.get_scored_movies(movies, plex_play_counts, plex_enabled)
+                scored = engine.get_scored_movies(movies, plex_play_counts, plex_enabled)
 
-            # Clear old cache
-            conn.execute("DELETE FROM scored_movies_cache")
+                # Clear old cache
+                conn.execute("DELETE FROM scored_movies_cache")
 
-            for entry in scored:
-                if entry.get("is_collection"):
-                    for member in entry.get("movies", []):
+                for entry in scored:
+                    if entry.get("is_collection"):
+                        for member in entry.get("movies", []):
+                            play_count = None
+                            if plex_play_counts and member.get("tmdb_id"):
+                                plex_entry = plex_play_counts.get(str(member["tmdb_id"]))
+                                if plex_entry:
+                                    play_count = plex_entry.get("play_count", 0)
+
+                            conn.execute("""
+                                INSERT INTO scored_movies_cache
+                                (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
+                                 size_gb, age_days, quality, monitored, normalized_score,
+                                 raw_score, factors, plex_play_count,
+                                 collection_name, collection_id, is_collection, cached_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+                            """, (
+                                member["movie_id"],
+                                member["movie_title"],
+                                member["movie_year"],
+                                member.get("tmdb_id"),
+                                member["tmdb_rating"],
+                                member["size_gb"],
+                                member["age_days"],
+                                member["quality"],
+                                1 if member["monitored"] else 0,
+                                entry["normalized_score"],
+                                entry["raw_score"],
+                                json.dumps(member["factors"]),
+                                play_count,
+                                entry.get("collection_title"),
+                                entry.get("collection_id"),
+                            ))
+                    else:
                         play_count = None
-                        if plex_play_counts and member.get("tmdb_id"):
-                            plex_entry = plex_play_counts.get(str(member["tmdb_id"]))
+                        if plex_play_counts and entry.get("tmdb_id"):
+                            plex_entry = plex_play_counts.get(str(entry["tmdb_id"]))
                             if plex_entry:
                                 play_count = plex_entry.get("play_count", 0)
 
@@ -306,65 +340,39 @@ async def _rebuild_score_cache():
                              size_gb, age_days, quality, monitored, normalized_score,
                              raw_score, factors, plex_play_count,
                              collection_name, collection_id, is_collection, cached_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
                         """, (
-                            member["movie_id"],
-                            member["movie_title"],
-                            member["movie_year"],
-                            member.get("tmdb_id"),
-                            member["tmdb_rating"],
-                            member["size_gb"],
-                            member["age_days"],
-                            member["quality"],
-                            1 if member["monitored"] else 0,
+                            entry["movie_id"],
+                            entry["movie_title"],
+                            entry["movie_year"],
+                            entry.get("tmdb_id"),
+                            entry["tmdb_rating"],
+                            entry["size_gb"],
+                            entry["age_days"],
+                            entry["quality"],
+                            1 if entry["monitored"] else 0,
                             entry["normalized_score"],
                             entry["raw_score"],
-                            json.dumps(member["factors"]),
+                            json.dumps(entry["factors"]),
                             play_count,
-                            entry.get("collection_title"),
-                            entry.get("collection_id"),
+                            None,
+                            None,
                         ))
-                else:
-                    play_count = None
-                    if plex_play_counts and entry.get("tmdb_id"):
-                        plex_entry = plex_play_counts.get(str(entry["tmdb_id"]))
-                        if plex_entry:
-                            play_count = plex_entry.get("play_count", 0)
 
-                    conn.execute("""
-                        INSERT INTO scored_movies_cache
-                        (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
-                         size_gb, age_days, quality, monitored, normalized_score,
-                         raw_score, factors, plex_play_count,
-                         collection_name, collection_id, is_collection, cached_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
-                    """, (
-                        entry["movie_id"],
-                        entry["movie_title"],
-                        entry["movie_year"],
-                        entry.get("tmdb_id"),
-                        entry["tmdb_rating"],
-                        entry["size_gb"],
-                        entry["age_days"],
-                        entry["quality"],
-                        1 if entry["monitored"] else 0,
-                        entry["normalized_score"],
-                        entry["raw_score"],
-                        json.dumps(entry["factors"]),
-                        play_count,
-                        None,
-                        None,
-                    ))
+                conn.commit()
+                return len(scored)
+                
+            except Exception as e:
+                conn.execute("ROLLBACK")
+                logger.error(f"Failed to rebuild score cache, transaction rolled back: {e}")
+                raise
+            finally:
+                conn.close()
 
-            conn.commit()
-            logger.info(f"Score cache rebuilt with {len(scored)} entries")
-            
-        except Exception as e:
-            conn.execute("ROLLBACK")
-            logger.error(f"Failed to rebuild score cache, transaction rolled back: {e}")
-            raise
-        finally:
-            conn.close()
+        # Run DB operations in thread pool to prevent blocking
+        entry_count = await asyncio.to_thread(_rebuild_db_operations)
+        logger.info(f"Score cache rebuilt with {entry_count} entries")
+        # ===== END THREAD POOL WRAPPER =====
 
     except Exception as e:
         logger.error(f"Failed to rebuild score cache: {e}")

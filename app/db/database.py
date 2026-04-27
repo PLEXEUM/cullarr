@@ -1,5 +1,7 @@
 import sqlite3
 import os
+import asyncio
+from functools import partial
 from pathlib import Path
 
 DB_PATH = Path("/app/config/cullarr.db")
@@ -278,3 +280,43 @@ def migrate_db():
 
     conn.commit()
     conn.close()
+
+
+async def execute_async(conn, query, params=None):
+    """
+    Execute a database query asynchronously using a thread pool.
+    Prevents blocking the event loop during long-running queries.
+    """
+    if params is None:
+        params = ()
+    return await asyncio.to_thread(conn.execute, query, params)
+
+
+async def fetch_all_async(conn, query, params=None):
+    """
+    Fetch all results asynchronously.
+    """
+    result = await execute_async(conn, query, params)
+    return await asyncio.to_thread(result.fetchall)
+
+
+async def fetch_one_async(conn, query, params=None):
+    """
+    Fetch one result asynchronously.
+    """
+    result = await execute_async(conn, query, params)
+    return await asyncio.to_thread(result.fetchone)
+
+
+async def commit_async(conn):
+    """
+    Commit transaction asynchronously.
+    """
+    return await asyncio.to_thread(conn.commit)
+
+
+async def rollback_async(conn):
+    """
+    Rollback transaction asynchronously.
+    """
+    return await asyncio.to_thread(conn.rollback)

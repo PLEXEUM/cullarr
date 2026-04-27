@@ -255,83 +255,99 @@ async def run_score_cycle():
 
         logger.info(f"Scored {len(scored_movies)} entries ({len(movies)} total movies)")
 
-        # Get current scheduled deletions count
-        current_queue = conn.execute(
-            "SELECT COUNT(DISTINCT collection_name) as coll_count, "
-            "COUNT(CASE WHEN collection_name IS NULL THEN 1 END) as single_count "
-            "FROM scheduled_deletions WHERE status = 'scheduled'"
-        ).fetchone()
+        # ===== WRAP HEAVY DB OPERATIONS IN THREAD POOL =====
+        def _process_queue_operations():
+            # Get current scheduled deletions count
+            current_queue = conn.execute(
+                "SELECT COUNT(DISTINCT collection_name) as coll_count, "
+                "COUNT(CASE WHEN collection_name IS NULL THEN 1 END) as single_count "
+                "FROM scheduled_deletions WHERE status = 'scheduled'"
+            ).fetchone()
 
-        # Count slots used: each unique collection = 1 slot, each individual = 1 slot
-        used_slots = (
-            (current_queue["coll_count"] if current_queue else 0) +
-            (current_queue["single_count"] if current_queue else 0)
-        )
-        max_queued = settings["max_queued"] if settings else 20
-        available_slots = max_queued - used_slots
-
-        logger.info(f"Queue status: {used_slots}/{max_queued} slots used, {available_slots} available")
-
-        if available_slots <= 0:
-            logger.info("Queue full, no new movies added")
-            return
-
-        # Filter already-queued movie IDs
-        scheduled_ids = conn.execute(
-            "SELECT movie_id FROM scheduled_deletions"
-        ).fetchall()
-        scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
-
-        # Get threshold from settings
-        threshold = settings["min_score_threshold"] if settings else 0
-
-        # Filter out entries where any member is already queued AND apply threshold
-        candidates = []
-        for entry in scored_movies:
-            # Check threshold first (using normalized_score which is raw × 100)
-            if entry.get("normalized_score", 0) <= threshold:
-                continue
-                
-            if entry.get("is_collection"):
-                member_ids = {m["movie_id"] for m in entry.get("movies", [])}
-                if not member_ids.intersection(scheduled_id_set):
-                    candidates.append(entry)
-            else:
-                if entry["movie_id"] not in scheduled_id_set:
-                    candidates.append(entry)
-
-        to_add = candidates[:available_slots]
-
-        # Add to scheduled deletions
-        added = []
-        for movie in to_add:
-            scheduled_date = datetime.now() + timedelta(
-                days=settings["delete_after_days"] if settings else 7
+            # Count slots used: each unique collection = 1 slot, each individual = 1 slot
+            used_slots = (
+                (current_queue["coll_count"] if current_queue else 0) +
+                (current_queue["single_count"] if current_queue else 0)
             )
-            entries = _queue_entries_for_movie(movie, scheduled_date.isoformat())
+            max_queued = settings["max_queued"] if settings else 20
+            available_slots = max_queued - used_slots
 
-            try:
-                for entry in entries:
-                    conn.execute(
-                        """INSERT OR IGNORE INTO scheduled_deletions
-                        (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating, size_gb, quality,
-                         monitored, score, score_factors, scheduled_date, status, collection_name)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)""",
-                        entry
-                    )
+            logger.info(f"Queue status: {used_slots}/{max_queued} slots used, {available_slots} available")
 
-                label = movie.get("collection_title") or movie["movie_title"]
-                count = len(entries)
-                logger.info(
-                    f"Added to queue: {label} "
-                    f"({'collection: ' + str(count) + ' movies' if movie.get('is_collection') else 'score: ' + str(movie['normalized_score']):.1f})"
+            if available_slots <= 0:
+                logger.info("Queue full, no new movies added")
+                return None
+
+            # Filter already-queued movie IDs
+            scheduled_ids = conn.execute(
+                "SELECT movie_id FROM scheduled_deletions"
+            ).fetchall()
+            scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
+
+            # Get threshold from settings
+            threshold = settings["min_score_threshold"] if settings else 0
+
+            # Filter out entries where any member is already queued AND apply threshold
+            candidates = []
+            for entry in scored_movies:
+                if entry.get("normalized_score", 0) <= threshold:
+                    continue
+                    
+                if entry.get("is_collection"):
+                    member_ids = {m["movie_id"] for m in entry.get("movies", [])}
+                    if not member_ids.intersection(scheduled_id_set):
+                        candidates.append(entry)
+                else:
+                    if entry["movie_id"] not in scheduled_id_set:
+                        candidates.append(entry)
+
+            to_add = candidates[:available_slots]
+            return to_add, scheduled_id_set
+
+        # Run DB operations in thread pool to prevent blocking
+        result = await asyncio.to_thread(_process_queue_operations)
+        
+        if result is None:
+            # Queue was full
+            return
+        
+        to_add, scheduled_id_set = result
+
+        # Add to scheduled deletions (another DB-heavy operation)
+        def _add_to_queue():
+            added = []
+            for movie in to_add:
+                scheduled_date = datetime.now() + timedelta(
+                    days=settings["delete_after_days"] if settings else 7
                 )
-                added.append(movie)
-            except Exception as e:
-                label = movie.get("collection_title") or movie.get("movie_title")
-                logger.error(f"Failed to add {label} to queue: {e}")
+                entries = _queue_entries_for_movie(movie, scheduled_date.isoformat())
 
-        conn.commit()
+                try:
+                    for entry in entries:
+                        conn.execute(
+                            """INSERT OR IGNORE INTO scheduled_deletions
+                            (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating, size_gb, quality,
+                             monitored, score, score_factors, scheduled_date, status, collection_name)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)""",
+                            entry
+                        )
+
+                    label = movie.get("collection_title") or movie["movie_title"]
+                    count = len(entries)
+                    logger.info(
+                        f"Added to queue: {label} "
+                        f"({'collection: ' + str(count) + ' movies' if movie.get('is_collection') else 'score: ' + str(movie['normalized_score']):.1f})"
+                    )
+                    added.append(movie)
+                except Exception as e:
+                    label = movie.get("collection_title") or movie.get("movie_title")
+                    logger.error(f"Failed to add {label} to queue: {e}")
+            
+            conn.commit()
+            return added
+
+        added = await asyncio.to_thread(_add_to_queue)
+        # ===== END THREAD POOL WRAPPER =====
 
         # Apply Plex labels to all newly queued movies in one pass
         if plex_enabled and plex_client and plex_config["label_text"] and added:
