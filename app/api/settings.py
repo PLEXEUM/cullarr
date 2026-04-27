@@ -299,11 +299,29 @@ async def recalibrate_advanced_settings():
         if not ages or not sizes:
             raise HTTPException(status_code=400, detail="Not enough movie data to calibrate")
 
+        # ===== ADD DEBUG HERE =====
+        logger.info(f"RECALIBRATE DEBUG: Size samples collected: {len(sizes)}")
+        if sizes:
+            logger.info(f"RECALIBRATE DEBUG: Min size: {min(sizes):.2f} GB")
+            logger.info(f"RECALIBRATE DEBUG: Max size: {max(sizes):.2f} GB")
+            logger.info(f"RECALIBRATE DEBUG: 95th percentile raw = {percentile(sizes, 95):.2f} GB")
+        # ===== END DEBUG =====
+
         age_max_days = int(percentile(ages, 90) * 1.5)
         size_max_gb = float(percentile(sizes, 95))
 
+        # ===== ADD DEBUG HERE =====
+        logger.info(f"RECALIBRATE DEBUG: Raw calculation - age_max_days={age_max_days}, size_max_gb={size_max_gb:.2f}")
+        # ===== END DEBUG =====
+
         age_max_days = max(30, min(age_max_days, 3650))
         size_max_gb = max(5, min(size_max_gb, 1000))
+
+        # ===== ADD DEBUG HERE =====
+        logger.info(f"RECALIBRATE DEBUG: After bounds - age_max_days={age_max_days}, size_max_gb={size_max_gb:.2f}")
+        current = conn.execute("SELECT age_max_days, size_max_gb FROM scoring_weights WHERE id = 1").fetchone()
+        logger.info(f"RECALIBRATE DEBUG: Current DB before update - age={current[0]}, size={current[1]}")
+        # ===== END DEBUG =====
 
         conn.execute(
             """UPDATE scoring_weights SET
@@ -312,6 +330,11 @@ async def recalibrate_advanced_settings():
             (age_max_days, size_max_gb)
         )
         conn.commit()
+
+        # ===== ADD DEBUG HERE =====
+        new_current = conn.execute("SELECT age_max_days, size_max_gb FROM scoring_weights WHERE id = 1").fetchone()
+        logger.info(f"RECALIBRATE DEBUG: After UPDATE - age={new_current[0]}, size={new_current[1]}")
+        # ===== END DEBUG =====
 
         return {
             "success": True,
