@@ -29,7 +29,6 @@ async def _set_run_active(run_id: str, run_type: str, dry_run: bool = False):
         _active_run["dry_run"] = dry_run
         _active_run["dry_run_results"] = None
         _active_run["current"] = 0
-        _active_run["total"] = 0
         _active_run["current_movie"] = ""
         _active_run["run_sequence"] += 1  
         _active_run["last_updated"] = datetime.now().isoformat()
@@ -88,23 +87,31 @@ async def _run_dry_score(run_id: str):
             if ok:
                 plex_play_counts = await plex_client.get_play_counts_by_tmdb()
 
+        # ===== Set progress BEFORE fetching movies =====
         _active_run["current_movie"] = "Fetching movies from Radarr..."
-        movies = await radarr_client.get_movies()
         _active_run["total"] = 100
         _active_run["current"] = 10
         logger.info(f"DEBUG: Set total=100, current=10, movie={_active_run['current_movie']}")  # ← ADD THIS
+        # ===== END MOVED =====
+
+        movies = await radarr_client.get_movies()
+
+        # ===== Update progress after fetch =====
+        _active_run["current_movie"] = "Scoring movies..."
+        _active_run["current"] = 30
+        logger.info(f"DEBUG: Set current=30, movie={_active_run['current_movie']}")  # ← ADD HERE
+        # ===== END =====
 
         conn = get_connection()
         try:
-            _active_run["current_movie"] = "Scoring movies..."
-            _active_run["current"] = 30
-            logger.info(f"DEBUG: Set current=30, movie={_active_run['current_movie']}")  # ← ADD THIS
-            
             engine = ScoringEngine(conn)
             scored = engine.get_scored_movies(movies, plex_play_counts, plex_enabled)
             
+            # ===== Update progress after scoring =====
             _active_run["current_movie"] = "Filtering candidates..."
             _active_run["current"] = 60
+            logger.info(f"DEBUG: Set current=60, movie={_active_run['current_movie']}")  # ← ADD HERE
+            # ===== END =====
         finally:
             conn.close()
 
