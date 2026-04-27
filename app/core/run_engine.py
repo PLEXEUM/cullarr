@@ -280,56 +280,56 @@ async def run_score_cycle():
 
         # ===== WRAP HEAVY DB OPERATIONS IN THREAD POOL =====
         def _process_queue_operations():
-            # Get current scheduled deletions count
-            current_queue = conn.execute(
-                "SELECT COUNT(DISTINCT collection_name) as coll_count, "
-                "COUNT(CASE WHEN collection_name IS NULL THEN 1 END) as single_count "
-                "FROM scheduled_deletions WHERE status = 'scheduled'"
-            ).fetchone()
+            thread_conn = get_connection()
+            try:
+                # Get current scheduled deletions count
+                current_queue = thread_conn.execute(
+                    "SELECT COUNT(DISTINCT collection_name) as coll_count, "
+                    "COUNT(CASE WHEN collection_name IS NULL THEN 1 END) as single_count "
+                    "FROM scheduled_deletions WHERE status = 'scheduled'"
+                ).fetchone()
 
-            # Count slots used: each unique collection = 1 slot, each individual = 1 slot
-            used_slots = (
-                (current_queue["coll_count"] if current_queue else 0) +
-                (current_queue["single_count"] if current_queue else 0)
-            )
-            max_queued = settings["max_queued"] if settings else 20
-            available_slots = max_queued - used_slots
+                # Count slots used
+                used_slots = (
+                    (current_queue["coll_count"] if current_queue else 0) +
+                    (current_queue["single_count"] if current_queue else 0)
+                )
+                max_queued = settings["max_queued"] if settings else 20
+                available_slots = max_queued - used_slots
 
-            logger.info(f"Queue status: {used_slots}/{max_queued} slots used, {available_slots} available")
+                logger.info(f"Queue status: {used_slots}/{max_queued} slots used, {available_slots} available")
 
-            if available_slots <= 0:
-                logger.info("Queue full, no new movies added")
-                return None
+                if available_slots <= 0:
+                    logger.info("Queue full, no new movies added")
+                    return None
 
-            # Filter already-queued movie IDs
-            scheduled_ids = conn.execute(
-                "SELECT movie_id FROM scheduled_deletions"
-            ).fetchall()
-            scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
+                # Filter already-queued movie IDs
+                scheduled_ids = thread_conn.execute(
+                    "SELECT movie_id FROM scheduled_deletions"
+                ).fetchall()
+                scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
 
-            # Get threshold from settings
-            threshold = settings["min_score_threshold"] if settings else 0
+                # Get threshold from settings
+                threshold = settings["min_score_threshold"] if settings else 0
 
-            # ===== PROGRESS UPDATE: Filtering candidates =====
-            # This runs in thread pool, so we need to update via a flag or accept that progress won't show during filtering
-            # We'll skip updating during filtering since it's fast
+                # Filter candidates
+                candidates = []
+                for entry in scored_movies:
+                    if entry.get("normalized_score", 0) <= threshold:
+                        continue
+                        
+                    if entry.get("is_collection"):
+                        member_ids = {m["movie_id"] for m in entry.get("movies", [])}
+                        if not member_ids.intersection(scheduled_id_set):
+                            candidates.append(entry)
+                    else:
+                        if entry["movie_id"] not in scheduled_id_set:
+                            candidates.append(entry)
 
-            # Filter out entries where any member is already queued AND apply threshold
-            candidates = []
-            for entry in scored_movies:
-                if entry.get("normalized_score", 0) <= threshold:
-                    continue
-                    
-                if entry.get("is_collection"):
-                    member_ids = {m["movie_id"] for m in entry.get("movies", [])}
-                    if not member_ids.intersection(scheduled_id_set):
-                        candidates.append(entry)
-                else:
-                    if entry["movie_id"] not in scheduled_id_set:
-                        candidates.append(entry)
-
-            to_add = candidates[:available_slots]
-            return to_add, scheduled_id_set
+                to_add = candidates[:available_slots]
+                return to_add, scheduled_id_set
+            finally:
+                thread_conn.close()
 
         # Run DB operations in thread pool to prevent blocking
         result = await asyncio.to_thread(_process_queue_operations)
@@ -351,36 +351,40 @@ async def run_score_cycle():
         
         # Add to scheduled deletions (another DB-heavy operation)
         def _add_to_queue():
-            added = []
-            for movie in to_add:
-                scheduled_date = datetime.now() + timedelta(
-                    days=settings["delete_after_days"] if settings else 7
-                )
-                entries = _queue_entries_for_movie(movie, scheduled_date.isoformat())
-
-                try:
-                    for entry in entries:
-                        conn.execute(
-                            """INSERT OR IGNORE INTO scheduled_deletions
-                            (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating, size_gb, quality,
-                             monitored, score, score_factors, scheduled_date, status, collection_name)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)""",
-                            entry
-                        )
-
-                    label = movie.get("collection_title") or movie["movie_title"]
-                    count = len(entries)
-                    logger.info(
-                        f"Added to queue: {label} "
-                        f"({'collection: ' + str(count) + ' movies' if movie.get('is_collection') else 'score: ' + str(movie['normalized_score']):.1f})"
+            thread_conn = get_connection()
+            try:
+                added = []
+                for movie in to_add:
+                    scheduled_date = datetime.now() + timedelta(
+                        days=settings["delete_after_days"] if settings else 7
                     )
-                    added.append(movie)
-                except Exception as e:
-                    label = movie.get("collection_title") or movie.get("movie_title")
-                    logger.error(f"Failed to add {label} to queue: {e}")
-            
-            conn.commit()
-            return added
+                    entries = _queue_entries_for_movie(movie, scheduled_date.isoformat())
+
+                    try:
+                        for entry in entries:
+                            thread_conn.execute(
+                                """INSERT OR IGNORE INTO scheduled_deletions
+                                (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating, size_gb, quality,
+                                 monitored, score, score_factors, scheduled_date, status, collection_name)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)""",
+                                entry
+                            )
+
+                        label = movie.get("collection_title") or movie["movie_title"]
+                        count = len(entries)
+                        logger.info(
+                            f"Added to queue: {label} "
+                            f"({'collection: ' + str(count) + ' movies' if movie.get('is_collection') else 'score: ' + str(movie['normalized_score']):.1f})"
+                        )
+                        added.append(movie)
+                    except Exception as e:
+                        label = movie.get("collection_title") or movie.get("movie_title")
+                        logger.error(f"Failed to add {label} to queue: {e}")
+                
+                thread_conn.commit()
+                return added
+            finally:
+                thread_conn.close()
 
         added = await asyncio.to_thread(_add_to_queue)
 
