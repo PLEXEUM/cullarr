@@ -420,6 +420,7 @@ function startRunStatusPolling() {
                 if (data.run_type === 'score') {
                     // Score run active
                     scoreProgressBar.classList.add('progress-indeterminate');
+                    scoreProgressBar.classList.remove('bg-indigo-500');
                     scoreProgressBar.style.width = '';
                     scoreProgressPct.textContent = '⟳';
                     scoreProgressLabel.textContent = data.current_movie || 'Running score cycle...';
@@ -449,6 +450,9 @@ function startRunStatusPolling() {
                 scoreProgressBar.classList.remove('progress-indeterminate');
                 cullProgressBar.classList.remove('progress-indeterminate');
                 
+                scoreProgressBar.classList.add('bg-indigo-500');
+                cullProgressBar.classList.add('bg-indigo-500');
+
                 scoreProgressBar.style.width = '0%';
                 scoreProgressPct.textContent = '0%';
                 scoreProgressLabel.textContent = 'Idle';

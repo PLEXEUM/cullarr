@@ -262,11 +262,11 @@
             padding: 0.75rem 0.5rem;
         } 
         
-                /* Indeterminate progress bar animation */
+        /* Indeterminate progress bar animation */
         .progress-indeterminate {
             position: relative;
             overflow: hidden;
-            background: var(--border-color);
+            background: var(--border-color) !important;  /* Force grey background */
         }
 
         .progress-indeterminate::after {
@@ -278,6 +278,12 @@
             width: 40%;
             background: linear-gradient(90deg, transparent, var(--accent), transparent);
             animation: shimmer 1.2s ease-in-out infinite;
+            pointer-events: none;
+        }
+
+        /* Remove any solid background from Tailwind when indeterminate */
+        .progress-indeterminate.bg-indigo-500 {
+            background: var(--border-color) !important;
         }
 
         @keyframes shimmer {
