@@ -306,65 +306,36 @@ class PlexClient:
 
     async def add_to_collection(self, collection_key: str, rating_key: str) -> bool:
         """
-        Add a movie to a Plex collection.
-        Endpoint confirmed from Maintainerr source:
-        PUT /library/collections/{collectionId}/items?uri=server://{machineId}/com.plexapp.plugins.library/library/metadata/{childId}
-        Token must be passed as a header, not a query parameter, for this endpoint.
+        Add a movie to a Plex collection using python-plexapi.
+        Uses the library's battle-tested collection management instead of raw HTTP.
         """
-        import httpx
-
-        machine_id = await self._get_machine_id()
-        if not machine_id:
-            logger.error("Could not get machine ID, cannot add to collection")
-            return False
-
-        import urllib.parse
-        uri = f"server://{machine_id}/com.plexapp.plugins.library/library/metadata/{rating_key}"
-        encoded_uri = urllib.parse.quote(uri, safe='')
-
-        url = (
-            f"{self.base_url}/library/collections/{collection_key}/items"
-            f"?uri={encoded_uri}"
-        )
-
-        headers = {
-            "Accept": "application/json",
-            "X-Plex-Token": self.api_key,
-            "X-Plex-Product": "Cullarr",
-            "X-Plex-Version": "1.0.0",
-            "X-Plex-Client-Identifier": "cullarr-695b47f5-3c61-4cbd-8eb3-bcc3d6d06ac5",
-            "X-Plex-Platform": "Web",
-            "X-Plex-Device-Name": "Cullarr",
-        }
-
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.put(url, headers=headers)
-                response.raise_for_status()
-                logger.info(f"Added item {rating_key} to collection {collection_key}")
-                return True
+            from plexapi.server import PlexServer
+
+            server = PlexServer(self.base_url, self.api_key)
+            movie = server.fetchItem(int(rating_key))
+            collection = server.fetchItem(int(collection_key))
+            collection.addItems([movie])
+            logger.info(f"Added item {rating_key} to collection {collection_key}")
+            return True
         except Exception as e:
             logger.error(f"Failed to add item {rating_key} to collection {collection_key}: {redact(str(e))}")
             return False
 
+
     async def remove_from_collection(self, collection_key: str, rating_key: str) -> bool:
         """
-        Remove a movie from a Plex collection.
-        DELETE /library/collection/{collectionId}/child/{childId}
+        Remove a movie from a Plex collection using python-plexapi.
         """
-        import httpx
-
-        url = (
-            f"{self.base_url}/library/collection/{collection_key}/child/{rating_key}"
-            f"?X-Plex-Token={self.api_key}"
-        )
-
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.delete(url)
-                response.raise_for_status()
-                logger.info(f"Removed item {rating_key} from collection {collection_key}")
-                return True
+            from plexapi.server import PlexServer
+
+            server = PlexServer(self.base_url, self.api_key)
+            movie = server.fetchItem(int(rating_key))
+            collection = server.fetchItem(int(collection_key))
+            collection.removeItems([movie])
+            logger.info(f"Removed item {rating_key} from collection {collection_key}")
+            return True
         except Exception as e:
             logger.error(f"Failed to remove item {rating_key} from collection {collection_key}: {redact(str(e))}")
             return False
