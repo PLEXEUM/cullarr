@@ -122,8 +122,7 @@ async def _remove_plex_collections(
 ) -> None:
     """
     Remove movies from a Plex collection.
-    Handles both individual movies and collection groups.
-    Uses title + year to find the Plex rating key.
+    Uses hardcoded collection key to prevent junk creation.
     """
     # Flatten collections into individual movies
     flat_movies = []
@@ -136,10 +135,18 @@ async def _remove_plex_collections(
     if not flat_movies:
         return
 
-    # Get the collection key (don't create if doesn't exist)
-    collection_key = await plex_client.get_or_create_collection(collection_name)
-    if not collection_key:
-        # Collection doesn't exist, nothing to remove
+    from plexapi.server import PlexServer
+    server = PlexServer(plex_client.base_url, plex_client.api_key)
+    
+    # Use the same hardcoded collection key
+    collection_key = "600936"
+    
+    # Verify the collection exists
+    try:
+        collection = server.fetchItem(int(collection_key))
+        logger.info(f"Using collection for removal: {collection.title} (key: {collection_key})")
+    except Exception as e:
+        logger.error(f"Collection {collection_key} not found: {e}")
         return
 
     for movie in flat_movies:
@@ -157,7 +164,7 @@ async def _remove_plex_collections(
 
         success = await plex_client.remove_from_collection(collection_key, rating_key)
         if success:
-            logger.info(f"Removed '{title}' from Plex collection '{collection_name}'")
+            logger.info(f"Removed '{title}' from Plex collection")
         else:
             logger.warning(f"Failed to remove '{title}' from Plex collection")
 
