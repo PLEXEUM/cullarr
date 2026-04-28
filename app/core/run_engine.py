@@ -414,7 +414,9 @@ async def run_score_cycle():
         # ===== END TRACK CURRENT QUEUE =====
         
         # Add to scheduled deletions (another DB-heavy operation)
-        def _add_to_queue():
+        def _add_to_queue(rating_key_map=None):
+            if rating_key_map is None:
+                rating_key_map = {}
             thread_conn = get_connection()
             try:
                 added = []
@@ -451,7 +453,7 @@ async def run_score_cycle():
             finally:
                 thread_conn.close()
 
-        added = await asyncio.to_thread(_add_to_queue)
+        added = await asyncio.to_thread(_add_to_queue, rating_key_map)
 
         # ===== PROGRESS UPDATE: Queue addition complete =====
         _active_run["current_movie"] = f"Added {len(added)} movies to deletion queue"
