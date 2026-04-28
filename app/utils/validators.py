@@ -169,22 +169,8 @@ def validate_delete_after_days(value: int) -> tuple[bool, str]:
         return False, "Delete after days must be between 1 and 90"
     return True, ""
 
-def validate_protection_days(value: int) -> tuple[bool, str]:
-    """Validate protection days is between 0 and 365."""
-    if value < 0 or value > 365:
-        return False, "Protection days must be between 0 and 365"
-    return True, ""
-
 def validate_max_queued(value: int) -> tuple[bool, str]:
     """Validate max queued deletions is between 1 and 500."""
     if value < 1 or value > 500:
         return False, "Max queued deletions must be between 1 and 500"
-    return True, ""
-
-def validate_plex_label(label: str) -> tuple[bool, str]:
-    """Validate Plex label length (max 64 characters)."""
-    if not label:
-        return True, ""  # Empty is allowed (no label)
-    if len(label) > 64:
-        return False, "Plex label must be 64 characters or less"
     return True, ""

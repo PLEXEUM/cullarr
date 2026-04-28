@@ -4,7 +4,7 @@ from typing import Optional
 from app.db.database import get_connection
 from app.core.plex_client import PlexClient
 from app.utils.logger import get_logger
-from app.utils.validators import validate_url, validate_plex_label
+from app.utils.validators import validate_url
 
 router = APIRouter()
 logger = get_logger()
@@ -12,7 +12,6 @@ logger = get_logger()
 
 class PlexConfigInput(BaseModel):
     url: str
-    collection_name: Optional[str] = "Cullarr - Pending Deletion"
     collection_key: Optional[str] = None
     enabled: bool = False
 
@@ -31,7 +30,6 @@ async def get_plex_config():
         "configured": bool(config["url"] and config["api_key"]),
         "url": config["url"],
         "api_key": "[REDACTED]" if config["api_key"] else None,
-        "collection_name": config["collection_name"] or "Cullarr - Pending Deletion",
         "collection_key": config.get("collection_key"),
         "enabled": bool(config["enabled"]),
     }
@@ -46,11 +44,6 @@ async def save_plex_config(data: PlexConfigInput):
         if not is_valid:
             raise HTTPException(status_code=400, detail=error)
 
-    # Validate collection name
-    is_valid, error = validate_plex_label(data.collection_name)
-    if not is_valid:
-        raise HTTPException(status_code=400, detail=error)
-
     conn = get_connection()
     try:
         # Get existing config to preserve token
@@ -60,17 +53,17 @@ async def save_plex_config(data: PlexConfigInput):
             # Keep existing token, just update other fields
             conn.execute(
                 """UPDATE plex_config SET
-                    url = ?, collection_name = ?, collection_key = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
+                    url = ?, collection_key = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = 1""",
-                (data.url.rstrip("/") if data.url else None, data.collection_name, data.collection_key, 1 if data.enabled else 0)
+                (data.url.rstrip("/") if data.url else None, data.collection_key, 1 if data.enabled else 0)
             )
         else:
             # No token yet, just save URL and collection name
             conn.execute(
                 """UPDATE plex_config SET
-                    url = ?, collection_name = ?, collection_key = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
+                    url = ?, collection_key = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = 1""",
-                (data.url.rstrip("/") if data.url else None, data.collection_name, data.collection_key, 1 if data.enabled else 0)
+                (data.url.rstrip("/") if data.url else None, data.collection_key, 1 if data.enabled else 0)
             )
         
         conn.commit()
@@ -110,7 +103,7 @@ async def clear_plex_config():
         # Only clear URL and label, keep token for re-authentication
         conn.execute(
             """UPDATE plex_config SET
-                url = NULL, collection_name = 'Cullarr - Pending Deletion', collection_key = NULL,
+                url = NULL, collection_key = NULL,
                 enabled = 0, updated_at = CURRENT_TIMESTAMP
             WHERE id = 1"""
         )

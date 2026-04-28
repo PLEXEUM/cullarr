@@ -112,7 +112,6 @@ async function saveCollectionSelection() {
     const select = document.getElementById('plex-collection-select');
     const selectedKey = select ? select.value : null;
     const url = document.getElementById('plex-url').value;
-    const collectionName = document.getElementById('plex-collection').value;
     
     if (!url) {
         showToast('Please enter Plex server URL first', 'error');
@@ -125,7 +124,6 @@ async function saveCollectionSelection() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 url: url,
-                collection_name: collectionName,
                 collection_key: selectedKey || null,
                 enabled: true
             })
@@ -179,7 +177,6 @@ function setupEventListeners() {
     // Plex
     document.getElementById('plex-auth-btn').addEventListener('click', authenticateAndSavePlex);
     document.getElementById('plex-clear-btn').addEventListener('click', clearPlex);
-    document.getElementById('plex-save-collection-btn').addEventListener('click', savePlexCollection);
 
     // Collection dropdown - load on click 
     const collectionSelect = document.getElementById('plex-collection-select');
@@ -497,7 +494,6 @@ async function loadPlexConfig() {
         const data = await res.json();
         
         document.getElementById('plex-url').value = data.url || '';
-        document.getElementById('plex-collection').value = data.collection_name || 'Cullarr - Pending Deletion';
         
         // Store the saved collection key but don't populate dropdown until clicked
         const select = document.getElementById('plex-collection-select');
@@ -521,7 +517,6 @@ async function loadPlexConfig() {
 
 async function authenticateAndSavePlex() {
     const url = document.getElementById('plex-url').value;
-    const collectionName = document.getElementById('plex-collection').value;
     
     if (!url) {
         showToast('Please enter Plex server URL', 'error');
@@ -587,7 +582,6 @@ async function authenticateAndSavePlex() {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
                             url: url, 
-                            collection_name: collectionName, 
                             collection_key: selectedKey || null,
                             enabled: true 
                         })
@@ -631,43 +625,14 @@ async function authenticateAndSavePlex() {
     }
 }
 
-async function savePlexCollection() {
-    const url = document.getElementById('plex-url').value;
-    const collectionName = document.getElementById('plex-collection').value;
-    
-    if (!url) {
-        showToast('Please enter Plex server URL first', 'error');
-        return;
-    }
-    
-    try {
-        const res = await fetch('/api/plex/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: url, collection_name: collectionName, enabled: true })
-        });
-        
-        if (res.ok) {
-            showToast('Collection name saved successfully', 'success');
-            await loadPlexConfig();
-        } else {
-            const err = await res.json();
-            showToast(err.detail || 'Failed to save collection name', 'error');
-        }
-    } catch (e) {
-        showToast('Error: ' + e.message, 'error');
-    }
-}
-
 async function clearPlex() {
-    if (!confirm('Clear Plex configuration? This will remove URL, token, and label.')) return;
+    if (!confirm('Clear Plex configuration? This will remove URL, token, and collection selection.')) return;
     
     try {
         const res = await fetch('/api/plex/config', { method: 'DELETE' });
         if (res.ok) {
             showToast('Plex configuration cleared', 'success');
             document.getElementById('plex-url').value = '';
-            document.getElementById('plex-collection').value = 'Cullarr - Pending Deletion';
             await loadPlexConfig();
         }
     } catch (e) {
