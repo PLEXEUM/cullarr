@@ -1,5 +1,7 @@
 import json
 import asyncio
+import httpx
+import xml.etree.ElementTree as ET
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from app.utils.logger import get_logger
@@ -113,10 +115,7 @@ class PlexClient:
         return items
 
     async def get_movie_library_section_id(self) -> Optional[str]:
-        """
-        Get the first movie library section ID using the existing JSON endpoint.
-        Replaces the old get_library_sections() XML method.
-        """
+        """Get the first movie library section ID using the existing JSON endpoint."""
         sections_data = await self._request("/library/sections")
         if not sections_data:
             return None
@@ -129,10 +128,7 @@ class PlexClient:
         return None
 
     async def get_all_play_history(self) -> Dict[str, Dict]:
-        """
-        Fetch play history from Plex using /status/sessions/history/all.
-        Returns dict keyed by ratingKey with play_count and last_viewed.
-        """
+        """Fetch play history from Plex using /status/sessions/history/all."""
         result = {}
         start = 0
         page_size = 1000
@@ -174,11 +170,7 @@ class PlexClient:
         return result
 
     async def get_play_counts_by_tmdb(self) -> Dict[str, Dict]:
-        """
-        Returns play counts keyed by TMDb ID string.
-        Fetches library items and play history in parallel for efficiency,
-        then maps rating keys to TMDb IDs.
-        """
+        """Returns play counts keyed by TMDb ID string."""
         library_items, history = await asyncio.gather(
             self.get_library_items(),
             self.get_all_play_history()
@@ -226,48 +218,103 @@ class PlexClient:
             logger.error("machineIdentifier not found in /identity response")
         return machine_id
 
-    async def add_to_collection(self, collection_key: str, rating_key: str) -> bool:
-        """
-        Add a movie to a Plex collection.
-        Explicitly unlocks the collection field if locked before adding.
-        """
-        try:
-            from plexapi.server import PlexServer
-        
-            server = PlexServer(self.base_url, self.api_key)
-            movie = server.fetchItem(int(rating_key))
-            collection = server.fetchItem(int(collection_key))
-        
-            # Step 1: Unlock the collection field if it's locked
-            try:
-                movie.edit(**{"collection.locked": False})
-                logger.debug(f"Unlocked collection field for item {rating_key}")
-            except Exception as unlock_err:
-                # If unlocking fails, it's likely already unlocked - continue anyway
-                logger.debug(f"Unlock attempt had no effect (likely already unlocked): {unlock_err}")
-        
-            # Step 2: Add to collection using the correct plexapi method
-            movie.addCollection(collection)
-            logger.info(f"Added item {rating_key} to collection {collection_key}")
-            return True
-        
-        except Exception as e:
-            logger.error(f"Failed to add item {rating_key} to collection {collection_key}: {redact(str(e))}")
-            return False
+    # ========== NEW MAINTAINERR-STYLE COLLECTION METHODS ==========
 
-    async def remove_from_collection(self, collection_key: str, rating_key: str) -> bool:
+    async def get_item_collections(self, rating_key: str) -> List[str]:
         """
-        Remove a movie from a Plex collection using python-plexapi.
+        Get current collection tags for a media item.
+        Returns list of collection names (strings), NOT keys/IDs.
         """
+        url = f"{self.base_url}/library/metadata/{rating_key}"
+        sep = "&" if "?" in url else "?"
+        full_url = f"{url}{sep}X-Plex-Token={self.api_key}"
+        
+        headers = {
+            "Accept": "application/xml",
+            "X-Plex-Product": "Cullarr",
+            "X-Plex-Client-Identifier": "cullarr-695b47f5-3c61-4cbd-8eb3-bcc3d6d06ac5",
+        }
+        
         try:
-            from plexapi.server import PlexServer
-
-            server = PlexServer(self.base_url, self.api_key)
-            movie = server.fetchItem(int(rating_key))
-            collection = server.fetchItem(int(collection_key))
-            collection.removeItems([movie])
-            logger.info(f"Removed item {rating_key} from collection {collection_key}")
-            return True
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(full_url, headers=headers)
+                response.raise_for_status()
+                
+                root = ET.fromstring(response.content)
+                video = root.find('.//Video')
+                
+                if video is None:
+                    return []
+                
+                collections = []
+                for collection in video.findall('Collection'):
+                    tag = collection.get('tag')
+                    if tag:
+                        collections.append(tag)
+                
+                return collections
         except Exception as e:
-            logger.error(f"Failed to remove item {rating_key} from collection {collection_key}: {redact(str(e))}")
+            logger.error(f"Failed to get collections for {rating_key}: {e}")
+            return []
+    
+    async def update_item_collections(self, rating_key: str, collection_names: List[str], item_type: str = "movie") -> bool:
+        """
+        Update ALL collections for an item.
+        This is the Maintainerr way: send the FULL list of collection tags.
+        
+        Args:
+            rating_key: Plex ratingKey for the item
+            collection_names: FULL list of collection name strings to set
+            item_type: "movie" (type=1) or "episode" (type=4)
+        """
+        # Build query parameters in the format Plex expects
+        params = {}
+        for i, name in enumerate(collection_names):
+            params[f'collection[{i}].tag'] = name
+        
+        # CRITICAL: Plex requires the type parameter
+        params['type'] = '1' if item_type == "movie" else '4'
+        
+        # PUT request to /library/metadata/{ratingKey}
+        url = f"{self.base_url}/library/metadata/{rating_key}"
+        sep = "&" if "?" in url else "?"
+        full_url = f"{url}{sep}X-Plex-Token={self.api_key}"
+        
+        headers = {
+            "X-Plex-Product": "Cullarr",
+            "X-Plex-Client-Identifier": "cullarr-695b47f5-3c61-4cbd-8eb3-bcc3d6d06ac5",
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.put(full_url, params=params, headers=headers)
+                response.raise_for_status()
+                logger.debug(f"Updated collections for {rating_key}: {collection_names}")
+                return True
+        except Exception as e:
+            logger.error(f"Failed to update collections for {rating_key}: {e}")
             return False
+    
+    async def sync_collection(self, rating_key: str, target_collection_name: str, should_be_in: bool, item_type: str = "movie") -> bool:
+        """
+        Maintainerr-style sync: merge, don't overwrite.
+        
+        Args:
+            rating_key: Plex ratingKey
+            target_collection_name: The collection NAME (string tag), NOT the key/ID
+            should_be_in: True to add, False to remove
+            item_type: "movie" or "episode"
+        """
+        # Step 1: Get current collection tags
+        current = await self.get_item_collections(rating_key)
+        
+        # Step 2: Modify in memory
+        if should_be_in and target_collection_name not in current:
+            current.append(target_collection_name)
+        elif not should_be_in and target_collection_name in current:
+            current.remove(target_collection_name)
+        else:
+            return True  # No change needed
+        
+        # Step 3: Send FULL list back
+        return await self.update_item_collections(rating_key, current, item_type)

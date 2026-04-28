@@ -52,16 +52,34 @@ async def release_run_lock():
         conn.close()
 
 
+# In run_engine.py, replace _apply_plex_collections and _remove_plex_collections:
+
 async def _apply_plex_collections(
     plex_client: PlexClient,
     movies: list,
     library_map: dict
 ) -> None:
-    """
-    Add movies to a Plex collection.
-    Uses saved collection_key from database if available.
-    Does NOT create new collections - only uses existing ones.
-    """
+    """Add movies to Plex collection using Maintainerr-style tag writing."""
+    
+    conn = get_connection()
+    try:
+        plex_config = conn.execute("SELECT collection_key, url FROM plex_config WHERE id = 1").fetchone()
+        collection_key = plex_config["collection_key"] if plex_config else None
+        if not collection_key:
+            logger.warning("No Plex collection selected")
+            return
+        
+        # Get collection name ONCE, outside the loop
+        from plexapi.server import PlexServer
+        server = PlexServer(plex_config["url"], plex_client.api_key)
+        collection_obj = server.fetchItem(int(collection_key))
+        collection_name = collection_obj.title
+        logger.info(f"Using Plex collection: '{collection_name}'")
+    finally:
+        conn.close()
+    
+    # Flatten and process movies (same as you have)
+    # ... rest of function ...
     
     # Flatten collections into individual movies
     flat_movies = []
@@ -70,37 +88,7 @@ async def _apply_plex_collections(
             flat_movies.extend(movie.get("movies", []))
         else:
             flat_movies.append(movie)
-
-    if not flat_movies:
-        return
-
-    from app.db.database import get_connection
-    from plexapi.server import PlexServer
     
-    # Get the saved collection key from database
-    conn = get_connection()
-    try:
-        plex_config = conn.execute("SELECT collection_key FROM plex_config WHERE id = 1").fetchone()
-        collection_key = plex_config["collection_key"] if plex_config else None
-    finally:
-        conn.close()
-    
-    # If no collection key is saved, log warning and skip
-    if not collection_key:
-        logger.warning("No Plex collection key saved. Please select a collection in Settings > Plex Connection > Select Existing Collection.")
-        return
-    
-    # Verify the collection exists and get its title
-    try:
-        server = PlexServer(plex_client.base_url, plex_client.api_key)
-        collection = server.fetchItem(int(collection_key))
-        logger.info(f"Using saved collection: {collection.title} (key: {collection_key})")
-    except Exception as e:
-        logger.error(f"Saved collection key {collection_key} not found in Plex: {e}")
-        logger.warning("Please reselect a collection in Settings > Plex Connection > Select Existing Collection.")
-        return
-
-    # Add each movie to the collection
     for movie in flat_movies:
         title = movie.get("movie_title")
         year = movie.get("movie_year")
@@ -112,12 +100,19 @@ async def _apply_plex_collections(
         rating_key = library_map.get(key)
         
         if not rating_key:
-            logger.debug(f"No Plex rating key found for '{title} ({year})'")
+            logger.debug(f"No Plex rating key for '{title} ({year})'")
             continue
-
-        success = await plex_client.add_to_collection(collection_key, rating_key)
+        
+        # Use the new sync method with collection NAME (string tag)
+        success = await plex_client.sync_collection(
+            rating_key=rating_key,
+            target_collection_name=collection_name,  # ← Name, not key!
+            should_be_in=True,
+            item_type="movie"
+        )
+        
         if success:
-            logger.info(f"Added '{title}' to Plex collection")
+            logger.info(f"Added '{title}' to Plex collection '{collection_name}'")
         else:
             logger.warning(f"Failed to add '{title}' to Plex collection")
 
@@ -127,46 +122,29 @@ async def _remove_plex_collections(
     movies: list,
     library_map: dict
 ) -> None:
-    """
-    Remove movies from a Plex collection.
-    Uses saved collection_key from database if available.
-    """
-    # Flatten collections into individual movies
+    """Remove movies from Plex collection using Maintainerr-style tag removal."""
+    
+    conn = get_connection()
+    try:
+        plex_config = conn.execute("SELECT collection_key, url FROM plex_config WHERE id = 1").fetchone()
+        collection_key = plex_config["collection_key"] if plex_config else None
+        if not collection_key:
+            return
+        
+        from plexapi.server import PlexServer
+        server = PlexServer(plex_config["url"], plex_client.api_key)
+        collection_obj = server.fetchItem(int(collection_key))
+        collection_name = collection_obj.title
+    finally:
+        conn.close()
+    
     flat_movies = []
     for movie in movies:
         if movie.get("is_collection"):
             flat_movies.extend(movie.get("movies", []))
         else:
             flat_movies.append(movie)
-
-    if not flat_movies:
-        return
-
-    from app.db.database import get_connection
-    from plexapi.server import PlexServer
     
-    # Get the saved collection key from database
-    conn = get_connection()
-    try:
-        plex_config = conn.execute("SELECT collection_key FROM plex_config WHERE id = 1").fetchone()
-        collection_key = plex_config["collection_key"] if plex_config else None
-    finally:
-        conn.close()
-    
-    # If no collection key is saved, skip
-    if not collection_key:
-        logger.debug("No Plex collection key saved, skipping removal")
-        return
-    
-    # Verify the collection exists
-    try:
-        server = PlexServer(plex_client.base_url, plex_client.api_key)
-        collection = server.fetchItem(int(collection_key))
-        logger.debug(f"Using saved collection for removal: {collection.title} (key: {collection_key})")
-    except Exception as e:
-        logger.debug(f"Saved collection key {collection_key} not found: {e}")
-        return
-
     for movie in flat_movies:
         title = movie.get("movie_title")
         year = movie.get("movie_year")
@@ -179,12 +157,16 @@ async def _remove_plex_collections(
         
         if not rating_key:
             continue
-
-        success = await plex_client.remove_from_collection(collection_key, rating_key)
+        
+        success = await plex_client.sync_collection(
+            rating_key=rating_key,
+            target_collection_name=collection_name,
+            should_be_in=False,
+            item_type="movie"
+        )
+        
         if success:
-            logger.info(f"Removed '{title}' from Plex collection")
-        else:
-            logger.warning(f"Failed to remove '{title}' from Plex collection")
+            logger.info(f"Removed '{title}' from Plex collection '{collection_name}'")
 
 
 async def _build_plex_library_map(plex_client: PlexClient) -> dict:

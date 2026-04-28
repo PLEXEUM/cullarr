@@ -180,7 +180,7 @@ async def remove_from_queue(movie_id: int):
             conn.commit()
             logger.info(f"Manually removed from queue: {existing['movie_title']}")
             
-            # ===== NEW: Remove from Plex collection for manually removed movie =====
+            # ===== NEW: Remove from Plex collection for manually removed movie (Maintainerr-style) =====
             try:
                 # Get Plex config
                 plex_config = conn.execute("SELECT url, api_key, enabled, collection_key FROM plex_config WHERE id = 1").fetchone()
@@ -190,7 +190,7 @@ async def remove_from_queue(movie_id: int):
                         "SELECT movie_id, movie_title, movie_year FROM scored_movies_cache WHERE movie_id = ?",
                         (movie_id,)
                     ).fetchone()
-                    
+        
                     if movie_data and movie_data["movie_title"] and movie_data["movie_year"]:
                         plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
                         plex_ok, _ = await plex_client.test_connection()
@@ -205,18 +205,30 @@ async def remove_from_queue(movie_id: int):
                                 if title and year and rating_key:
                                     key = f"{title.lower()}|{year}"
                                     library_map[key] = rating_key
-                            
+                
                             key = f"{movie_data['movie_title'].lower()}|{movie_data['movie_year']}"
                             rating_key = library_map.get(key)
-                            
+                
                             if rating_key:
-                                # Use the saved collection key directly
                                 collection_key = plex_config.get("collection_key")
                                 if collection_key:
-                                    await plex_client.remove_from_collection(collection_key, rating_key)
+                                    # Get collection NAME from key
+                                    from plexapi.server import PlexServer
+                                    server = PlexServer(plex_config["url"], plex_client.api_key)
+                                    collection_obj = server.fetchItem(int(collection_key))
+                                    collection_name = collection_obj.title
+                        
+                                    # Use Maintainerr-style sync
+                                    await plex_client.sync_collection(
+                                        rating_key=rating_key,
+                                        target_collection_name=collection_name,
+                                        should_be_in=False,
+                                        item_type="movie"
+                                    )
+                                    logger.info(f"Manually removed '{movie_data['movie_title']}' from Plex collection '{collection_name}'")
                                 else:
                                     logger.debug("No collection key saved, skipping Plex removal")
-                
+        
             except Exception as plex_error:
                 logger.warning(f"Failed to remove from Plex collection for manually removed movie: {plex_error}")
             # ===== END PLEX CLEANUP =====
