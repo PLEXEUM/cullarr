@@ -174,19 +174,12 @@ async def remove_from_queue(movie_id: int):
                 "message": f"Removed collection '{collection_name}' ({len(titles)} movies) from queue"
             }
         else:
-            conn.execute(
-                "DELETE FROM scheduled_deletions WHERE movie_id = ? AND status = 'scheduled'",
-                (movie_id,)
-            )
-            conn.commit()
-            logger.info(f"Manually removed from queue: {existing['movie_title']}")
-            
-            # ===== NEW: Remove from Plex collection for manually removed movie (Maintainerr-style) =====
+            # ===== FIRST: Remove from Plex collection (BEFORE deleting from queue) =====
             try:
                 # Get Plex config
                 plex_config = conn.execute("SELECT url, api_key, enabled, collection_key FROM plex_config WHERE id = 1").fetchone()
                 if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_key"]:
-                    # Get the stored plex_rating_key from scheduled_deletions
+                    # Get the stored plex_rating_key from scheduled_deletions (BEFORE deletion)
                     scheduled_entry = conn.execute(
                         "SELECT plex_rating_key, movie_title FROM scheduled_deletions WHERE movie_id = ? AND status = 'scheduled'",
                         (movie_id,)
@@ -219,6 +212,14 @@ async def remove_from_queue(movie_id: int):
                 logger.warning(f"Failed to remove from Plex collection for manually removed movie: {plex_error}")
             # ===== END PLEX CLEANUP =====
             
+            # THEN delete from the queue
+            conn.execute(
+                "DELETE FROM scheduled_deletions WHERE movie_id = ? AND status = 'scheduled'",
+                (movie_id,)
+            )
+            conn.commit()
+            logger.info(f"Manually removed from queue: {existing['movie_title']}")
+            
             return {"success": True, "message": f"Removed {existing['movie_title']} from queue"}
 
     except HTTPException:
@@ -228,7 +229,7 @@ async def remove_from_queue(movie_id: int):
         raise HTTPException(status_code=500, detail="Failed to remove movie from queue")
     finally:
         conn.close()
-
+            
 
 @router.get("/dashboard/score-queue")
 async def get_score_queue(
