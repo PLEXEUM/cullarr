@@ -258,63 +258,87 @@ class PlexClient:
             return []
     
     async def update_item_collections(self, rating_key: str, collection_names: List[str], item_type: str = "movie") -> bool:
-        """
-        Update ALL collections for an item.
-        This is the Maintainerr way: send the FULL list of collection tags.
-        
-        Args:
-            rating_key: Plex ratingKey for the item
-            collection_names: FULL list of collection name strings to set
-            item_type: "movie" (type=1) or "episode" (type=4)
-        """
-        # Build query parameters in the format Plex expects
-        params = {}
+        """Update ALL collections for an item."""
+    
+        # Build form data
+        data = {}
         for i, name in enumerate(collection_names):
-            params[f'collection[{i}].tag'] = name
-        
-        # CRITICAL: Plex requires the type parameter
-        params['type'] = '1' if item_type == "movie" else '4'
-        
-        # PUT request to /library/metadata/{ratingKey}
+            data[f'collection[{i}].tag'] = name
+        data['type'] = '1' if item_type == "movie" else '4'
+    
         url = f"{self.base_url}/library/metadata/{rating_key}"
         sep = "&" if "?" in url else "?"
         full_url = f"{url}{sep}X-Plex-Token={self.api_key}"
-        
+    
+        # VERBOSE DEBUG
+        logger.info(f"=" * 60)
+        logger.info(f"PLEX COLLECTION UPDATE - RatingKey: {rating_key}")
+        logger.info(f"Target collections: {collection_names}")
+        logger.info(f"Form data being sent: {data}")
+        logger.info(f"URL: {full_url}")
+    
         headers = {
-            "X-Plex-Product": "Cullarr",
-            "X-Plex-Client-Identifier": "cullarr-695b47f5-3c61-4cbd-8eb3-bcc3d6d06ac5",
+        "X-Plex-Product": "Cullarr",
+        "X-Plex-Client-Identifier": "cullarr-695b47f5-3c61-4cbd-8eb3-bcc3d6d06ac5",
+        "Content-Type": "application/x-www-form-urlencoded",
         }
-        
+    
         try:
             async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.put(full_url, params=params, headers=headers)
+                # Try both methods - first as form data, if that fails try as params
+                response = await client.put(full_url, data=data, headers=headers)
+            
+                logger.info(f"Response Status: {response.status_code}")
+                logger.info(f"Response Headers: {dict(response.headers)}")
+                logger.info(f"Response Body: {response.text[:500] if response.text else 'Empty'}")
+            
+                if response.status_code == 200:
+                    # Even with 200, Plex might not have applied the changes
+                    # Let's verify by fetching the item immediately after
+                    verify_url = f"{self.base_url}/library/metadata/{rating_key}?X-Plex-Token={self.api_key}"
+                    verify_response = await client.get(verify_url, headers={"Accept": "application/xml"})
+                
+                    if verify_response.status_code == 200:
+                        root = ET.fromstring(verify_response.content)
+                        video = root.find('.//Video')
+                        if video is not None:
+                            current_collections = [c.get('tag') for c in video.findall('Collection') if c.get('tag')]
+                            logger.info(f"VERIFICATION: Current collections after update: {current_collections}")
+                        
+                            if set(collection_names) == set(current_collections):
+                                logger.info(f"✅ SUCCESS: Collections match!")
+                            else:
+                                logger.warning(f"❌ MISMATCH: Expected {collection_names}, got {current_collections}")
+            
                 response.raise_for_status()
-                logger.debug(f"Updated collections for {rating_key}: {collection_names}")
                 return True
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP Error {e.response.status_code}: {e.response.text}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to update collections for {rating_key}: {e}")
+            logger.error(f"Exception: {type(e).__name__}: {e}")
             return False
     
     async def sync_collection(self, rating_key: str, target_collection_name: str, should_be_in: bool, item_type: str = "movie") -> bool:
-        """
-        Maintainerr-style sync: merge, don't overwrite.
-        
-        Args:
-            rating_key: Plex ratingKey
-            target_collection_name: The collection NAME (string tag), NOT the key/ID
-            should_be_in: True to add, False to remove
-            item_type: "movie" or "episode"
-        """
+        """Maintainerr-style sync: merge, don't overwrite."""
+    
+        logger.info(f"🔄 SYNC COLLECTION - RatingKey: {rating_key}, Target: '{target_collection_name}', Should be in: {should_be_in}")
+    
         # Step 1: Get current collection tags
         current = await self.get_item_collections(rating_key)
-        
+        logger.info(f"Current collections before sync: {current}")
+    
         # Step 2: Modify in memory
         if should_be_in and target_collection_name not in current:
             current.append(target_collection_name)
+            logger.info(f"Adding '{target_collection_name}' - New list: {current}")
         elif not should_be_in and target_collection_name in current:
             current.remove(target_collection_name)
+            logger.info(f"Removing '{target_collection_name}' - New list: {current}")
         else:
-            return True  # No change needed
-        
+            logger.info(f"No change needed - current: {current}, target in current: {target_collection_name in current}")
+            return True
+    
         # Step 3: Send FULL list back
         return await self.update_item_collections(rating_key, current, item_type)
