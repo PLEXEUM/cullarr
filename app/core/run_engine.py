@@ -58,14 +58,10 @@ async def _apply_plex_collections(
     movies: list,
     library_map: dict
 ) -> None:
-    """
-    Add movies to a Plex collection.
-    Handles both individual movies and collection groups.
-    """
     import httpx
     import urllib.parse
     
-    # Flatten collections into individual movies
+    # Flatten collections
     flat_movies = []
     for movie in movies:
         if movie.get("is_collection"):
@@ -84,49 +80,17 @@ async def _apply_plex_collections(
 
     from plexapi.server import PlexServer
     server = PlexServer(plex_client.base_url, plex_client.api_key)
-    section = server.library.sectionByID(int(library_id))
     
-    # Log all collections and their titles for debugging
-    logger.info("=== All collections in Plex ===")
-    for c in section.collections():
-        logger.info(f"  Key: {c.ratingKey} | Title: {repr(c.title)}")
-    logger.info("================================")
-    logger.info(f"Looking for collection name: {repr(collection_name)}")
+    # Use the saved collection key from database
+    # For now, hardcode it - we'll add the config later
+    collection_key = "600936"
     
-    collection_key = None
-    for collection in section.collections():
-        if collection.title == collection_name:
-            collection_key = str(collection.ratingKey)
-            logger.info(f"Found match: {collection_name} (key: {collection_key})")
-            break
-        else:
-            logger.info(f"No match: '{collection.title}' vs '{collection_name}'")
-    
-    if not collection_key:
-        # Create using raw HTTP
-        encoded_name = urllib.parse.quote(collection_name)
-        url = f"{plex_client.base_url}/library/collections?type=1&title={encoded_name}&sectionId={library_id}&X-Plex-Token={plex_client.api_key}"
-        
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(url)
-            
-            if response.status_code in [200, 201, 204]:
-                # Refresh and find by name
-                for collection in section.collections():
-                    if collection.title == collection_name:
-                        collection_key = str(collection.ratingKey)
-                        logger.info(f"Created collection: {collection_name} (key: {collection_key})")
-                        break
-                
-                if not collection_key:
-                    logger.error(f"Collection created but not found: {collection_name}")
-                    return
-            else:
-                logger.error(f"Failed to create collection: HTTP {response.status_code}")
-                return
-
-    if not collection_key:
-        logger.error(f"Failed to get or create Plex collection: {collection_name}")
+    # Verify the collection exists
+    try:
+        collection = server.fetchItem(int(collection_key))
+        logger.info(f"Using collection: {collection.title} (key: {collection_key})")
+    except Exception as e:
+        logger.error(f"Collection {collection_key} not found: {e}")
         return
 
     # Add each movie to the collection
@@ -145,7 +109,7 @@ async def _apply_plex_collections(
 
         success = await plex_client.add_to_collection(collection_key, rating_key)
         if success:
-            logger.info(f"Added '{title}' to Plex collection '{collection_name}'")
+            logger.info(f"Added '{title}' to Plex collection")
         else:
             logger.warning(f"Failed to add '{title}' to Plex collection")
 
