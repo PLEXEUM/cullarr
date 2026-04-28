@@ -119,10 +119,9 @@ async def _apply_plex_collections(
         
         # Use the new sync method with collection NAME (string tag)
         success = await plex_client.sync_collection(
-            rating_key=rating_key,
-            target_collection_name=collection_name,  # ← Name, not key!
-            should_be_in=True,
-            item_type="movie"
+            item_rating_key=rating_key,
+            collection_name=collection_name,
+            should_be_in=True
         )
         
         if success:
@@ -173,10 +172,9 @@ async def _remove_plex_collections(
             continue
         
         success = await plex_client.sync_collection(
-            rating_key=rating_key,
-            target_collection_name=collection_name,
-            should_be_in=False,
-            item_type="movie"
+            item_rating_key=rating_key,
+            collection_name=collection_name,
+            should_be_in=False
         )
         
         if success:

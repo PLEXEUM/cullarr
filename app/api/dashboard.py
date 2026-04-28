@@ -4,6 +4,7 @@ from app.core.radarr_client import RadarrClient
 from app.core.plex_client import PlexClient
 from app.core.scoring_engine import ScoringEngine
 from app.utils.logger import get_logger
+from plexapi.server import PlexServer
 import json
 import asyncio
 
@@ -213,17 +214,15 @@ async def remove_from_queue(movie_id: int):
                                 collection_key = plex_config.get("collection_key")
                                 if collection_key:
                                     # Get collection NAME from key
-                                    from plexapi.server import PlexServer
-                                    server = PlexServer(plex_config["url"], plex_client.api_key)
+                                    server = PlexServer(plex_config["url"], plex_client.api_key)  # ← Import removed, just use PlexServer directly
                                     collection_obj = server.fetchItem(int(collection_key))
                                     collection_name = collection_obj.title
                         
                                     # Use Maintainerr-style sync
                                     await plex_client.sync_collection(
-                                        rating_key=rating_key,
-                                        target_collection_name=collection_name,
-                                        should_be_in=False,
-                                        item_type="movie"
+                                        item_rating_key=rating_key,
+                                        collection_name=collection_name,
+                                        should_be_in=False
                                     )
                                     logger.info(f"Manually removed '{movie_data['movie_title']}' from Plex collection '{collection_name}'")
                                 else:

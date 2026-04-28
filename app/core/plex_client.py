@@ -14,10 +14,11 @@ class PlexClient:
     def __init__(self, base_url: str, api_key: str):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
+        self._machine_id: Optional[str] = None
+        self._movie_section_id: Optional[str] = None
 
     async def _request(self, endpoint: str, timeout: int = 30) -> Optional[Dict]:
-        """Make a GET request to Plex API."""
-        import httpx
+        """Make a GET request to Plex API returning JSON."""
         sep = "&" if "?" in endpoint else "?"
         url = f"{self.base_url}{endpoint}{sep}X-Plex-Token={self.api_key}"
 
@@ -42,17 +43,36 @@ class PlexClient:
             logger.error(f"Plex API request failed: {redact(str(e))}")
             return None
 
-    async def _request_put(self, url: str, timeout: int = 30) -> bool:
-        """Make a PUT request to Plex API. Returns True on success."""
-        import httpx
+    async def _request_xml(self, endpoint: str, timeout: int = 30) -> Optional[str]:
+        """Make a GET request to Plex API returning raw XML."""
+        sep = "&" if "?" in endpoint else "?"
+        url = f"{self.base_url}{endpoint}{sep}X-Plex-Token={self.api_key}"
+        
         headers = {
-            "Accept": "application/json",
+            "Accept": "application/xml",
             "X-Plex-Product": "Cullarr",
-            "X-Plex-Version": "1.0.0",
             "X-Plex-Client-Identifier": "cullarr-695b47f5-3c61-4cbd-8eb3-bcc3d6d06ac5",
-            "X-Plex-Platform": "Web",
-            "X-Plex-Device-Name": "Cullarr",
         }
+        
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                return response.text
+        except Exception as e:
+            logger.error(f"Plex XML request failed: {redact(str(e))}")
+            return None
+
+    async def _put(self, endpoint: str, timeout: int = 30) -> bool:
+        """Make a PUT request to Plex API."""
+        sep = "&" if "?" in endpoint else "?"
+        url = f"{self.base_url}{endpoint}{sep}X-Plex-Token={self.api_key}"
+        
+        headers = {
+            "X-Plex-Product": "Cullarr",
+            "X-Plex-Client-Identifier": "cullarr-695b47f5-3c61-4cbd-8eb3-bcc3d6d06ac5",
+        }
+        
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.put(url, headers=headers)
@@ -62,10 +82,28 @@ class PlexClient:
             logger.error(f"Plex PUT request failed: {redact(str(e))}")
             return False
 
+    async def _delete(self, endpoint: str, timeout: int = 30) -> bool:
+        """Make a DELETE request to Plex API."""
+        sep = "&" if "?" in endpoint else "?"
+        url = f"{self.base_url}{endpoint}{sep}X-Plex-Token={self.api_key}"
+        
+        headers = {
+            "X-Plex-Product": "Cullarr",
+            "X-Plex-Client-Identifier": "cullarr-695b47f5-3c61-4cbd-8eb3-bcc3d6d06ac5",
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.delete(url, headers=headers)
+                response.raise_for_status()
+                return True
+        except Exception as e:
+            logger.error(f"Plex DELETE request failed: {redact(str(e))}")
+            return False
+
     async def test_connection(self) -> tuple[bool, str]:
         """Test connection to Plex."""
         try:
-            import httpx
             url = f"{self.base_url}/identity?X-Plex-Token={self.api_key}"
             async with httpx.AsyncClient(timeout=10) as client:
                 response = await client.get(url)
@@ -74,58 +112,133 @@ class PlexClient:
         except Exception as e:
             return False, f"Connection failed: {redact(str(e))}"
 
+    async def get_machine_id(self) -> Optional[str]:
+        """Get Plex server machine identifier."""
+        if self._machine_id:
+            return self._machine_id
+        
+        xml_data = await self._request_xml("/identity")
+        if not xml_data:
+            return None
+        
+        try:
+            root = ET.fromstring(xml_data)
+            machine_id = root.get("machineIdentifier")
+            if machine_id:
+                self._machine_id = machine_id
+                logger.info(f"Plex machine ID: {machine_id}")
+                return machine_id
+        except Exception as e:
+            logger.error(f"Failed to parse machine ID: {e}")
+        
+        return None
+
+    async def get_movie_library_section_id(self) -> Optional[str]:
+        """Get the first movie library section ID."""
+        if self._movie_section_id:
+            return self._movie_section_id
+        
+        xml_data = await self._request_xml("/library/sections")
+        if not xml_data:
+            return None
+        
+        try:
+            root = ET.fromstring(xml_data)
+            for directory in root.findall(".//Directory"):
+                if directory.get("type") == "movie":
+                    section_id = directory.get("key")
+                    if section_id:
+                        self._movie_section_id = section_id
+                        logger.info(f"Movie library section ID: {section_id}")
+                        return section_id
+        except Exception as e:
+            logger.error(f"Failed to parse library sections: {e}")
+        
+        return None
+
+    async def get_collections(self) -> List[Dict[str, str]]:
+        """
+        Get all collections from the movie library.
+        Returns list of dicts with 'ratingKey' and 'title'.
+        """
+        section_id = await self.get_movie_library_section_id()
+        if not section_id:
+            logger.error("Cannot get collections: no movie library section found")
+            return []
+        
+        xml_data = await self._request_xml(f"/library/sections/{section_id}/collections")
+        if not xml_data:
+            return []
+        
+        collections = []
+        try:
+            root = ET.fromstring(xml_data)
+            for directory in root.findall(".//Directory"):
+                if directory.get("type") == "collection":
+                    rating_key = directory.get("ratingKey")
+                    title = directory.get("title")
+                    if rating_key and title:
+                        collections.append({
+                            "ratingKey": rating_key,
+                            "title": title,
+                        })
+            logger.info(f"Found {len(collections)} collections in Plex")
+            return collections
+        except Exception as e:
+            logger.error(f"Failed to parse collections: {e}")
+            return []
+
+    async def get_collection_by_name(self, name: str) -> Optional[str]:
+        """Get collection ratingKey by its title/name."""
+        collections = await self.get_collections()
+        for collection in collections:
+            if collection["title"].lower() == name.lower():
+                return collection["ratingKey"]
+        return None
+
     async def get_library_items(self) -> List[Dict]:
         """Fetch all movies and shows from Plex libraries with GUIDs for TMDb mapping."""
         items = []
-
-        sections_data = await self._request("/library/sections")
-        if not sections_data:
-            logger.warning("Failed to fetch Plex library sections")
+        
+        section_id = await self.get_movie_library_section_id()
+        if not section_id:
+            logger.warning("No movie library section found")
             return items
-
-        for section in sections_data.get("MediaContainer", {}).get("Directory", []):
-            section_type = section.get("type")
-            if section_type not in ["movie", "show"]:
-                continue
-
-            section_key = section.get("key")
-            logger.debug(f"Scanning Plex section: {section.get('title')}")
-
-            items_data = await self._request(f"/library/sections/{section_key}/all?includeGuids=1")
-            if not items_data:
-                continue
-
-            for item in items_data.get("MediaContainer", {}).get("Metadata", []):
-                rating_key = item.get("ratingKey")
+        
+        xml_data = await self._request_xml(f"/library/sections/{section_id}/all?includeGuids=1")
+        if not xml_data:
+            return items
+        
+        try:
+            root = ET.fromstring(xml_data)
+            for video in root.findall(".//Video"):
+                rating_key = video.get("ratingKey")
                 if not rating_key:
                     continue
-
-                tmdb_id = self._extract_tmdb_id(item.get("Guid", []))
-
+                
+                # Extract TMDb ID from Guid elements
+                tmdb_id = None
+                for guid in video.findall(".//Guid"):
+                    guid_id = guid.get("id", "")
+                    if guid_id.startswith("tmdb://"):
+                        try:
+                            tmdb_id = int(guid_id.replace("tmdb://", ""))
+                        except ValueError:
+                            pass
+                
                 items.append({
                     "rating_key": rating_key,
                     "tmdb_id": tmdb_id,
-                    "title": item.get("title", ""),
-                    "year": item.get("year"),
-                    "type": item.get("type"),
-                    "section_key": section_key,
+                    "title": video.get("title", ""),
+                    "year": video.get("year"),
+                    "type": video.get("type"),
+                    "section_key": section_id,
                 })
-
+        except Exception as e:
+            logger.error(f"Failed to parse library items: {e}")
+        
         logger.info(f"Fetched {len(items)} library items from Plex")
         return items
-
-    async def get_movie_library_section_id(self) -> Optional[str]:
-        """Get the first movie library section ID using the existing JSON endpoint."""
-        sections_data = await self._request("/library/sections")
-        if not sections_data:
-            return None
-
-        for section in sections_data.get("MediaContainer", {}).get("Directory", []):
-            if section.get("type") == "movie":
-                return section.get("key")
-
-        logger.error("No movie library section found in Plex")
-        return None
 
     async def get_all_play_history(self) -> Dict[str, Dict]:
         """Fetch play history from Plex using /status/sessions/history/all."""
@@ -134,37 +247,40 @@ class PlexClient:
         page_size = 1000
 
         while True:
-            endpoint = f"/status/sessions/history/all?X-Plex-Container-Start={start}&X-Plex-Container-Size={page_size}"
-            data = await self._request(endpoint)
-
-            if not data:
+            xml_data = await self._request_xml(f"/status/sessions/history/all?X-Plex-Container-Start={start}&X-Plex-Container-Size={page_size}")
+            if not xml_data:
                 break
-
-            metadata = data.get("MediaContainer", {}).get("Metadata", [])
-            if not metadata:
+            
+            try:
+                root = ET.fromstring(xml_data)
+                metadata = root.findall(".//Video")
+                if not metadata:
+                    break
+                
+                for item in metadata:
+                    rating_key = item.get("ratingKey")
+                    if not rating_key:
+                        continue
+                    
+                    viewed_at = int(item.get("viewedAt", 0))
+                    
+                    if rating_key not in result:
+                        result[rating_key] = {"play_count": 0, "last_viewed": 0}
+                    
+                    result[rating_key]["play_count"] += 1
+                    if viewed_at > result[rating_key]["last_viewed"]:
+                        result[rating_key]["last_viewed"] = viewed_at
+                
+                total_size = int(root.get("totalSize", 0))
+                if total_size > 0 and len(metadata) < page_size:
+                    break
+                if len(metadata) < page_size:
+                    break
+                
+                start += len(metadata)
+            except Exception as e:
+                logger.error(f"Failed to parse play history: {e}")
                 break
-
-            for item in metadata:
-                rating_key = item.get("ratingKey")
-                if not rating_key:
-                    continue
-
-                viewed_at = item.get("viewedAt", 0)
-
-                if rating_key not in result:
-                    result[rating_key] = {"play_count": 0, "last_viewed": 0}
-
-                result[rating_key]["play_count"] += 1
-                if viewed_at > result[rating_key]["last_viewed"]:
-                    result[rating_key]["last_viewed"] = viewed_at
-
-            total_size = data.get("MediaContainer", {}).get("totalSize", 0)
-            if total_size > 0 and len(metadata) < page_size:
-                break
-            if len(metadata) < page_size:
-                break
-
-            start += len(metadata)
 
         logger.info(f"Fetched play history for {len(result)} rating keys from Plex")
         return result
@@ -194,151 +310,80 @@ class PlexClient:
         logger.info(f"Mapped play counts to {len(result)} TMDb IDs")
         return result
 
-    def _extract_tmdb_id(self, guids: list) -> Optional[int]:
-        """Extract TMDb ID from Plex GUID array."""
-        if not guids:
-            return None
+    # ========== COLLECTION METHODS (WORKING API) ==========
 
-        for guid in guids:
-            guid_id = guid.get("id", "")
-            if guid_id.startswith("tmdb://"):
-                try:
-                    return int(guid_id.replace("tmdb://", ""))
-                except ValueError:
-                    pass
-        return None
-
-    async def _get_machine_id(self) -> Optional[str]:
-        """Get Plex server machine identifier via JSON endpoint."""
-        data = await self._request("/identity")
-        if not data:
-            return None
-        machine_id = data.get("MediaContainer", {}).get("machineIdentifier")
+    async def add_to_collection(self, collection_rating_key: str, item_rating_key: str) -> bool:
+        """
+        Add a media item to a collection using the working Plex API.
+        
+        Args:
+            collection_rating_key: The ratingKey of the collection (e.g., "615787")
+            item_rating_key: The ratingKey of the media item (e.g., "100275")
+        """
+        machine_id = await self.get_machine_id()
         if not machine_id:
-            logger.error("machineIdentifier not found in /identity response")
-        return machine_id
-
-    # ========== NEW MAINTAINERR-STYLE COLLECTION METHODS ==========
-
-    async def get_item_collections(self, rating_key: str) -> List[str]:
-        """
-        Get current collection tags for a media item.
-        Returns list of collection names (strings), NOT keys/IDs.
-        """
-        url = f"{self.base_url}/library/metadata/{rating_key}"
-        sep = "&" if "?" in url else "?"
-        full_url = f"{url}{sep}X-Plex-Token={self.api_key}"
-        
-        headers = {
-            "Accept": "application/xml",
-            "X-Plex-Product": "Cullarr",
-            "X-Plex-Client-Identifier": "cullarr-695b47f5-3c61-4cbd-8eb3-bcc3d6d06ac5",
-        }
-        
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(full_url, headers=headers)
-                response.raise_for_status()
-                
-                root = ET.fromstring(response.content)
-                video = root.find('.//Video')
-                
-                if video is None:
-                    return []
-                
-                collections = []
-                for collection in video.findall('Collection'):
-                    tag = collection.get('tag')
-                    if tag:
-                        collections.append(tag)
-                
-                return collections
-        except Exception as e:
-            logger.error(f"Failed to get collections for {rating_key}: {e}")
-            return []
-    
-    async def update_item_collections(self, rating_key: str, collection_names: List[str], item_type: str = "movie") -> bool:
-        """Update ALL collections for an item."""
-    
-        # Build form data
-        data = {}
-        for i, name in enumerate(collection_names):
-            data[f'collection[{i}].tag'] = name
-        data['type'] = '1' if item_type == "movie" else '4'
-    
-        url = f"{self.base_url}/library/metadata/{rating_key}"
-        sep = "&" if "?" in url else "?"
-        full_url = f"{url}{sep}X-Plex-Token={self.api_key}"
-    
-        # VERBOSE DEBUG
-        logger.info(f"=" * 60)
-        logger.info(f"PLEX COLLECTION UPDATE - RatingKey: {rating_key}")
-        logger.info(f"Target collections: {collection_names}")
-        logger.info(f"Form data being sent: {data}")
-        logger.info(f"URL: {full_url}")
-    
-        headers = {
-        "X-Plex-Product": "Cullarr",
-        "X-Plex-Client-Identifier": "cullarr-695b47f5-3c61-4cbd-8eb3-bcc3d6d06ac5",
-        "Content-Type": "application/x-www-form-urlencoded",
-        }
-    
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                # Try both methods - first as form data, if that fails try as params
-                response = await client.put(full_url, data=data, headers=headers)
-            
-                logger.info(f"Response Status: {response.status_code}")
-                logger.info(f"Response Headers: {dict(response.headers)}")
-                logger.info(f"Response Body: {response.text[:500] if response.text else 'Empty'}")
-            
-                if response.status_code == 200:
-                    # Even with 200, Plex might not have applied the changes
-                    # Let's verify by fetching the item immediately after
-                    verify_url = f"{self.base_url}/library/metadata/{rating_key}?X-Plex-Token={self.api_key}"
-                    verify_response = await client.get(verify_url, headers={"Accept": "application/xml"})
-                
-                    if verify_response.status_code == 200:
-                        root = ET.fromstring(verify_response.content)
-                        video = root.find('.//Video')
-                        if video is not None:
-                            current_collections = [c.get('tag') for c in video.findall('Collection') if c.get('tag')]
-                            logger.info(f"VERIFICATION: Current collections after update: {current_collections}")
-                        
-                            if set(collection_names) == set(current_collections):
-                                logger.info(f"✅ SUCCESS: Collections match!")
-                            else:
-                                logger.warning(f"❌ MISMATCH: Expected {collection_names}, got {current_collections}")
-            
-                response.raise_for_status()
-                return True
-            
-        except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP Error {e.response.status_code}: {e.response.text}")
+            logger.error("Cannot add to collection: failed to get machine ID")
             return False
-        except Exception as e:
-            logger.error(f"Exception: {type(e).__name__}: {e}")
-            return False
-    
-    async def sync_collection(self, rating_key: str, target_collection_name: str, should_be_in: bool, item_type: str = "movie") -> bool:
-        """Maintainerr-style sync: merge, don't overwrite."""
-    
-        logger.info(f"🔄 SYNC COLLECTION - RatingKey: {rating_key}, Target: '{target_collection_name}', Should be in: {should_be_in}")
-    
-        # Step 1: Get current collection tags
-        current = await self.get_item_collections(rating_key)
-        logger.info(f"Current collections before sync: {current}")
-    
-        # Step 2: Modify in memory
-        if should_be_in and target_collection_name not in current:
-            current.append(target_collection_name)
-            logger.info(f"Adding '{target_collection_name}' - New list: {current}")
-        elif not should_be_in and target_collection_name in current:
-            current.remove(target_collection_name)
-            logger.info(f"Removing '{target_collection_name}' - New list: {current}")
+        
+        uri = f"server://{machine_id}/com.plexapp.plugins.library/library/metadata/{item_rating_key}"
+        endpoint = f"/library/collections/{collection_rating_key}/items?uri={uri}"
+        
+        logger.info(f"Adding item {item_rating_key} to collection {collection_rating_key}")
+        success = await self._put(endpoint)
+        
+        if success:
+            logger.info(f"Successfully added item {item_rating_key} to collection")
         else:
-            logger.info(f"No change needed - current: {current}, target in current: {target_collection_name in current}")
-            return True
-    
-        # Step 3: Send FULL list back
-        return await self.update_item_collections(rating_key, current, item_type)
+            logger.error(f"Failed to add item {item_rating_key} to collection")
+        
+        return success
+
+    async def remove_from_collection(self, collection_rating_key: str, item_rating_key: str) -> bool:
+        """
+        Remove a media item from a collection using the working Plex API.
+        
+        Args:
+            collection_rating_key: The ratingKey of the collection (e.g., "615787")
+            item_rating_key: The ratingKey of the media item (e.g., "100275")
+        """
+        machine_id = await self.get_machine_id()
+        if not machine_id:
+            logger.error("Cannot remove from collection: failed to get machine ID")
+            return False
+        
+        uri = f"server://{machine_id}/com.plexapp.plugins.library/library/metadata/{item_rating_key}"
+        endpoint = f"/library/collections/{collection_rating_key}/items?uri={uri}"
+        
+        logger.info(f"Removing item {item_rating_key} from collection {collection_rating_key}")
+        success = await self._delete(endpoint)
+        
+        if success:
+            logger.info(f"Successfully removed item {item_rating_key} from collection")
+        else:
+            logger.error(f"Failed to remove item {item_rating_key} from collection")
+        
+        return success
+
+    async def sync_collection(self, item_rating_key: str, collection_name: str, should_be_in: bool) -> bool:
+        """
+        Maintainerr-style sync: ensure item is in or out of the named collection.
+        
+        Args:
+            item_rating_key: Plex ratingKey for the item
+            collection_name: Name of the collection (e.g., "Movies Leaving Soon")
+            should_be_in: True to add, False to remove
+        """
+        # Get collection ratingKey by name
+        collection_rating_key = await self.get_collection_by_name(collection_name)
+        
+        if not collection_rating_key:
+            if should_be_in:
+                logger.error(f"Collection '{collection_name}' not found in Plex")
+            return False
+        
+        # For remove operations, we don't need to check current state
+        # Just attempt to remove - if not in collection, Plex returns success anyway
+        if should_be_in:
+            return await self.add_to_collection(collection_rating_key, item_rating_key)
+        else:
+            return await self.remove_from_collection(collection_rating_key, item_rating_key)
