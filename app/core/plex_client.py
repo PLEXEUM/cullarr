@@ -184,25 +184,45 @@ class PlexClient:
         return None
 
     async def get_library_items(self) -> List[Dict]:
-        """Fetch all movies and shows from Plex libraries with GUIDs for TMDb mapping."""
+        """Fetch all movies from ALL movie library sections for TMDb mapping."""
         items = []
-        
-        section_id = await self.get_movie_library_section_id()
-        if not section_id:
-            logger.warning("No movie library section found")
+    
+        # Get all sections
+        xml_data = await self._request_xml("/library/sections")
+        if not xml_data:
+            logger.warning("Failed to fetch Plex library sections")
             return items
-        
+    
+        try:
+            root = ET.fromstring(xml_data)
+            for directory in root.findall(".//Directory"):
+                if directory.get("type") == "movie":
+                    section_id = directory.get("key")
+                    section_title = directory.get("title", "Unknown")
+                    if section_id:
+                        logger.debug(f"Scanning movie section: {section_title} (ID: {section_id})")
+                        section_items = await self._get_library_items_by_section(section_id)
+                        items.extend(section_items)
+        except Exception as e:
+            logger.error(f"Failed to parse library sections: {e}")
+    
+        logger.info(f"Fetched {len(items)} library items from {len(set(i.get('section_key') for i in items))} movie sections")
+        return items
+
+    async def _get_library_items_by_section(self, section_id: str) -> List[Dict]:
+        """Fetch items from a specific library section."""
+        items = []
         xml_data = await self._request_xml(f"/library/sections/{section_id}/all?includeGuids=1")
         if not xml_data:
             return items
-        
+    
         try:
             root = ET.fromstring(xml_data)
             for video in root.findall(".//Video"):
                 rating_key = video.get("ratingKey")
                 if not rating_key:
                     continue
-                
+            
                 # Extract TMDb ID from Guid elements
                 tmdb_id = None
                 for guid in video.findall(".//Guid"):
@@ -212,7 +232,7 @@ class PlexClient:
                             tmdb_id = int(guid_id.replace("tmdb://", ""))
                         except ValueError:
                             pass
-                
+            
                 items.append({
                     "rating_key": rating_key,
                     "tmdb_id": tmdb_id,
@@ -222,9 +242,8 @@ class PlexClient:
                     "section_key": section_id,
                 })
         except Exception as e:
-            logger.error(f"Failed to parse library items: {e}")
-        
-        logger.info(f"Fetched {len(items)} library items from Plex")
+            logger.error(f"Failed to parse library items for section {section_id}: {e}")
+    
         return items
 
     async def get_all_play_history(self) -> Dict[str, Dict]:
