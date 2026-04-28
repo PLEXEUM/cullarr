@@ -119,7 +119,7 @@ async def clear_plex_config():
 @router.get("/plex/collections")
 async def get_plex_collections():
     """
-    Get all collections from Plex for the dropdown selector.
+    Get all collections from ALL movie libraries in Plex.
     Returns a list of collections with their keys and titles.
     """
     conn = get_connection()
@@ -129,32 +129,30 @@ async def get_plex_collections():
     if not config or not config["url"] or not config["api_key"]:
         raise HTTPException(status_code=400, detail="Plex not configured. Please authenticate first.")
 
-    from app.core.plex_client import PlexClient
     from plexapi.server import PlexServer
 
     try:
-        client = PlexClient(config["url"], config["api_key"])
-        
-        # Get the movie library section ID
-        library_id = await client.get_movie_library_section_id()
-        if not library_id:
-            raise HTTPException(status_code=404, detail="No movie library found in Plex")
-        
-        # Connect to Plex and get collections
         server = PlexServer(config["url"], config["api_key"])
-        section = server.library.sectionByID(int(library_id))
         
-        collections = []
-        for collection in section.collections():
-            collections.append({
-                "key": str(collection.ratingKey),
-                "title": collection.title
-            })
+        all_collections = []
+        seen_keys = set()  # To avoid duplicates across libraries
+        
+        # Iterate through all library sections
+        for section in server.library.sections():
+            if section.type == "movie":
+                for collection in section.collections():
+                    key = str(collection.ratingKey)
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        all_collections.append({
+                            "key": key,
+                            "title": collection.title
+                        })
         
         # Sort by title
-        collections.sort(key=lambda x: x["title"].lower())
+        all_collections.sort(key=lambda x: x["title"].lower())
         
-        return {"collections": collections}
+        return {"collections": all_collections}
         
     except Exception as e:
         logger.error(f"Failed to fetch Plex collections: {e}")
