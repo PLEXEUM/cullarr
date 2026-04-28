@@ -191,6 +191,11 @@ async def remove_from_queue(movie_id: int):
                         "SELECT plex_rating_key, movie_title FROM scheduled_deletions WHERE movie_id = ? AND status = 'scheduled'",
                         (movie_id,)
                     ).fetchone()
+
+                    # DEBUG: Log what we found
+                    logger.info(f"DEBUG: scheduled_entry = {scheduled_entry}")
+                    if scheduled_entry:
+                        logger.info(f"DEBUG: plex_rating_key = {scheduled_entry['plex_rating_key']}")
                     
                     if scheduled_entry and scheduled_entry["plex_rating_key"]:
                         rating_key = scheduled_entry["plex_rating_key"]
