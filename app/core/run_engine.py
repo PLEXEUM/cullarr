@@ -453,6 +453,10 @@ async def run_score_cycle():
             finally:
                 thread_conn.close()
 
+        # Define rating_key_map BEFORE using it
+        rating_key_map = {}
+        
+        # Call the queue function
         added = await asyncio.to_thread(_add_to_queue, rating_key_map)
 
         # ===== PROGRESS UPDATE: Queue addition complete =====
@@ -492,8 +496,7 @@ async def run_score_cycle():
                 )
         # ===== END PLEX CLEANUP =====
 
-        # Add newly queued movies to Plex collection
-        rating_key_map = {}
+        # Add newly queued movies to Plex collection (populate rating_key_map with real keys)
         if plex_enabled and plex_client and plex_config["collection_key"] and added:
             logger.info(f"Adding {len(added)} movies to Plex collection")
             rating_key_map = await _apply_plex_collections(
