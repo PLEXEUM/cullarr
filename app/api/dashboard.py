@@ -209,7 +209,7 @@ async def remove_from_queue(movie_id: int):
                                         key = f"{title.lower()}|{year}"
                                         library_map[key] = rating_key
                 
-                                key = f"{movie_data['movie_title'].lower()}|{movie_data['movie_year']}"
+                                key = f"{movie_dict['movie_title'].lower()}|{movie_dict['movie_year']}"
                                 rating_key = library_map.get(key)
                 
                             if rating_key:
