@@ -15,6 +15,133 @@ const PRESETS = {
     freshness: { age: 8, size: 4, rating: 3, quality: 3, watched: 2 }
 };
 
+// Collection dropdown helpers
+let collectionsLoaded = false;
+let collectionsList = [];
+
+async function loadPlexCollections() {
+    if (collectionsLoaded) return collectionsList;
+    
+    try {
+        const res = await fetch('/api/plex/collections');
+        if (!res.ok) {
+            console.error('Failed to load collections:', await res.text());
+            return [];
+        }
+        const data = await res.json();
+        collectionsList = data.collections || [];
+        collectionsLoaded = true;
+        return collectionsList;
+    } catch (e) {
+        console.error('Failed to load Plex collections:', e);
+        return [];
+    }
+}
+
+async function populateCollectionDropdown() {
+    const select = document.getElementById('plex-collection-select');
+    if (!select) return;
+    
+    select.innerHTML = '<option value="">Loading collections...</option>';
+    select.disabled = true;
+    
+    const collections = await loadPlexCollections();
+    
+    if (collections.length === 0) {
+        select.innerHTML = '<option value="">No collections found in Plex</option>';
+        select.disabled = true;
+        return;
+    }
+    
+    // Get currently saved collection key
+    let savedKey = null;
+    try {
+        const configRes = await fetch('/api/plex/config');
+        const config = await configRes.json();
+        savedKey = config.collection_key;
+    } catch (e) {
+        console.error('Failed to load saved collection key:', e);
+    }
+    
+    let html = '<option value="">-- Select a collection --</option>';
+    for (const collection of collections) {
+        const selected = savedKey === collection.key ? 'selected' : '';
+        html += `<option value="${collection.key}" ${selected}>${escapeHtml(collection.title)}</option>`;
+    }
+    select.innerHTML = html;
+    select.disabled = false;
+}
+
+// Called when user clicks dropdown
+async function onCollectionDropdownClick() {
+    if (collectionsLoaded) return;
+    const select = document.getElementById('plex-collection-select');
+    if (!select) return;
+    
+    select.innerHTML = '<option value="">Loading collections...</option>';
+    select.disabled = true;
+    
+    const collections = await loadPlexCollections();
+    
+    if (collections.length === 0) {
+        select.innerHTML = '<option value="">No collections found in Plex</option>';
+        select.disabled = true;
+        return;
+    }
+    
+    let savedKey = null;
+    try {
+        const configRes = await fetch('/api/plex/config');
+        const config = await configRes.json();
+        savedKey = config.collection_key;
+    } catch (e) {
+        console.error('Failed to load saved collection key:', e);
+    }
+    
+    let html = '<option value="">-- Select a collection --</option>';
+    for (const collection of collections) {
+        const selected = savedKey === collection.key ? 'selected' : '';
+        html += `<option value="${collection.key}" ${selected}>${escapeHtml(collection.title)}</option>`;
+    }
+    select.innerHTML = html;
+    select.disabled = false;
+}
+
+// Save collection selection
+async function saveCollectionSelection() {
+    const select = document.getElementById('plex-collection-select');
+    const selectedKey = select ? select.value : null;
+    const url = document.getElementById('plex-url').value;
+    const collectionName = document.getElementById('plex-collection').value;
+    
+    if (!url) {
+        showToast('Please enter Plex server URL first', 'error');
+        return;
+    }
+    
+    try {
+        const res = await fetch('/api/plex/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: url,
+                collection_name: collectionName,
+                collection_key: selectedKey || null,
+                enabled: true
+            })
+        });
+        
+        if (res.ok) {
+            showToast(selectedKey ? 'Collection selection saved' : 'Collection cleared (Cullarr will not add to any collection)', 'success');
+        } else {
+            const err = await res.json();
+            showToast(err.detail || 'Failed to save collection', 'error');
+        }
+    } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+    }
+}
+
 // Load all settings on page load
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize DOM references
@@ -53,7 +180,19 @@ function setupEventListeners() {
     document.getElementById('plex-auth-btn').addEventListener('click', authenticateAndSavePlex);
     document.getElementById('plex-clear-btn').addEventListener('click', clearPlex);
     document.getElementById('plex-save-collection-btn').addEventListener('click', savePlexCollection);
+
+    // Collection dropdown - load on click 
+    const collectionSelect = document.getElementById('plex-collection-select');
+    if (collectionSelect) {
+        collectionSelect.addEventListener('click', onCollectionDropdownClick);
+    }
     
+    // Save collection selection button 
+    const saveCollectionBtn = document.getElementById('plex-save-collection-select-btn');
+    if (saveCollectionBtn) {
+        saveCollectionBtn.addEventListener('click', saveCollectionSelection);
+    }
+   
     // Weight sliders - update display only
     const sliders = [ageSlider, sizeSlider, ratingSlider, qualitySlider, watchedSlider];
     sliders.forEach(slider => {
@@ -360,6 +499,13 @@ async function loadPlexConfig() {
         document.getElementById('plex-url').value = data.url || '';
         document.getElementById('plex-collection').value = data.collection_name || 'Cullarr - Pending Deletion';
         
+        // Store the saved collection key but don't populate dropdown until clicked
+        const select = document.getElementById('plex-collection-select');
+        if (select && data.collection_key) {
+            // We'll store the value but not populate yet
+            select.setAttribute('data-saved-key', data.collection_key);
+        }
+        
         const statusDiv = document.getElementById('plex-status');
         if (data.configured && data.url && data.api_key === '[REDACTED]') {
             statusDiv.innerHTML = '<span style="color: var(--success);">✅ Configured</span>';
@@ -435,10 +581,16 @@ async function authenticateAndSavePlex() {
                         plexPopupWindow.close();
                     }
                     
+                                        const selectedKey = document.getElementById('plex-collection-select')?.value;
                     const saveRes = await fetch('/api/plex/config', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ url: url, collection_name: collectionName, enabled: true })
+                        body: JSON.stringify({ 
+                            url: url, 
+                            collection_name: collectionName, 
+                            collection_key: selectedKey || null,
+                            enabled: true 
+                        })
                     });
                     
                     if (saveRes.ok) {

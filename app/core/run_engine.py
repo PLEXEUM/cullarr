@@ -54,14 +54,16 @@ async def release_run_lock():
 
 async def _apply_plex_collections(
     plex_client: PlexClient,
-    collection_name: str,
     movies: list,
     library_map: dict
 ) -> None:
-    import httpx
-    import urllib.parse
+    """
+    Add movies to a Plex collection.
+    Uses saved collection_key from database if available.
+    Does NOT create new collections - only uses existing ones.
+    """
     
-    # Flatten collections
+    # Flatten collections into individual movies
     flat_movies = []
     for movie in movies:
         if movie.get("is_collection"):
@@ -72,25 +74,30 @@ async def _apply_plex_collections(
     if not flat_movies:
         return
 
-    # Get library section ID
-    library_id = await plex_client.get_movie_library_section_id()
-    if not library_id:
-        logger.error("No movie library section found")
-        return
-
+    from app.db.database import get_connection
     from plexapi.server import PlexServer
-    server = PlexServer(plex_client.base_url, plex_client.api_key)
     
-    # Use the saved collection key from database
-    # For now, hardcode it - we'll add the config later
-    collection_key = "615787"
-    
-    # Verify the collection exists
+    # Get the saved collection key from database
+    conn = get_connection()
     try:
+        plex_config = conn.execute("SELECT collection_key FROM plex_config WHERE id = 1").fetchone()
+        collection_key = plex_config["collection_key"] if plex_config else None
+    finally:
+        conn.close()
+    
+    # If no collection key is saved, log warning and skip
+    if not collection_key:
+        logger.warning("No Plex collection key saved. Please select a collection in Settings > Plex Connection > Select Existing Collection.")
+        return
+    
+    # Verify the collection exists and get its title
+    try:
+        server = PlexServer(plex_client.base_url, plex_client.api_key)
         collection = server.fetchItem(int(collection_key))
-        logger.info(f"Using collection: {collection.title} (key: {collection_key})")
+        logger.info(f"Using saved collection: {collection.title} (key: {collection_key})")
     except Exception as e:
-        logger.error(f"Collection {collection_key} not found: {e}")
+        logger.error(f"Saved collection key {collection_key} not found in Plex: {e}")
+        logger.warning("Please reselect a collection in Settings > Plex Connection > Select Existing Collection.")
         return
 
     # Add each movie to the collection
@@ -105,6 +112,7 @@ async def _apply_plex_collections(
         rating_key = library_map.get(key)
         
         if not rating_key:
+            logger.debug(f"No Plex rating key found for '{title} ({year})'")
             continue
 
         success = await plex_client.add_to_collection(collection_key, rating_key)
@@ -116,13 +124,12 @@ async def _apply_plex_collections(
 
 async def _remove_plex_collections(
     plex_client: PlexClient,
-    collection_name: str,
     movies: list,
     library_map: dict
 ) -> None:
     """
     Remove movies from a Plex collection.
-    Uses hardcoded collection key to prevent junk creation.
+    Uses saved collection_key from database if available.
     """
     # Flatten collections into individual movies
     flat_movies = []
@@ -135,18 +142,29 @@ async def _remove_plex_collections(
     if not flat_movies:
         return
 
+    from app.db.database import get_connection
     from plexapi.server import PlexServer
-    server = PlexServer(plex_client.base_url, plex_client.api_key)
     
-    # Use the same hardcoded collection key
-    collection_key = "615787"
+    # Get the saved collection key from database
+    conn = get_connection()
+    try:
+        plex_config = conn.execute("SELECT collection_key FROM plex_config WHERE id = 1").fetchone()
+        collection_key = plex_config["collection_key"] if plex_config else None
+    finally:
+        conn.close()
+    
+    # If no collection key is saved, skip
+    if not collection_key:
+        logger.debug("No Plex collection key saved, skipping removal")
+        return
     
     # Verify the collection exists
     try:
+        server = PlexServer(plex_client.base_url, plex_client.api_key)
         collection = server.fetchItem(int(collection_key))
-        logger.info(f"Using collection for removal: {collection.title} (key: {collection_key})")
+        logger.debug(f"Using saved collection for removal: {collection.title} (key: {collection_key})")
     except Exception as e:
-        logger.error(f"Collection {collection_key} not found: {e}")
+        logger.debug(f"Saved collection key {collection_key} not found: {e}")
         return
 
     for movie in flat_movies:
@@ -467,7 +485,6 @@ async def run_score_cycle():
                 logger.info(f"Removing {len(removed_movies_list)} movies from Plex collection '{plex_config['collection_name']}'")
                 await _remove_plex_collections(
                     plex_client,
-                    plex_config["collection_name"],
                     removed_movies_list,
                     plex_library_map
                 )
@@ -478,7 +495,6 @@ async def run_score_cycle():
             logger.info(f"Adding {len(added)} movies to Plex collection '{plex_config['collection_name']}'")
             await _apply_plex_collections(
                 plex_client,
-                plex_config["collection_name"],
                 added,
                 plex_library_map
             )
@@ -606,7 +622,6 @@ async def run_cull_cycle(dry_run: bool = False):
                     if plex_enabled and plex_client and plex_config["collection_name"]:
                         await _remove_plex_collections(
                             plex_client,
-                            plex_config["collection_name"],
                             [dict(movie)],
                             plex_library_map
                         )

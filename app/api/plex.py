@@ -13,6 +13,7 @@ logger = get_logger()
 class PlexConfigInput(BaseModel):
     url: str
     collection_name: Optional[str] = "Cullarr - Pending Deletion"
+    collection_key: Optional[str] = None
     enabled: bool = False
 
 
@@ -31,6 +32,7 @@ async def get_plex_config():
         "url": config["url"],
         "api_key": "[REDACTED]" if config["api_key"] else None,
         "collection_name": config["collection_name"] or "Cullarr - Pending Deletion",
+        "collection_key": config.get("collection_key"),
         "enabled": bool(config["enabled"]),
     }
 
@@ -58,17 +60,17 @@ async def save_plex_config(data: PlexConfigInput):
             # Keep existing token, just update other fields
             conn.execute(
                 """UPDATE plex_config SET
-                    url = ?, collection_name = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
+                    url = ?, collection_name = ?, collection_key = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = 1""",
-                (data.url.rstrip("/") if data.url else None, data.collection_name, 1 if data.enabled else 0)
+                (data.url.rstrip("/") if data.url else None, data.collection_name, data.collection_key, 1 if data.enabled else 0)
             )
         else:
             # No token yet, just save URL and collection name
             conn.execute(
                 """UPDATE plex_config SET
-                    url = ?, collection_name = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
+                    url = ?, collection_name = ?, collection_key = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = 1""",
-                (data.url.rstrip("/") if data.url else None, data.collection_name, 1 if data.enabled else 0)
+                (data.url.rstrip("/") if data.url else None, data.collection_name, data.collection_key, 1 if data.enabled else 0)
             )
         
         conn.commit()
@@ -108,7 +110,7 @@ async def clear_plex_config():
         # Only clear URL and label, keep token for re-authentication
         conn.execute(
             """UPDATE plex_config SET
-                url = NULL, collection_name = 'Cullarr - Pending Deletion',
+                url = NULL, collection_name = 'Cullarr - Pending Deletion', collection_key = NULL,
                 enabled = 0, updated_at = CURRENT_TIMESTAMP
             WHERE id = 1"""
         )
@@ -120,3 +122,47 @@ async def clear_plex_config():
         raise HTTPException(status_code=500, detail="Failed to clear configuration")
     finally:
         conn.close()
+
+@router.get("/plex/collections")
+async def get_plex_collections():
+    """
+    Get all collections from Plex for the dropdown selector.
+    Returns a list of collections with their keys and titles.
+    """
+    conn = get_connection()
+    config = conn.execute("SELECT url, api_key FROM plex_config WHERE id = 1").fetchone()
+    conn.close()
+
+    if not config or not config["url"] or not config["api_key"]:
+        raise HTTPException(status_code=400, detail="Plex not configured. Please authenticate first.")
+
+    from app.core.plex_client import PlexClient
+    from plexapi.server import PlexServer
+
+    try:
+        client = PlexClient(config["url"], config["api_key"])
+        
+        # Get the movie library section ID
+        library_id = await client.get_movie_library_section_id()
+        if not library_id:
+            raise HTTPException(status_code=404, detail="No movie library found in Plex")
+        
+        # Connect to Plex and get collections
+        server = PlexServer(config["url"], config["api_key"])
+        section = server.library.sectionByID(int(library_id))
+        
+        collections = []
+        for collection in section.collections():
+            collections.append({
+                "key": str(collection.ratingKey),
+                "title": collection.title
+            })
+        
+        # Sort by title
+        collections.sort(key=lambda x: x["title"].lower())
+        
+        return {"collections": collections}
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch Plex collections: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch collections: {str(e)}")

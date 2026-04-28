@@ -124,13 +124,29 @@
                 <button id="plex-clear-btn" class="px-4 py-2 rounded-lg text-sm border btn-raise" style="border-color: var(--border-color); color: var(--text-secondary);">Clear</button>
             </div>
             
-            <div class="flex gap-2 items-center">
-                <input type="text" id="plex-collection" placeholder="Cullarr - Pending Deletion" value="Cullarr - Pending Deletion" class="flex-1">
-                <button id="plex-save-collection-btn" class="px-4 py-2 rounded-lg text-sm border btn-raise" style="border-color: var(--border-color); color: var(--text-secondary);">Save</button>
+            <!-- Collection Name Input (Fallback) -->
+            <div>
+                <label class="text-sm block mb-1">Default Collection Name (for new collections)</label>
+                <div class="flex gap-2 items-center">
+                    <input type="text" id="plex-collection" placeholder="Cullarr - Pending Deletion" value="Cullarr - Pending Deletion" class="flex-1">
+                    <button id="plex-save-collection-btn" class="px-4 py-2 rounded-lg text-sm border btn-raise" style="border-color: var(--border-color); color: var(--text-secondary);">Save Name</button>
+                </div>
+                <p class="text-xs mt-1" style="color: var(--text-secondary);">Only used when creating new collections</p>
             </div>
-            <p class="text-xs" style="color: var(--text-secondary);">Collection name for movies scheduled for deletion</p>
             
-            <p class="text-xs mt-2" style="color: var(--text-secondary);">ℹ️ Click "Authenticate & Save" to login via Plex popup. Your server URL and collection name will be saved automatically.</p>
+            <!-- Existing Collection Selection (Recommended) -->
+            <div>
+                <label class="text-sm block mb-1">Select Existing Collection (Recommended)</label>
+                <div class="flex gap-2 items-center">
+                    <select id="plex-collection-select" class="flex-1 px-3 py-2 rounded-lg border" style="background: var(--bg-primary); border-color: var(--border-color);">
+                        <option value="">-- Click to load collections --</option>
+                    </select>
+                    <button id="plex-save-collection-select-btn" class="px-4 py-2 rounded-lg text-sm bg-accent text-white">Save Selection</button>
+                </div>
+                <p class="text-xs mt-1" style="color: var(--text-secondary);">Select an existing collection from Plex. Cullarr will add movies to this collection without creating new ones. Leave unselected to skip collection operations.</p>
+            </div>
+            
+            <p class="text-xs mt-2" style="color: var(--text-secondary);">ℹ️ Click "Authenticate & Save" to login via Plex popup. Your server URL will be saved automatically.</p>
         </div>
     </div>
 

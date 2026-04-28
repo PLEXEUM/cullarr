@@ -37,6 +37,7 @@ def init_db():
             url TEXT,
             api_key TEXT,
             collection_name TEXT DEFAULT 'Cullarr - Pending Deletion',
+            collection_key TEXT,
             enabled BOOLEAN DEFAULT 0,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
@@ -277,6 +278,13 @@ def migrate_db():
         print("Migration applied: added index on scored_movies_cache.movie_id")
     except Exception:
         pass  # Table may not exist yet
+
+        # Migration: Add collection_key to plex_config for direct key reference
+    try:
+        cursor.execute("ALTER TABLE plex_config ADD COLUMN collection_key TEXT")
+        print("Migration applied: added collection_key to plex_config")
+    except Exception:
+        pass  # Column already exists, safe to ignore
 
     conn.commit()
     conn.close()
