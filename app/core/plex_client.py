@@ -226,43 +226,6 @@ class PlexClient:
             logger.error("machineIdentifier not found in /identity response")
         return machine_id
 
-    async def get_or_create_collection(self, collection_name: str, first_movie_rating_key: str = None) -> Optional[str]:
-        """
-        Get existing Plex collection by name or create a new one.
-        Returns collection ratingKey or None on failure.
-        """
-        from plexapi.server import PlexServer
-    
-        library_id = await self.get_movie_library_section_id()
-        if not library_id:
-            logger.error("No movie library section found, cannot get/create collection")
-            return None
-    
-        server = PlexServer(self.base_url, self.api_key)
-        section = server.library.sectionByID(int(library_id))
-    
-        # Check for existing collection by exact name
-        for collection in section.collections():
-            if collection.title == collection_name:
-                rating_key = str(collection.ratingKey)
-                logger.info(f"Found existing collection: {collection_name} (key: {rating_key})")
-                return rating_key
-    
-        # Create new collection - Plex requires at least one item
-        try:
-            if first_movie_rating_key:
-                movie = server.fetchItem(int(first_movie_rating_key))
-                new_collection = section.createCollection(title=collection_name, items=[movie])
-            else:
-                new_collection = section.createCollection(title=collection_name)
-            
-            rating_key = str(new_collection.ratingKey)
-            logger.info(f"Created collection: {collection_name} (key: {rating_key})")
-            return rating_key
-        except Exception as e:
-            logger.error(f"Failed to create collection '{collection_name}': {redact(str(e))}")
-            return None
-
     async def add_to_collection(self, collection_key: str, rating_key: str) -> bool:
         """
         Add a movie to a Plex collection.

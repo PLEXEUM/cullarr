@@ -471,7 +471,7 @@ async def run_score_cycle():
         # Find movies that were removed (in old but not in new)
         removed_movie_ids = current_queue_ids - new_queue_ids
         
-        if removed_movie_ids and plex_enabled and plex_client and plex_config["collection_name"]:
+        if removed_movie_ids and plex_enabled and plex_client and plex_config["collection_key"]:
             # Get movie details for removed movies (need title and year for mapping)
             placeholders = ",".join("?" * len(removed_movie_ids))
             removed_movies_data = conn.execute(
@@ -482,7 +482,7 @@ async def run_score_cycle():
             if removed_movies_data:
                 # Convert to list of dicts for _remove_plex_collections
                 removed_movies_list = [dict(row) for row in removed_movies_data]
-                logger.info(f"Removing {len(removed_movies_list)} movies from Plex collection '{plex_config['collection_name']}'")
+                logger.info(f"Removing {len(removed_movies_list)} movies from Plex collection")
                 await _remove_plex_collections(
                     plex_client,
                     removed_movies_list,
@@ -491,8 +491,8 @@ async def run_score_cycle():
         # ===== END PLEX CLEANUP =====
 
         # Add newly queued movies to Plex collection
-        if plex_enabled and plex_client and plex_config["collection_name"] and added:
-            logger.info(f"Adding {len(added)} movies to Plex collection '{plex_config['collection_name']}'")
+        if plex_enabled and plex_client and plex_config["collection_key"] and added:
+            logger.info(f"Adding {len(added)} movies to Plex collection")
             await _apply_plex_collections(
                 plex_client,
                 added,
@@ -619,7 +619,7 @@ async def run_cull_cycle(dry_run: bool = False):
                     # ===== END PROGRESS UPDATE =====
 
                     # Remove from Plex collection after successful deletion
-                    if plex_enabled and plex_client and plex_config["collection_name"]:
+                    if plex_enabled and plex_client and plex_config["collection_key"]:
                         await _remove_plex_collections(
                             plex_client,
                             [dict(movie)],

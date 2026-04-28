@@ -36,7 +36,6 @@ def init_db():
             id INTEGER PRIMARY KEY CHECK (id = 1),
             url TEXT,
             api_key TEXT,
-            collection_name TEXT DEFAULT 'Cullarr - Pending Deletion',
             collection_key TEXT,
             enabled BOOLEAN DEFAULT 0,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
