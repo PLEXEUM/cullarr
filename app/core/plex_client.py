@@ -328,27 +328,22 @@ class PlexClient:
     async def remove_from_collection(self, collection_rating_key: str, item_rating_key: str) -> bool:
         """
         Remove a media item from a collection using the working Plex API.
-        
+    
         Args:
             collection_rating_key: The ratingKey of the collection (e.g., "615787")
             item_rating_key: The ratingKey of the media item (e.g., "100275")
         """
-        machine_id = await self.get_machine_id()
-        if not machine_id:
-            logger.error("Cannot remove from collection: failed to get machine ID")
-            return False
-        
-        uri = f"server://{machine_id}/com.plexapp.plugins.library/library/metadata/{item_rating_key}"
-        endpoint = f"/library/collections/{collection_rating_key}/items?uri={uri}"
-        
+        # DELETE uses just the item ID in the path - no machine_id or uri needed
+        endpoint = f"/library/collections/{collection_rating_key}/items/{item_rating_key}"
+    
         logger.info(f"Removing item {item_rating_key} from collection {collection_rating_key}")
         success = await self._delete(endpoint)
-        
+    
         if success:
             logger.info(f"Successfully removed item {item_rating_key} from collection")
         else:
             logger.error(f"Failed to remove item {item_rating_key} from collection")
-        
+    
         return success
 
     async def sync_collection(self, item_rating_key: str, collection_name: str, should_be_in: bool) -> bool:
