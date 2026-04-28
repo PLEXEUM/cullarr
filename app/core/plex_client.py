@@ -247,48 +247,55 @@ class PlexClient:
         return items
 
     async def get_all_play_history(self) -> Dict[str, Dict]:
-        """Fetch play history from Plex using /status/sessions/history/all."""
+        """
+        Fetch play history from Plex for ALL users using admin token.
+        """
+        import xml.etree.ElementTree as ET
         result = {}
         start = 0
         page_size = 1000
-
+    
         while True:
-            xml_data = await self._request_xml(f"/status/sessions/history/all?X-Plex-Container-Start={start}&X-Plex-Container-Size={page_size}")
+            # CRITICAL: Use XML + allUsers=1 to get ALL users' play history
+            endpoint = f"/status/sessions/history/all?X-Plex-Container-Start={start}&X-Plex-Container-Size={page_size}&allUsers=1"
+            xml_data = await self._request_xml(endpoint)
+        
             if not xml_data:
                 break
-            
+        
             try:
                 root = ET.fromstring(xml_data)
                 metadata = root.findall(".//Video")
                 if not metadata:
                     break
-                
+            
                 for item in metadata:
                     rating_key = item.get("ratingKey")
                     if not rating_key:
                         continue
-                    
+                
                     viewed_at = int(item.get("viewedAt", 0))
-                    
+                
                     if rating_key not in result:
                         result[rating_key] = {"play_count": 0, "last_viewed": 0}
-                    
+                
                     result[rating_key]["play_count"] += 1
                     if viewed_at > result[rating_key]["last_viewed"]:
                         result[rating_key]["last_viewed"] = viewed_at
-                
+            
                 total_size = int(root.get("totalSize", 0))
                 if total_size > 0 and len(metadata) < page_size:
                     break
                 if len(metadata) < page_size:
                     break
-                
+            
                 start += len(metadata)
+            
             except Exception as e:
                 logger.error(f"Failed to parse play history: {e}")
                 break
 
-        logger.info(f"Fetched play history for {len(result)} rating keys from Plex")
+        logger.info(f"Fetched play history for {len(result)} rating keys from Plex (all users)")
         return result
 
     async def get_play_counts_by_tmdb(self) -> Dict[str, Dict]:
