@@ -83,7 +83,7 @@ async def _apply_plex_collections(
     
     # Use the saved collection key from database
     # For now, hardcode it - we'll add the config later
-    collection_key = "600936"
+    collection_key = "615787"
     
     # Verify the collection exists
     try:
@@ -139,7 +139,7 @@ async def _remove_plex_collections(
     server = PlexServer(plex_client.base_url, plex_client.api_key)
     
     # Use the same hardcoded collection key
-    collection_key = "600936"
+    collection_key = "615787"
     
     # Verify the collection exists
     try:
