@@ -177,12 +177,6 @@ function setupEventListeners() {
     // Plex
     document.getElementById('plex-auth-btn').addEventListener('click', authenticateAndSavePlex);
     document.getElementById('plex-clear-btn').addEventListener('click', clearPlex);
-
-    // Collection dropdown - load on click 
-    const collectionSelect = document.getElementById('plex-collection-select');
-    if (collectionSelect) {
-        collectionSelect.addEventListener('click', onCollectionDropdownClick);
-    }
     
     // Save collection selection button 
     const saveCollectionBtn = document.getElementById('plex-save-collection-select-btn');
@@ -495,13 +489,6 @@ async function loadPlexConfig() {
         
         document.getElementById('plex-url').value = data.url || '';
         
-        // Store the saved collection key but don't populate dropdown until clicked
-        const select = document.getElementById('plex-collection-select');
-        if (select && data.collection_key) {
-            // We'll store the value but not populate yet
-            select.setAttribute('data-saved-key', data.collection_key);
-        }
-        
         const statusDiv = document.getElementById('plex-status');
         if (data.configured && data.url && data.api_key === '[REDACTED]') {
             statusDiv.innerHTML = '<span style="color: var(--success);">✅ Configured</span>';
@@ -510,6 +497,15 @@ async function loadPlexConfig() {
         } else {
             statusDiv.innerHTML = '<span style="color: var(--warning);">⚠ Not configured</span>';
         }
+        
+        // Load collections and set saved selection
+        await populateCollectionDropdown();
+        
+        const select = document.getElementById('plex-collection-select');
+        if (select && data.collection_key) {
+            select.value = data.collection_key;
+        }
+        
     } catch (e) {
         console.error('Failed to load Plex config:', e);
     }
