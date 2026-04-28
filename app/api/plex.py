@@ -30,7 +30,7 @@ async def get_plex_config():
         "configured": bool(config["url"] and config["api_key"]),
         "url": config["url"],
         "api_key": "[REDACTED]" if config["api_key"] else None,
-        "collection_key": config.get("collection_key"),
+        "collection_key": config["collection_key"],
         "enabled": bool(config["enabled"]),
     }
 
