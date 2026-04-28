@@ -134,27 +134,14 @@ class PlexClient:
         return None
 
     async def get_movie_library_section_id(self) -> Optional[str]:
-        """Get the first movie library section ID."""
+        """Get the movie library section ID (hardcoded to section 5)."""
         if self._movie_section_id:
             return self._movie_section_id
-        
-        xml_data = await self._request_xml("/library/sections")
-        if not xml_data:
-            return None
-        
-        try:
-            root = ET.fromstring(xml_data)
-            for directory in root.findall(".//Directory"):
-                if directory.get("type") == "movie":
-                    section_id = directory.get("key")
-                    if section_id:
-                        self._movie_section_id = section_id
-                        logger.info(f"Movie library section ID: {section_id}")
-                        return section_id
-        except Exception as e:
-            logger.error(f"Failed to parse library sections: {e}")
-        
-        return None
+    
+        # Hardcoded to section 5 (your main Movies library)
+        self._movie_section_id = "5"
+        logger.info(f"Using movie library section ID: 5 (Movies)")
+        return "5"
 
     async def get_collections(self) -> List[Dict[str, str]]:
         """
