@@ -1,6 +1,7 @@
 import asyncio
 import json
 from datetime import datetime, timedelta
+from typing import Dict
 from app.db.database import get_connection
 from app.core.radarr_client import RadarrClient
 from app.core.plex_client import PlexClient
@@ -53,13 +54,14 @@ async def release_run_lock():
 
 
 # In run_engine.py, replace _apply_plex_collections and _remove_plex_collections:
-
 async def _apply_plex_collections(
     plex_client: PlexClient,
     movies: list,
     library_map: dict
-) -> None:
+) -> Dict[int, str]:  # ← CHANGED: returns dict of movie_id -> rating_key
     """Add movies to Plex collection using Maintainerr-style tag writing."""
+    
+    rating_key_map = {}  # ← ADDED: store rating keys by movie_id
     
     conn = get_connection()
     try:
@@ -67,7 +69,7 @@ async def _apply_plex_collections(
         collection_key = plex_config["collection_key"] if plex_config else None
         if not collection_key:
             logger.warning("No Plex collection selected")
-            return
+            return rating_key_map  # ← CHANGED: return empty dict
         
         # Get collection name ONCE, outside the loop
         from plexapi.server import PlexServer
@@ -92,9 +94,6 @@ async def _apply_plex_collections(
     finally:
         conn.close()
     
-    # Flatten and process movies (same as you have)
-    # ... rest of function ...
-    
     # Flatten collections into individual movies
     flat_movies = []
     for movie in movies:
@@ -106,8 +105,9 @@ async def _apply_plex_collections(
     for movie in flat_movies:
         title = movie.get("movie_title")
         year = movie.get("movie_year")
+        movie_id = movie.get("movie_id")  # ← ADDED: get movie_id
         
-        if not title or not year:
+        if not title or not year or not movie_id:  # ← CHANGED: check movie_id
             continue
         
         key = f"{title.lower()}|{year}"
@@ -126,8 +126,11 @@ async def _apply_plex_collections(
         
         if success:
             logger.info(f"Added '{title}' to Plex collection '{collection_name}'")
+            rating_key_map[movie_id] = rating_key  # ← ADDED: store rating key
         else:
             logger.warning(f"Failed to add '{title}' to Plex collection")
+    
+    return rating_key_map  # ← ADDED: return the map
 
 
 async def _remove_plex_collections(
@@ -195,7 +198,7 @@ async def _build_plex_library_map(plex_client: PlexClient) -> dict:
     return library_map
 
 
-def _queue_entries_for_movie(movie: dict, scheduled_date: str) -> list:
+def _queue_entries_for_movie(movie: dict, scheduled_date: str, plex_rating_key: str = None) -> list:
     """
     Build a list of DB insert tuples for a scored movie entry.
     For collections, returns one tuple per movie in the collection.
@@ -215,10 +218,11 @@ def _queue_entries_for_movie(movie: dict, scheduled_date: str) -> list:
                 member["size_gb"],
                 member["quality"],
                 1 if member["monitored"] else 0,
-                movie["normalized_score"],  # use collection score for all members
+                movie["normalized_score"],
                 json.dumps(member["factors"]),
                 scheduled_date,
                 movie.get("collection_title", "Unknown Collection"),
+                plex_rating_key,  # Add this
             ))
     else:
         entries.append((
@@ -233,7 +237,8 @@ def _queue_entries_for_movie(movie: dict, scheduled_date: str) -> list:
             movie["normalized_score"],
             json.dumps(movie["factors"]),
             scheduled_date,
-            None,  # no collection name for individual movies
+            None,
+            plex_rating_key,  # Add this
         ))
 
     return entries
@@ -417,15 +422,16 @@ async def run_score_cycle():
                     scheduled_date = datetime.now() + timedelta(
                         days=settings["delete_after_days"] if settings else 7
                     )
-                    entries = _queue_entries_for_movie(movie, scheduled_date.isoformat())
+                    rating_key = rating_key_map.get(movie.get("movie_id")) if rating_key_map else None
+                    entries = _queue_entries_for_movie(movie, scheduled_date.isoformat(), rating_key)
 
                     try:
                         for entry in entries:
                             thread_conn.execute(
                                 """INSERT OR IGNORE INTO scheduled_deletions
                                 (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating, size_gb, quality,
-                                 monitored, score, score_factors, scheduled_date, status, collection_name)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)""",
+                                 monitored, score, score_factors, scheduled_date, status, collection_name, plex_rating_key)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)""",
                                 entry
                             )
 
@@ -485,9 +491,10 @@ async def run_score_cycle():
         # ===== END PLEX CLEANUP =====
 
         # Add newly queued movies to Plex collection
+        rating_key_map = {}
         if plex_enabled and plex_client and plex_config["collection_key"] and added:
             logger.info(f"Adding {len(added)} movies to Plex collection")
-            await _apply_plex_collections(
+            rating_key_map = await _apply_plex_collections(
                 plex_client,
                 added,
                 plex_library_map

@@ -278,13 +278,20 @@ def migrate_db():
     except Exception:
         pass  # Table may not exist yet
 
-        # Migration: Add collection_key to plex_config for direct key reference
+    # Migration: Add collection_key to plex_config for direct key reference
     try:
         cursor.execute("ALTER TABLE plex_config ADD COLUMN collection_key TEXT")
         print("Migration applied: added collection_key to plex_config")
     except Exception:
         pass  # Column already exists, safe to ignore
 
+    # Migration: Add plex_rating_key to scheduled_deletions table
+    try:
+        cursor.execute("ALTER TABLE scheduled_deletions ADD COLUMN plex_rating_key TEXT")
+        print("Migration applied: added plex_rating_key to scheduled_deletions")
+    except Exception:
+        pass  # Column already exists, safe to ignore
+    
     conn.commit()
     conn.close()
 
