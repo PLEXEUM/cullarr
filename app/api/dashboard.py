@@ -519,8 +519,16 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
     sort_column = sort_mapping.get(sort_by, "raw_score")
     reverse = sort_order.lower() == "desc"
     
-    # Handle None values for sorting
-    available.sort(key=lambda x: x.get(sort_column) or (0 if isinstance(x.get(sort_column), (int, float)) else ""), reverse=reverse)
+    # Handle None values for sorting - safely compare mixed types
+    def get_sort_key(x):
+        val = x.get(sort_column)
+        # For numeric columns - convert None to 0
+        if sort_column in ["raw_score", "normalized_score", "age_days", "size_gb", "tmdb_rating", "plex_play_count"]:
+            return val if isinstance(val, (int, float)) else 0
+        # For string columns - convert None to empty string
+        return str(val) if val is not None else ""
+
+    available.sort(key=get_sort_key, reverse=reverse)
 
     total = len(available)
     offset = (page - 1) * per_page
