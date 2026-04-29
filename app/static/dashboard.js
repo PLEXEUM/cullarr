@@ -13,7 +13,7 @@ let runStatusInterval = null;
 async function loadDashboard() {
     await loadQueueStatus();
     await loadScheduledDeletions();
-    await loadScoreQueue(true, true);
+    await loadScoreQueue(false, true);
     await loadFailedDeletions();
     await loadNextRunTimes();
 }
