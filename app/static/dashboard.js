@@ -292,7 +292,7 @@ function updateSortIcons() {
     });
 }
 
-// Failed Deletions
+// Deletion History
 async function loadFailedDeletions() {
     try {
         const res = await fetch('/api/dashboard/failed');
@@ -306,26 +306,35 @@ async function loadFailedDeletions() {
         }
 
         section.classList.remove('hidden');
-        tbody.innerHTML = data.items.map(item => `
-            <tr style="border-bottom: 1px solid var(--border-color);">
-                <td class="px-4 py-2">${escapeHtml(item.movie_title)} (${item.movie_year || 'N/A'})</td>
-                <td class="px-4 py-2">${item.score.toFixed(1)}</td>
-                <td class="px-4 py-2">${new Date(item.deleted_at).toLocaleDateString()}</td>
-                <td class="px-4 py-2" style="color: var(--danger); font-size: 12px;">${escapeHtml(item.error_message || 'Unknown error')}</td>
-            </tr>
-        `).join('');
+        tbody.innerHTML = data.items.map(item => {
+            let statusHtml = '';
+            if (item.status === 'deleted') {
+                statusHtml = '<span style="color: var(--success);">✅ deleted</span>';
+            } else {
+                statusHtml = '<span style="color: var(--danger);">❌ failed</span>';
+            }
+            return `
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td class="px-4 py-2">${escapeHtml(item.movie_title)} (${item.movie_year || 'N/A'})</td>
+                    <td class="px-4 py-2">${item.score.toFixed(1)}</td>
+                    <td class="px-4 py-2">${new Date(item.deleted_at).toLocaleDateString()}</td>
+                    <td class="px-4 py-2">${statusHtml}</td>
+                    <td class="px-4 py-2" style="color: var(--danger); font-size: 12px;">${escapeHtml(item.error_message || '—')}</td>
+                </tr>
+            `;
+        }).join('');
     } catch (e) {
-        console.error('Failed to load failed deletions:', e);
+        console.error('Failed to load deletion history:', e);
     }
 }
 
 // Clear Failed Deletions
 async function clearFailedDeletions() {
-    if (!confirm('Clear all failed deletion records? This cannot be undone.')) return;
+    if (!confirm('Clear all deletion history records? This cannot be undone.')) return;
     try {
         const res = await fetch('/api/dashboard/failed', { method: 'DELETE' });
         if (res.ok) {
-            showToast('Failed deletions cleared', 'success');
+            showToast('Deletion history cleared', 'success');
             await loadFailedDeletions();
         } else {
             const err = await res.json();

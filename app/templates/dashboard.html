@@ -223,15 +223,15 @@
         <div id="score-queue-pagination" class="px-4 py-3 border-t flex justify-between items-center text-sm" style="border-color: var(--border-color);"></div>
     </div>
 
-    <!-- Failed Deletions -->
+    <!-- Deletion History -->
     <div id="failed-section" class="card rounded-xl overflow-hidden hidden">
         <div class="card-header" style="background: var(--danger-bg);">
             <svg class="card-header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
             </svg>
             <div>
-                <h2 class="card-header-title" style="color: var(--danger);">Failed Deletions</h2>
-                <p class="card-header-subtitle">Manual action required</p>
+                <h2 class="card-header-title" style="color: var(--danger);">Deletion History</h2>
+                <p class="card-header-subtitle">Failed and successful deletions</p>
             </div>
             <div class="ml-auto">
                 <button id="clear-failed-btn" class="btn-sm btn-outline" style="border-color: var(--danger); color: var(--danger);">🗑️ Clear All</button>
@@ -242,7 +242,8 @@
                     <tr>
                         <th>Movie</th>
                         <th>Score</th>
-                        <th>Failed Date</th>
+                        <th>Date</th>
+                        <th>Status</th>
                         <th>Error</th>
                     </tr>
                 </thead>
@@ -250,7 +251,7 @@
             </table>
         </div>
         <div class="px-4 py-3 border-t text-xs" style="border-color: var(--border-color); color: var(--text-secondary);">
-            ℹ️ Failed movies removed from queue. Manually delete from Radarr if needed.
+            ℹ️ History of all deleted movies (successful and failed). Click Clear All to remove all records.
         </div>
     </div>
 

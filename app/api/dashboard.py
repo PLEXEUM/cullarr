@@ -676,34 +676,34 @@ async def search_score_queue(
     finally:
         conn.close()
 
+
 @router.get("/dashboard/failed")
 async def get_failed_deletions():
-    """Get failed deletions that need manual attention."""
+    """Get deletion history (both successful and failed deletions)."""
     conn = get_connection()
     try:
-        failed = conn.execute("""
-            SELECT id, movie_title, movie_year, size_gb, score, error_message, deleted_at
+        history = conn.execute("""
+            SELECT id, movie_title, movie_year, size_gb, score, status, error_message, deleted_at
             FROM deletion_history
-            WHERE status = 'failed'
             ORDER BY deleted_at DESC
             LIMIT 50
         """).fetchall()
     finally:
         conn.close()
-    return {"items": [dict(row) for row in failed]}
+    return {"items": [dict(row) for row in history]}
 
 
 @router.delete("/dashboard/failed")
 async def clear_failed_deletions():
-    """Clear all failed deletion records."""
+    """Clear all deletion history records (both successful and failed)."""
     conn = get_connection()
     try:
-        conn.execute("DELETE FROM deletion_history WHERE status = 'failed'")
+        conn.execute("DELETE FROM deletion_history")
         conn.commit()
-        logger.info("Cleared all failed deletion records")
-        return {"success": True, "message": "Failed deletions cleared"}
+        logger.info("Cleared all deletion history records")
+        return {"success": True, "message": "Deletion history cleared"}
     except Exception as e:
-        logger.error(f"Failed to clear failed deletions: {e}")
+        logger.error(f"Failed to clear deletion history: {e}")
         raise HTTPException(status_code=500, detail="Failed to clear records")
     finally:
         conn.close()
