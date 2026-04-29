@@ -102,14 +102,20 @@ class RadarrClient:
             if not movie:
                 logger.warning(f"Movie {movie_id} not found in Radarr")
                 return {"success": False, "message": "Movie not found in Radarr"}
-            
+        
             movie_title = movie.get("title", "Unknown")
-            
+        
             # Perform full deletion with deleteFiles=true
-            await self._request("DELETE", f"movie/{movie_id}?deleteFiles=true", timeout=120)
+            result = await self._request("DELETE", f"movie/{movie_id}?deleteFiles=true", timeout=120)
+        
+            # Check if result indicates already_deleted (404 handler)
+            if isinstance(result, dict) and result.get("already_deleted"):
+                logger.info(f"Movie already gone: {movie_title} (ID: {movie_id})")
+                return {"success": True, "message": f"Movie already deleted: {movie_title}"}
+        
             logger.info(f"Deleted entire movie entry: {movie_title} (ID: {movie_id}) from Radarr")
             return {"success": True, "message": f"Deleted movie: {movie_title}"}
-            
+        
         except Exception as e:
             logger.error(f"Failed to delete movie {movie_id} entirely: {e}")
             return {"success": False, "message": str(e)}
