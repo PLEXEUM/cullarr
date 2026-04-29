@@ -317,6 +317,81 @@ class PlexClient:
 
         logger.info(f"Mapped play counts to {len(result)} TMDb IDs")
         return result
+    
+    async def get_item_collections(self, rating_key: str) -> List[str]:
+        """
+        Get all collection tag names for a specific media item.
+        
+        Args:
+            rating_key: The ratingKey of the media item (e.g., "100275")
+            
+        Returns:
+            List of collection names (tags) the item belongs to
+        """
+        endpoint = f"/library/metadata/{rating_key}/collections"
+        data = await self._request(endpoint)
+        
+        if not data:
+            return []
+        
+        collections = []
+        for directory in data.get("MediaContainer", {}).get("Directory", []):
+            if directory.get("type") == "collection":
+                tag = directory.get("tag")
+                if tag:
+                    collections.append(tag)
+        
+        logger.debug(f"Item {rating_key} belongs to collections: {collections}")
+        return collections
+    
+    async def update_item_collections(self, rating_key: str, collection_names: List[str], locked: bool = True) -> bool:
+        """
+        Update the full collection tag list for a media item.
+        This REPLACES all existing collections with the provided list.
+        
+        Args:
+            rating_key: The ratingKey of the media item (e.g., "100275")
+            collection_names: List of collection names to set on the item
+            locked: Whether to lock the collection field (prevents Plex from auto-modifying)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not collection_names:
+            # If empty list, we need to clear all collections
+            params = "collection=clear&collection.locked=1" if locked else "collection=clear"
+            endpoint = f"/library/metadata/{rating_key}?{params}"
+        else:
+            # Build query parameters for each collection
+            params = []
+            for i, name in enumerate(collection_names):
+                params.append(f"collection[{i}].tag={name.replace(' ', '%20')}")
+            if locked:
+                params.append("collection.locked=1")
+            endpoint = f"/library/metadata/{rating_key}?{'&'.join(params)}"
+        
+        success = await self._put(endpoint)
+        
+        if success:
+            logger.info(f"Updated collections for item {rating_key} to: {collection_names}")
+        else:
+            logger.error(f"Failed to update collections for item {rating_key}")
+        
+        return success
+    
+    async def _get_collection_name_by_key(self, collection_rating_key: str) -> Optional[str]:
+        """Get collection name from its rating key."""
+        endpoint = f"/library/collections/{collection_rating_key}"
+        data = await self._request(endpoint)
+        
+        if not data:
+            return None
+        
+        for directory in data.get("MediaContainer", {}).get("Directory", []):
+            if directory.get("ratingKey") == collection_rating_key:
+                return directory.get("title")
+        
+        return None
 
     # ========== COLLECTION METHODS (WORKING API) ==========
 
@@ -348,23 +423,40 @@ class PlexClient:
 
     async def remove_from_collection(self, collection_rating_key: str, item_rating_key: str) -> bool:
         """
-        Remove a media item from a collection using the working Plex API.
-    
+        Remove a media item from a collection using the READ-MODIFY-WRITE pattern.
+        This is more reliable than the DELETE endpoint.
+        
         Args:
             collection_rating_key: The ratingKey of the collection (e.g., "615787")
             item_rating_key: The ratingKey of the media item (e.g., "100275")
+            
+        Returns:
+            True if successful, False otherwise
         """
-        # DELETE uses just the item ID in the path - no machine_id or uri needed
-        endpoint = f"/library/collections/{collection_rating_key}/items/{item_rating_key}"
-    
-        logger.info(f"Removing item {item_rating_key} from collection {collection_rating_key}")
-        success = await self._delete(endpoint)
-    
+        # Step 1: Get the collection name from the collection rating key
+        collection_name = await self._get_collection_name_by_key(collection_rating_key)
+        if not collection_name:
+            logger.error(f"Could not find collection name for key {collection_rating_key}")
+            return False
+        
+        # Step 2: Get current collections for the item
+        current_collections = await self.get_item_collections(item_rating_key)
+        
+        # Step 3: Remove target collection from the list
+        if collection_name not in current_collections:
+            logger.debug(f"Item {item_rating_key} not in collection '{collection_name}', nothing to remove")
+            return True
+        
+        updated_collections = [c for c in current_collections if c != collection_name]
+        
+        # Step 4: Write the full updated list back
+        success = await self.update_item_collections(item_rating_key, updated_collections, locked=True)
+        
         if success:
-            logger.info(f"Successfully removed item {item_rating_key} from collection")
+            logger.info(f"Removed '{collection_name}' from item {item_rating_key}")
         else:
-            logger.error(f"Failed to remove item {item_rating_key} from collection")
-    
+            logger.error(f"Failed to remove '{collection_name}' from item {item_rating_key}")
+        
         return success
 
     async def sync_collection(self, item_rating_key: str, collection_name: str, should_be_in: bool) -> bool:
