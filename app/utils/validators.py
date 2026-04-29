@@ -164,9 +164,9 @@ def validate_batch_size(value: int) -> tuple[bool, str]:
     return True, ""
 
 def validate_delete_after_days(value: int) -> tuple[bool, str]:
-    """Validate delete after days is between 1 and 90."""
-    if value < 1 or value > 90:
-        return False, "Delete after days must be between 1 and 90"
+    """Validate delete after days is between 0 and 90."""
+    if value < 0 or value > 90:
+        return False, "Delete after days must be between 0 and 90"
     return True, ""
 
 def validate_max_queued(value: int) -> tuple[bool, str]:
