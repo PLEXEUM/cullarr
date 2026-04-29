@@ -359,7 +359,7 @@ class PlexClient:
         """
         if not collection_names:
             # If empty list, we need to clear all collections
-            params = "collection=clear&collection.locked=1" if locked else "collection=clear"
+            params = "collection=clear&collection.locked=0" if locked else "collection=clear"
             endpoint = f"/library/metadata/{rating_key}?{params}"
         else:
             # Build query parameters for each collection
@@ -367,7 +367,7 @@ class PlexClient:
             for i, name in enumerate(collection_names):
                 params.append(f"collection[{i}].tag={name.replace(' ', '%20')}")
             if locked:
-                params.append("collection.locked=1")
+                params.append("collection.locked=0")
             endpoint = f"/library/metadata/{rating_key}?{'&'.join(params)}"
         
         success = await self._put(endpoint)
