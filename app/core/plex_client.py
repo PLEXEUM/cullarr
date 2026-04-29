@@ -362,7 +362,7 @@ class PlexClient:
         """
         if not collection_names:
             # If empty list, we need to clear all collections
-            params = "collection=clear&collection.locked=0" if locked else "collection=clear"
+            params = "collection[0].tag=&collection.locked=0" if locked else "collection[0].tag="
             endpoint = f"/library/metadata/{rating_key}?{params}"
         else:
             # Build query parameters for each collection
