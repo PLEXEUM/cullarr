@@ -13,7 +13,7 @@ let runStatusInterval = null;
 async function loadDashboard() {
     await loadQueueStatus();
     await loadScheduledDeletions();
-    await loadScoreQueue();
+    await loadScoreQueue(true, true);
     await loadFailedDeletions();
     await loadNextRunTimes();
 }
@@ -125,7 +125,7 @@ async function removeFromQueue(movieId, title) {
 }
 
 // Score Queue
-async function loadScoreQueue(forceRefresh = false) {
+async function loadScoreQueue(forceRefresh = false, silent = false) {
     // Show loading state on refresh button if forceRefresh is true
     const refreshBtn = document.getElementById('refresh-queue-btn');
     const originalBtnHtml = refreshBtn ? refreshBtn.innerHTML : '';
@@ -133,7 +133,9 @@ async function loadScoreQueue(forceRefresh = false) {
     if (forceRefresh && refreshBtn) {
         refreshBtn.disabled = true;
         refreshBtn.innerHTML = '⏳';
-        showToast('Refreshing score queue... this may take a moment', 'info');
+        if (!silent) {
+            showToast('Refreshing score queue... this may take a moment', 'info');
+        }
     }
     
     try {
@@ -244,7 +246,7 @@ async function loadScoreQueue(forceRefresh = false) {
         // Update sort icons
         updateSortIcons();
 
-        if (forceRefresh) {
+        if (forceRefresh && !silent) {
             showToast('Score queue refreshed successfully', 'success');
         }
 
