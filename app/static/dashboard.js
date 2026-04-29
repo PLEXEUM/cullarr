@@ -487,6 +487,7 @@ function startRunStatusPolling() {
                 }
     
                 await loadDashboard();
+                await loadScoreQueue(true);
     
                 // Clear pending dry run flag
                 window.pendingDryRun = null;
