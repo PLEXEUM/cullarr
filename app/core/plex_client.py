@@ -383,14 +383,15 @@ class PlexClient:
         """Get collection name from its rating key."""
         endpoint = f"/library/collections/{collection_rating_key}"
         data = await self._request(endpoint)
-        
+    
         if not data:
             return None
-        
-        for directory in data.get("MediaContainer", {}).get("Directory", []):
-            if directory.get("ratingKey") == collection_rating_key:
-                return directory.get("title")
-        
+    
+        # Collections are in "Metadata", not "Directory"
+        for item in data.get("MediaContainer", {}).get("Metadata", []):
+            if str(item.get("ratingKey")) == str(collection_rating_key):
+                return item.get("title")
+    
         return None
 
     # ========== COLLECTION METHODS (WORKING API) ==========
