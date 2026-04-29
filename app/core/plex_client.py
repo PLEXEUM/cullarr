@@ -321,26 +321,29 @@ class PlexClient:
     async def get_item_collections(self, rating_key: str) -> List[str]:
         """
         Get all collection tag names for a specific media item.
-        
+    
         Args:
             rating_key: The ratingKey of the media item (e.g., "100275")
-            
+        
         Returns:
             List of collection names (tags) the item belongs to
         """
-        endpoint = f"/library/metadata/{rating_key}/collections"
-        data = await self._request(endpoint)
-        
-        if not data:
+        endpoint = f"/library/metadata/{rating_key}"
+        xml_data = await self._request_xml(endpoint)
+    
+        if not xml_data:
             return []
-        
+    
         collections = []
-        for directory in data.get("MediaContainer", {}).get("Directory", []):
-            if directory.get("type") == "collection":
-                tag = directory.get("tag")
+        try:
+            root = ET.fromstring(xml_data)
+            for collection in root.findall(".//Collection"):
+                tag = collection.get("tag")
                 if tag:
                     collections.append(tag)
-        
+        except Exception as e:
+            logger.error(f"Failed to parse collections from metadata: {e}")
+    
         logger.debug(f"Item {rating_key} belongs to collections: {collections}")
         return collections
     
