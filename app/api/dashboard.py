@@ -676,22 +676,20 @@ async def search_score_queue(
     finally:
         conn.close()
 
-@router.get("/dashboard/failed")
-async def get_failed_deletions():
-    """Get failed deletions that need manual attention."""
+@router.delete("/dashboard/failed")
+async def clear_failed_deletions():
+    """Clear all failed deletion records."""
     conn = get_connection()
     try:
-        failed = conn.execute("""
-            SELECT id, movie_title, movie_year, size_gb, score, error_message, deleted_at
-            FROM deletion_history
-            WHERE status = 'failed'
-            ORDER BY deleted_at DESC
-            LIMIT 50
-        """).fetchall()
+        conn.execute("DELETE FROM deletion_history WHERE status = 'failed'")
+        conn.commit()
+        logger.info("Cleared all failed deletion records")
+        return {"success": True, "message": "Failed deletions cleared"}
+    except Exception as e:
+        logger.error(f"Failed to clear failed deletions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to clear records")
     finally:
         conn.close()
-
-    return {"items": [dict(row) for row in failed]}
 
 
 @router.get("/dashboard/settings-summary")

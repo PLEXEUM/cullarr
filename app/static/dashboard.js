@@ -125,7 +125,7 @@ async function removeFromQueue(movieId, title) {
 }
 
 // Score Queue
-async function loadScoreQueue(forceRefresh = false) {
+async function loadScoreQueue(forceRefresh = false, silent = false) {
     // Show loading state on refresh button if forceRefresh is true
     const refreshBtn = document.getElementById('refresh-queue-btn');
     const originalBtnHtml = refreshBtn ? refreshBtn.innerHTML : '';
@@ -133,7 +133,9 @@ async function loadScoreQueue(forceRefresh = false) {
     if (forceRefresh && refreshBtn) {
         refreshBtn.disabled = true;
         refreshBtn.innerHTML = '⏳';
-        showToast('Refreshing score queue... this may take a moment', 'info');
+        if (!silent) {
+            showToast('Refreshing score queue... this may take a moment', 'info');
+        }
     }
     
     try {
@@ -314,6 +316,23 @@ async function loadFailedDeletions() {
         `).join('');
     } catch (e) {
         console.error('Failed to load failed deletions:', e);
+    }
+}
+
+// Clear Failed Deletions
+async function clearFailedDeletions() {
+    if (!confirm('Clear all failed deletion records? This cannot be undone.')) return;
+    try {
+        const res = await fetch('/api/dashboard/failed', { method: 'DELETE' });
+        if (res.ok) {
+            showToast('Failed deletions cleared', 'success');
+            await loadFailedDeletions();
+        } else {
+            const err = await res.json();
+            showToast(err.detail || 'Failed to clear', 'error');
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
     }
 }
 
@@ -688,6 +707,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('run-score-btn').addEventListener('click', triggerScoreRun);
     document.getElementById('run-cull-btn').addEventListener('click', triggerCullRun);
     document.getElementById('refresh-queue-btn').addEventListener('click', () => loadScoreQueue(true));
+    document.getElementById('clear-failed-btn').addEventListener('click', clearFailedDeletions);
     document.getElementById('per-page-select').addEventListener('change', (e) => {
         scoreQueuePerPage = parseInt(e.target.value);
         scoreQueuePage = 1;
