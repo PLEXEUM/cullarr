@@ -26,6 +26,12 @@ class RadarrClient:
             try:
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     response = await client.request(method, url, headers=self.headers, **kwargs)
+                    
+                    # For DELETE operations, 404 means the resource is already gone = success
+                    if method == "DELETE" and response.status_code == 404:
+                        logger.info(f"Radarr DELETE: Resource already gone (404) - treating as success")
+                        return {"success": True, "already_deleted": True}
+                    
                     response.raise_for_status()
                     return response.json()
             except httpx.HTTPStatusError as e:
