@@ -488,12 +488,7 @@ function startRunStatusPolling() {
                     showToast('Run completed', 'success');
                 }
     
-                // Force refresh the score queue after a run completes
-                await loadQueueStatus();
-                await loadScheduledDeletions();
-                await loadScoreQueue(true, true);  // Force rebuild, silent
-                await loadFailedDeletions();
-                await loadNextRunTimes();
+                await loadDashboard();
     
                 // Clear pending dry run flag
                 window.pendingDryRun = null;
