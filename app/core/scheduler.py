@@ -1,14 +1,44 @@
 import asyncio
 from datetime import datetime
+import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED
 from app.utils.logger import get_logger
 from app.db.database import get_connection
 
 logger = get_logger()
 
-# Global scheduler instance
-scheduler = AsyncIOScheduler()
+def get_local_timezone():
+    """Get the system's local timezone automatically."""
+    try:
+        local_tz = datetime.now().astimezone().tzinfo
+        if local_tz:
+            return local_tz
+    except Exception:
+        pass
+    
+    import os
+    tz_name = os.environ.get('TZ', 'UTC')
+    try:
+        return pytz.timezone(tz_name)
+    except:
+        return pytz.UTC
+
+# Global scheduler instance with local timezone
+local_tz = get_local_timezone()
+scheduler = AsyncIOScheduler(timezone=local_tz)
+
+def job_listener(event):
+    """Listen for scheduler job events."""
+    if event.exception:
+        logger.error(f"Job '{event.job_id}' failed: {event.exception}")
+    elif event.code == EVENT_JOB_MISSED:
+        logger.warning(f"Job '{event.job_id}' was missed (misfired) - check if scheduler was running")
+    elif event.code == EVENT_JOB_ERROR:
+        logger.error(f"Job '{event.job_id}' error: {event.exception}")
+
+scheduler.add_listener(job_listener, EVENT_JOB_ERROR | EVENT_JOB_MISSED)
 
 # Timeout for runs (2 hours)
 RUN_TIMEOUT_SECONDS = 7200
@@ -64,7 +94,7 @@ def update_score_schedule(cron_expression: str):
         if scheduler.get_job("score_run"):
             scheduler.remove_job("score_run")
 
-        trigger = CronTrigger.from_crontab(cron_expression)
+        trigger = CronTrigger.from_crontab(cron_expression, timezone=local_tz)
         scheduler.add_job(
             execute_score_run,
             trigger=trigger,
@@ -84,7 +114,7 @@ def update_cull_schedule(cron_expression: str):
         if scheduler.get_job("cull_run"):
             scheduler.remove_job("cull_run")
 
-        trigger = CronTrigger.from_crontab(cron_expression)
+        trigger = CronTrigger.from_crontab(cron_expression, timezone=local_tz)
         scheduler.add_job(
             execute_cull_run,
             trigger=trigger,
@@ -99,18 +129,19 @@ def update_cull_schedule(cron_expression: str):
 
 
 def get_next_score_run() -> str:
-    """Get the next scheduled score run time."""
+    """Get the next scheduled score run time in local time."""
     job = scheduler.get_job("score_run")
     if job and job.next_run_time:
-        return job.next_run_time.strftime("%Y-%m-%d %H:%M:%S")
+        local_time = job.next_run_time.astimezone(local_tz)
+        return local_time.strftime("%Y-%m-%d %H:%M:%S")
     return "Not scheduled"
 
-
 def get_next_cull_run() -> str:
-    """Get the next scheduled cull run time."""
+    """Get the next scheduled cull run time in local time."""
     job = scheduler.get_job("cull_run")
     if job and job.next_run_time:
-        return job.next_run_time.strftime("%Y-%m-%d %H:%M:%S")
+        local_time = job.next_run_time.astimezone(local_tz)
+        return local_time.strftime("%Y-%m-%d %H:%M:%S")
     return "Not scheduled"
 
 
