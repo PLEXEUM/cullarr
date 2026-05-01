@@ -119,31 +119,31 @@ async function loadScheduledDeletions() {
                 yearDisplay = 'Various';
             }
             
-            // Prepare factors for details modal
-            const factorsJson = JSON.stringify(item.score_factors || []).replace(/'/g, "&#39;");
-            const isCollection = item.is_collection || false;
-            const moviesData = isCollection ? JSON.stringify(item.movies || []).replace(/'/g, "&#39;") : '[]';
+            // Prepare factors for details modal (scheduled items don't have factor breakdown)
+            const factorsJson = '[]';
+            const isCollection = item.collection_name ? true : false;
+            const moviesData = '[]';
             
             return `
                 <tr style="border-bottom: 1px solid var(--border-color);">
                     <td class="px-4 py-2"><span class="badge ${scoreClass}">${item.score.toFixed(1)}</span></td>
-                    <td class="px-4 py-2 font-medium">${escapeHtml(item.movie_title)}</td>
-                    <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(yearDisplay)}</td>
-                    <td class="px-4 py-2" style="color: var(--text-secondary)">${deleteDate}</td>
-                    <td class="px-4 py-2" ${countdownClass}>${countdownText}</td>
+                    <td class="px-4 py-2 font-medium">${escapeHtml(item.movie_title)}</span></td>
+                    <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(yearDisplay)}</span></td>
+                    <td class="px-4 py-2" style="color: var(--text-secondary)">${deleteDate}</span></td>
+                    <td class="px-4 py-2" ${countdownClass}>${countdownText}</span></td>
                     <td class="px-4 py-2">
                         <button onclick="removeFromQueue(${item.movie_id}, '${escapeHtml(item.movie_title)}')"
                             class="btn-sm btn-danger">✕ Remove</button>
-                    </td>
+                    </span></td>
                     <td class="px-4 py-2">
                         <button data-title="${escapeHtml(item.movie_title)}" 
                                 data-score="${item.score}" 
                                 data-factors='${factorsJson}'
                                 data-is-collection="${isCollection}"
                                 data-movies='${moviesData}'
-                                data-movie-count="${item.movie_count || 1}"
+                                data-movie-count="1"
                                 class="btn-sm btn-outline scheduled-details-btn">🔍 Details</button>
-                    </td>
+                    </span></td>
                 </tr>
             `;
         }).join('');

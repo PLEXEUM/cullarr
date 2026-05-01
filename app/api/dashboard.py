@@ -117,17 +117,33 @@ async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
                     "is_collection": True,
                     "collection_name": cname,
                     "movie_title": cname,
+                    "movie_year": None,
+                    "year_min": None,
                     "score": item["score"],
                     "scheduled_date": item["scheduled_date"],
                     "status": item["status"],
                     "movies": [],
                     "size_gb": 0.0,
                 }
+            
+            # Track earliest year in collection
+            if item["movie_year"]:
+                if collections[cname]["year_min"] is None or item["movie_year"] < collections[cname]["year_min"]:
+                    collections[cname]["year_min"] = item["movie_year"]
+            
             collections[cname]["movies"].append(item)
             collections[cname]["size_gb"] += item["size_gb"] or 0.0
         else:
             item["is_collection"] = False
             individuals.append(item)
+    
+    # After the loop, set movie_year for collections from year_min
+    for cname in collections:
+        if collections[cname].get("year_min"):
+            collections[cname]["movie_year"] = collections[cname]["year_min"]
+        # Clean up temporary field
+        if "year_min" in collections[cname]:
+            del collections[cname]["year_min"]
 
     items = individuals + list(collections.values())
     items.sort(key=lambda x: x["scheduled_date"])
