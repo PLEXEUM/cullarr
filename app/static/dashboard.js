@@ -79,7 +79,7 @@ async function loadScheduledDeletions() {
         document.getElementById('scheduled-badge').textContent = `${data.count} items`;
 
         if (!data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No scheduled deletions</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No scheduled deletions</td></tr>';
             return;
         }
 
@@ -121,10 +121,8 @@ async function loadScheduledDeletions() {
                 yearDisplay = 'Various';
             }
             
-            // Prepare factors for details modal (scheduled items don't have factor breakdown)
-            const factorsJson = '[]';
+            // Determine if this is a collection (for year display)
             const isCollection = item.collection_name ? true : false;
-            const moviesData = '[]';
             
             return `
                 <tr style="border-bottom: 1px solid var(--border-color);">
@@ -136,63 +134,14 @@ async function loadScheduledDeletions() {
                     <td class="px-4 py-2">
                         <button onclick="removeFromQueue(${item.movie_id}, '${escapeHtml(item.movie_title)}')"
                             class="btn-sm btn-danger">✕ Remove</button>
-                    </span></td>
-                    <td class="px-4 py-2">
-                        <button data-title="${escapeHtml(item.movie_title)}" 
-                                data-score="${item.score}" 
-                                data-factors='${factorsJson}'
-                                data-is-collection="${isCollection}"
-                                data-movies='${moviesData}'
-                                data-movie-count="1"
-                                class="btn-sm btn-outline scheduled-details-btn">🔍 Details</button>
-                    </span></td>
+                   </td>
                 </tr>
             `;
         }).join('');
         
-        // Add event listeners for scheduled details buttons
-        document.querySelectorAll('.scheduled-details-btn').forEach(btn => {
-            btn.removeEventListener('click', handleScheduledDetailsClick);
-            btn.addEventListener('click', handleScheduledDetailsClick);
-        });
-        
     } catch (e) {
         console.error('Failed to load scheduled deletions:', e);
     }
-}
-
-// Handler for scheduled deletion details button
-function handleScheduledDetailsClick(e) {
-    const btn = e.currentTarget;
-    const title = btn.getAttribute('data-title');
-    const score = parseFloat(btn.getAttribute('data-score'));
-    const isCollection = btn.getAttribute('data-is-collection') === 'true';
-    const movieCount = parseInt(btn.getAttribute('data-movie-count') || '1');
-    
-    let factors = [];
-    let movies = [];
-    
-    try {
-        const factorsAttr = btn.getAttribute('data-factors');
-        if (factorsAttr && factorsAttr !== 'undefined') {
-            factors = JSON.parse(factorsAttr);
-        }
-    } catch (err) {
-        console.error('Failed to parse factors:', err);
-    }
-    
-    if (isCollection) {
-        try {
-            const moviesAttr = btn.getAttribute('data-movies');
-            if (moviesAttr && moviesAttr !== 'undefined' && moviesAttr !== '[]') {
-                movies = JSON.parse(moviesAttr);
-            }
-        } catch (err) {
-            console.error('Failed to parse movies:', err);
-        }
-    }
-    
-    showScoreDetails(title, score, factors, isCollection, movies, movieCount);
 }
 
 // Remove a movie from the scheduled deletions queue
