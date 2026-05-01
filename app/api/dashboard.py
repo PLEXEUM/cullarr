@@ -566,7 +566,8 @@ async def search_score_queue(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     sort_by: str = Query("score", description="Sort column: score, title, year, age, size, rating, quality, watched"),
-    sort_order: str = Query("desc", description="Sort order: asc or desc")
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
+    refresh: bool = False  # <-- ADD THIS LINE
 ):
     """
     Search scored movies cache by title or collection name.
@@ -578,6 +579,11 @@ async def search_score_queue(
         plex_config = conn.execute("SELECT enabled FROM plex_config WHERE id = 1").fetchone()
         plex_enabled = bool(plex_config and plex_config["enabled"]) if plex_config else False
         
+        # Rebuild cache if refresh=True
+        if refresh:
+            # Run cache rebuild in background or synchronously
+            await _rebuild_score_cache()
+
         # Get scheduled movie IDs to exclude
         scheduled_ids = conn.execute(
             "SELECT movie_id FROM scheduled_deletions"
