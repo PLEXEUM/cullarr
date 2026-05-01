@@ -487,6 +487,7 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
                     "quality": item["quality"],
                     "movies": [],
                     "movie_count": 0,
+                    "plex_play_count": 0,
                 }
             
             if item["movie_year"]:
@@ -500,6 +501,7 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
                 collections[cname]["age_days"], item["age_days"] or 0
             )
             collections[cname]["tmdb_rating_sum"] += (item["tmdb_rating"] or 0.0)
+            collections[cname]["plex_play_count"] = (collections[cname].get("plex_play_count") or 0) + (item["plex_play_count"] or 0)
         else:
             individuals.append(item)
 
