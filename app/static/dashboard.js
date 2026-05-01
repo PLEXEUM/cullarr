@@ -772,11 +772,29 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    const searchInput = document.getElementById('score-queue-search');
+        const searchInput = document.getElementById('score-queue-search');
+    const clearSearchBtn = document.getElementById('clear-search-btn');
+    
     if (searchInput) {
         let debounceTimer;
+        
+        // Function to show/hide clear button
+        const toggleClearButton = () => {
+            if (clearSearchBtn) {
+                if (searchInput.value.length > 0) {
+                    clearSearchBtn.style.display = 'block';
+                } else {
+                    clearSearchBtn.style.display = 'none';
+                }
+            }
+        };
+        
+        // Initial check
+        toggleClearButton();
+        
         searchInput.addEventListener('input', (e) => {
             clearTimeout(debounceTimer);
+            toggleClearButton();
             debounceTimer = setTimeout(() => {
                 scoreQueueSearch = e.target.value;
                 scoreQueuePage = 1;
@@ -784,6 +802,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadScoreQueue();
             }, 300);  // Debounce to avoid too many API calls
         });
+        
+        // Clear button click handler
+        if (clearSearchBtn) {
+            clearSearchBtn.addEventListener('click', () => {
+                searchInput.value = '';
+                scoreQueueSearch = '';
+                scoreQueuePage = 1;
+                scoreQueueSearchActive = false;
+                toggleClearButton();
+                loadScoreQueue();
+                searchInput.focus();
+            });
+        }
     }
 
     // Event delegation for details buttons (handles dynamically added rows)

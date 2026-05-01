@@ -190,7 +190,10 @@
                 <p class="card-header-subtitle">Next in line for deletion</p>
             </div>
             <div class="ml-auto flex gap-2 items-center">
-                <input type="text" id="score-queue-search" placeholder="🔍 Search movies..." class="text-sm rounded-lg px-3 py-1.5" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); width: 180px;">
+                <div style="position: relative; display: inline-block;">
+                    <input type="text" id="score-queue-search" placeholder="🔍 Search movies..." class="text-sm rounded-lg px-3 py-1.5" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); width: 180px; padding-right: 28px;">
+                    <button id="clear-search-btn" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 14px; display: none;" title="Clear search">✕</button>
+                </div>
                 <select id="per-page-select" class="text-sm rounded-lg px-2 py-1.5" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary);">
                     <option value="10">10 per page</option>
                     <option value="20" selected>20 per page</option>
