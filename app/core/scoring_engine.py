@@ -57,20 +57,67 @@ def get_quality_score(quality_name: str) -> float:
     return 0.5
 
 
-def get_watched_score(play_count: int) -> float:
-    """Graduated watch score: 0 plays=1.0, 1=0.8, 2=0.6, 3=0.4, 4=0.2, 5+=0.0"""
+def get_watched_score(play_count: int, last_viewed_timestamp: int = 0) -> float:
+    """
+    Combined watch score based on play count AND recency.
+    Returns score from 0.0 (protected) to 1.0 (deletable).
+    
+    Play count scoring: 0 plays=1.0, 1=0.8, 2=0.6, 3=0.4, 4=0.2, 5+=0.0
+    Recency scoring: days since last watch determines score
+    Final score = min(play_count_score, recency_score) [lower is better/protected]
+    """
+    import time
+    from datetime import datetime
+    
+    # Calculate play count score
     if play_count <= 0:
-        return 1.0
+        play_score = 1.0
     elif play_count == 1:
-        return 0.8
+        play_score = 0.8
     elif play_count == 2:
-        return 0.6
+        play_score = 0.6
     elif play_count == 3:
-        return 0.4
+        play_score = 0.4
     elif play_count == 4:
-        return 0.2
+        play_score = 0.2
     else:
-        return 0.0
+        play_score = 0.0
+    
+    # Calculate recency score (if we have last_viewed data)
+    recency_score = 1.0  # Default to deletable if no data
+    days_since_last_watch = None
+    
+    if last_viewed_timestamp and last_viewed_timestamp > 0:
+        current_time = int(time.time())
+        days_since_last_watch = (current_time - last_viewed_timestamp) / 86400  # 86400 seconds in a day
+        
+        if days_since_last_watch <= 7:
+            recency_score = 0.0      # Watched in last week - fully protected
+        elif days_since_last_watch <= 30:
+            recency_score = 0.3      # Watched in last month
+        elif days_since_last_watch <= 90:
+            recency_score = 0.6      # Watched in last 3 months
+        elif days_since_last_watch <= 365:
+            recency_score = 0.8      # Watched in last year
+        else:
+            recency_score = 1.0      # Over a year or never - deletable
+    else:
+        days_since_last_watch = None  # No watch history
+    
+    # Take the MORE protective score (lower is better)
+    # This ensures if either metric says "protect", we protect
+    final_score = min(play_score, recency_score)
+    
+    # Store recency info for display
+    final_score_details = {
+        "score": final_score,
+        "play_count": play_count,
+        "play_score": play_score,
+        "days_since_last_watch": days_since_last_watch,
+        "recency_score": recency_score
+    }
+    
+    return final_score_details
 
 
 def extract_collection(movie: Dict) -> Optional[Tuple[int, str]]:
@@ -219,14 +266,18 @@ class ScoringEngine:
         # monitored = movie.get("monitored", True)
         # monitored_raw = 0.0
 
-        # Watched status (from Plex) — plex_play_counts must be keyed by TMDb ID string
+        # Watched status (from Plex) — includes play count AND recency
         watched_raw = 0.0
         play_count = 0
+        watched_details = None
         if plex_enabled and plex_play_counts:
             tmdb_id = movie.get("tmdbId") or movie.get("tmdb_id")
             if tmdb_id and str(tmdb_id) in plex_play_counts:
                 play_count = plex_play_counts[str(tmdb_id)].get("play_count", 0)
-                watched_raw = get_watched_score(play_count)
+                last_viewed = plex_play_counts[str(tmdb_id)].get("last_viewed", 0)
+                watched_result = get_watched_score(play_count, last_viewed)
+                watched_raw = watched_result["score"]
+                watched_details = watched_result
 
         # Calculate contributions (monitored removed)
         age_contrib = age_raw * self.age_weight
@@ -268,7 +319,7 @@ class ScoringEngine:
             {
                 "name": "Watched", "key": "watched", "raw_score": watched_raw,
                 "weight": self.raw_weights["watched"], "contribution": watched_contrib,
-                "details": f"Play count: {play_count if plex_enabled else 'N/A (Plex disabled)'}",
+                "details": self._get_watched_details(play_count, watched_details, plex_enabled),
                 "skipped": not plex_enabled,
                 "skip_reason": "Plex not configured" if not plex_enabled else None,
             },
@@ -284,7 +335,29 @@ class ScoringEngine:
             "monitored": movie.get("monitored", True),  # Pass through for reference only
             "tmdb_id": movie.get("tmdbId") or movie.get("tmdb_id"),
             "factors": factors,
+            "watched_details": watched_details,
         }
+    
+    def _get_watched_details(self, play_count: int, watched_details: dict, plex_enabled: bool) -> str:
+        """Generate human-readable watched factor details."""
+        if not plex_enabled:
+            return "Play count: N/A (Plex disabled)"
+        
+        if play_count == 0:
+            return "Never watched"
+        
+        details = f"Play count: {play_count}"
+        
+        if watched_details and watched_details.get("days_since_last_watch") is not None:
+            days = watched_details["days_since_last_watch"]
+            if days < 1:
+                details += " | Last watched: Today"
+            elif days == 1:
+                details += " | Last watched: Yesterday"
+            else:
+                details += f" | Last watched: {int(days)} days ago"
+        
+        return details
 
     def normalize_scores(self, scored_movies: List[Dict]) -> List[Dict]:
         """Normalize raw scores to 0-100 scale."""
