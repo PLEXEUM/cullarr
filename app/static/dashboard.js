@@ -79,7 +79,7 @@ async function loadScheduledDeletions() {
         document.getElementById('scheduled-badge').textContent = `${data.count} items`;
 
         if (!data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No scheduled deletions</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No scheduled deletions</td></tr>';
             return;
         }
 
@@ -88,22 +88,109 @@ async function loadScheduledDeletions() {
             if (item.score < 60) scoreClass = 'score-medium';
             if (item.score < 30) scoreClass = 'score-low';
             const deleteDate = new Date(item.scheduled_date).toLocaleDateString();
+            
+            // Calculate countdown
+            const now = new Date();
+            const deleteDateTime = new Date(item.scheduled_date);
+            const daysRemaining = Math.ceil((deleteDateTime - now) / (1000 * 60 * 60 * 24));
+            
+            let countdownText = '';
+            let countdownClass = '';
+            if (daysRemaining < 0) {
+                countdownText = 'Overdue';
+                countdownClass = 'style="color: var(--danger); font-weight: bold;"';
+            } else if (daysRemaining === 0) {
+                countdownText = 'Today';
+                countdownClass = 'style="color: var(--warning); font-weight: bold;"';
+            } else if (daysRemaining === 1) {
+                countdownText = 'Tomorrow';
+                countdownClass = 'style="color: var(--warning);"';
+            } else if (daysRemaining <= 3) {
+                countdownText = `${daysRemaining} days`;
+                countdownClass = 'style="color: var(--warning);"';
+            } else {
+                countdownText = `${daysRemaining} days`;
+                countdownClass = '';
+            }
+            
+            // Get movie year (handle collections)
+            let yearDisplay = item.movie_year || 'N/A';
+            if (item.is_collection && !item.movie_year) {
+                yearDisplay = 'Various';
+            }
+            
+            // Prepare factors for details modal
+            const factorsJson = JSON.stringify(item.score_factors || []).replace(/'/g, "&#39;");
+            const isCollection = item.is_collection || false;
+            const moviesData = isCollection ? JSON.stringify(item.movies || []).replace(/'/g, "&#39;") : '[]';
+            
             return `
                 <tr style="border-bottom: 1px solid var(--border-color);">
-                    <td class="px-4 py-2">${escapeHtml(item.movie_title)} (${item.movie_year || 'N/A'})</td>
                     <td class="px-4 py-2"><span class="badge ${scoreClass}">${item.score.toFixed(1)}</span></td>
-                    <td class="px-4 py-2">${deleteDate}</td>
-                    <td class="px-4 py-2"><span class="badge" style="background: var(--info-bg); color: var(--info);">scheduled</span></td>
+                    <td class="px-4 py-2 font-medium">${escapeHtml(item.movie_title)}</td>
+                    <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(yearDisplay)}</td>
+                    <td class="px-4 py-2" style="color: var(--text-secondary)">${deleteDate}</td>
+                    <td class="px-4 py-2" ${countdownClass}>${countdownText}</td>
                     <td class="px-4 py-2">
                         <button onclick="removeFromQueue(${item.movie_id}, '${escapeHtml(item.movie_title)}')"
                             class="btn-sm btn-danger">✕ Remove</button>
                     </td>
+                    <td class="px-4 py-2">
+                        <button data-title="${escapeHtml(item.movie_title)}" 
+                                data-score="${item.score}" 
+                                data-factors='${factorsJson}'
+                                data-is-collection="${isCollection}"
+                                data-movies='${moviesData}'
+                                data-movie-count="${item.movie_count || 1}"
+                                class="btn-sm btn-outline scheduled-details-btn">🔍 Details</button>
+                    </td>
                 </tr>
             `;
         }).join('');
+        
+        // Add event listeners for scheduled details buttons
+        document.querySelectorAll('.scheduled-details-btn').forEach(btn => {
+            btn.removeEventListener('click', handleScheduledDetailsClick);
+            btn.addEventListener('click', handleScheduledDetailsClick);
+        });
+        
     } catch (e) {
         console.error('Failed to load scheduled deletions:', e);
     }
+}
+
+// Handler for scheduled deletion details button
+function handleScheduledDetailsClick(e) {
+    const btn = e.currentTarget;
+    const title = btn.getAttribute('data-title');
+    const score = parseFloat(btn.getAttribute('data-score'));
+    const isCollection = btn.getAttribute('data-is-collection') === 'true';
+    const movieCount = parseInt(btn.getAttribute('data-movie-count') || '1');
+    
+    let factors = [];
+    let movies = [];
+    
+    try {
+        const factorsAttr = btn.getAttribute('data-factors');
+        if (factorsAttr && factorsAttr !== 'undefined') {
+            factors = JSON.parse(factorsAttr);
+        }
+    } catch (err) {
+        console.error('Failed to parse factors:', err);
+    }
+    
+    if (isCollection) {
+        try {
+            const moviesAttr = btn.getAttribute('data-movies');
+            if (moviesAttr && moviesAttr !== 'undefined' && moviesAttr !== '[]') {
+                movies = JSON.parse(moviesAttr);
+            }
+        } catch (err) {
+            console.error('Failed to parse movies:', err);
+        }
+    }
+    
+    showScoreDetails(title, score, factors, isCollection, movies, movieCount);
 }
 
 // Remove a movie from the scheduled deletions queue
