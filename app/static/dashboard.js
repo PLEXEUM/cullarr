@@ -186,27 +186,32 @@ async function loadScoreQueue(forceRefresh = false, silent = false) {
                 watchedDisplay = `<span style="color: var(--text-secondary);">${playCount}</span>`;
             }
 
-            const safeTitle = escapeHtml(movie.movie_title || 'Unknown');
-            const factorsJson = JSON.stringify(movie.factors || []).replace(/'/g, "&#39;");
+        const safeTitle = escapeHtml(movie.movie_title || 'Unknown');
+        const factorsJson = JSON.stringify(movie.factors || []).replace(/'/g, "&#39;");
+        const isCollection = movie.is_collection || false;
+        const moviesData = isCollection ? JSON.stringify(movie.movies || []).replace(/'/g, "&#39;") : '[]';
 
-            return `
-                <tr style="border-bottom: 1px solid var(--border-color);">
-                    <td class="px-4 py-2"><span class="badge ${scoreClass}">${movie.normalized_score.toFixed(1)}</span></td>
-                    <td class="px-4 py-2 font-medium">${safeTitle}</td>
-                    <td class="px-4 py-2" style="color: var(--text-secondary)">${movie.movie_year || 'N/A'}</td>
-                    <td class="px-4 py-2" style="color: var(--text-secondary)">${movie.age_days}d</span></td>
-                    <td class="px-4 py-2">${movie.size_gb.toFixed(1)} GB</span></td>
-                    <td class="px-4 py-2"><span class="star">★</span> ${tmdbRating}</span></td>
-                    <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(movie.quality) || 'Unknown'}</span></td>
-                    <td class="px-4 py-2">${watchedDisplay}</span></td>
-                    <td class="px-4 py-2">
-                        <button data-title="${safeTitle}" 
-                                data-score="${movie.normalized_score}" 
-                                data-factors='${factorsJson}'
-                                class="btn-sm btn-outline details-btn">🔍 Details</button>
-                    </span>
-                </tr>
-            `;
+        return `
+            <tr style="border-bottom: 1px solid var(--border-color);">
+                <td class="px-4 py-2"><span class="badge ${scoreClass}">${movie.normalized_score.toFixed(1)}</span></td>
+                <td class="px-4 py-2 font-medium">${safeTitle}</td>
+                <td class="px-4 py-2" style="color: var(--text-secondary)">${movie.movie_year || 'N/A'}</td>
+                <td class="px-4 py-2" style="color: var(--text-secondary)">${movie.age_days}d</span></td>
+                <td class="px-4 py-2">${movie.size_gb.toFixed(1)} GB</span></td>
+                <td class="px-4 py-2"><span class="star">★</span> ${tmdbRating}</span></td>
+                <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(movie.quality) || 'Unknown'}</span></td>
+                <td class="px-4 py-2">${watchedDisplay}</span></td>
+                <td class="px-4 py-2">
+                    <button data-title="${safeTitle}" 
+                            data-score="${movie.normalized_score}" 
+                            data-factors='${factorsJson}'
+                            data-is-collection="${isCollection}"
+                            data-movies='${moviesData}'
+                            data-movie-count="${movie.movie_count || 0}"
+                            class="btn-sm btn-outline details-btn">🔍 Details</button>
+                </span>
+            </tr>
+        `;
         }).join('');
 
         // Pagination with page number input
@@ -540,15 +545,46 @@ async function cancelRun(runId) {
     }
 }
 
-// Score details modal
-function showScoreDetails(title, score, factors) {
+// Score details modal - handles both individual movies and collections
+function showScoreDetails(title, score, factors, isCollection = false, movies = [], movieCount = 0) {
     // Remove any existing modal
     const existingModal = document.getElementById('score-modal');
     if (existingModal) existingModal.remove();
 
-    let factorRows = '';
+    let contentHtml = '';
     
-    if (factors && factors.length > 0) {
+    if (isCollection && movies && movies.length > 0) {
+        // Display collection members
+        contentHtml = `
+            <div class="border-t pt-4" style="border-color: var(--border-color);">
+                <div class="text-sm font-semibold mb-3" style="color: var(--accent);">
+                    📁 Collection contains ${movieCount} movie${movieCount !== 1 ? 's' : ''}:
+                </div>
+                <div class="space-y-2 max-h-96 overflow-y-auto">
+                    ${movies.map(movie => {
+                        const movieTitle = escapeHtml(movie.movie_title || movie.title || 'Unknown');
+                        const movieYear = movie.movie_year || movie.year || 'N/A';
+                        const movieScore = movie.score || movie.normalized_score || 'N/A';
+                        const movieSize = movie.size_gb ? `${movie.size_gb.toFixed(1)} GB` : '';
+                        return `
+                            <div class="border rounded-lg p-2" style="border-color: var(--border-color); background: var(--bg-primary);">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <span class="font-medium">${movieTitle}</span>
+                                        <span class="text-xs ml-1" style="color: var(--text-secondary);">(${movieYear})</span>
+                                    </div>
+                                    <span class="badge" style="background: var(--info-bg); color: var(--info); font-size: 10px;">Score: ${typeof movieScore === 'number' ? movieScore.toFixed(1) : movieScore}</span>
+                                </div>
+                                ${movieSize ? `<div class="text-xs mt-1" style="color: var(--text-secondary);">${movieSize}</div>` : ''}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    } else if (factors && factors.length > 0) {
+        // Display individual movie factor breakdown
+        let factorRows = '';
         for (let i = 0; i < factors.length; i++) {
             const f = factors[i];
             const pct = (f.contribution * 100).toFixed(1);
@@ -574,8 +610,13 @@ function showScoreDetails(title, score, factors) {
                 </div>
             `;
         }
+        contentHtml = `
+            <div class="border-t pt-4" style="border-color: var(--border-color)">
+                ${factorRows}
+            </div>
+        `;
     } else {
-        factorRows = '<p style="color: var(--text-secondary)">No factor data available.</p>';
+        contentHtml = '<div class="border-t pt-4" style="border-color: var(--border-color)"><p style="color: var(--text-secondary)">No details available.</p></div>';
     }
 
     const modal = document.createElement('div');
@@ -583,21 +624,20 @@ function showScoreDetails(title, score, factors) {
     modal.className = 'fixed inset-0 flex items-center justify-center z-50';
     modal.style.background = 'rgba(0,0,0,0.6)';
     modal.innerHTML = `
-        <div class="card rounded-xl p-6 w-full max-w-md mx-4" style="max-height: 90vh; overflow-y: auto;">
+        <div class="card rounded-xl p-6 w-full max-w-2xl mx-4" style="max-height: 85vh; overflow-y: auto;">
             <div class="flex justify-between items-start mb-4">
                 <div>
                     <h3 class="font-semibold text-lg">${escapeHtml(title)}</h3>
                     <p class="text-sm mt-1" style="color: var(--text-secondary)">
-                        Total score: <span class="font-mono font-bold" style="color: var(--accent)">${Number(score).toFixed(1)}</span>
+                        ${isCollection ? `Collection score: ` : `Total score: `}
+                        <span class="font-mono font-bold" style="color: var(--accent)">${Number(score).toFixed(1)}</span>
                     </p>
                 </div>
                 <button onclick="document.getElementById('score-modal').remove()"
                     class="text-lg leading-none" style="color: var(--text-secondary)">✕</button>
             </div>
-            <div class="border-t pt-4" style="border-color: var(--border-color)">
-                ${factorRows}
-            </div>
-            <div class="border-t pt-4 mt-2 flex justify-end" style="border-color: var(--border-color)">
+            ${contentHtml}
+            <div class="border-t pt-4 mt-4 flex justify-end" style="border-color: var(--border-color)">
                 <button onclick="document.getElementById('score-modal').remove()"
                     class="px-4 py-2 rounded-lg text-sm" style="background: var(--accent); color: white;">
                     Close
@@ -755,7 +795,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault();
                 const title = btn.getAttribute('data-title');
                 const score = parseFloat(btn.getAttribute('data-score'));
+                const isCollection = btn.getAttribute('data-is-collection') === 'true';
+                const movieCount = parseInt(btn.getAttribute('data-movie-count') || '0');
+                
                 let factors = [];
+                let movies = [];
+                
                 try {
                     const factorsAttr = btn.getAttribute('data-factors');
                     if (factorsAttr && factorsAttr !== 'undefined') {
@@ -765,7 +810,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error('Failed to parse factors:', err);
                     factors = [];
                 }
-                showScoreDetails(title, score, factors);
+                
+                if (isCollection) {
+                    try {
+                        const moviesAttr = btn.getAttribute('data-movies');
+                        if (moviesAttr && moviesAttr !== 'undefined' && moviesAttr !== '[]') {
+                            movies = JSON.parse(moviesAttr);
+                        }
+                    } catch (err) {
+                        console.error('Failed to parse movies:', err);
+                        movies = [];
+                    }
+                }
+                
+                showScoreDetails(title, score, factors, isCollection, movies, movieCount);
             }
         });
     }
