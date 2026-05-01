@@ -477,6 +477,8 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
                     "collection_id": item["collection_id"],
                     "movie_title": cname,
                     "movie_year": None,
+                    "year_min": None, 
+                    "tmdb_rating_sum": 0.0, 
                     "normalized_score": item["normalized_score"],
                     "raw_score": item["raw_score"],
                     "size_gb": 0.0,
@@ -486,19 +488,34 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
                     "movies": [],
                     "movie_count": 0,
                 }
+            
+            if item["movie_year"]:
+                if collections[cname]["year_min"] is None or item["movie_year"] < collections[cname]["year_min"]:
+                    collections[cname]["year_min"] = item["movie_year"]
+
             collections[cname]["movies"].append(item)
             collections[cname]["movie_count"] += 1
             collections[cname]["size_gb"] += item["size_gb"] or 0.0
             collections[cname]["age_days"] = max(
                 collections[cname]["age_days"], item["age_days"] or 0
             )
-            collections[cname]["tmdb_rating"] = (
-                collections[cname]["tmdb_rating"] + (item["tmdb_rating"] or 0.0)
-            ) / collections[cname]["movie_count"]
+            collections[cname]["tmdb_rating_sum"] += (item["tmdb_rating"] or 0.0)
         else:
             individuals.append(item)
 
-    # Merge and sort by score descending
+    # After building all collections, set movie_year and calculate final rating average
+    for cname in collections:
+        if collections[cname].get("year_min"):
+            collections[cname]["movie_year"] = collections[cname]["year_min"]
+        # Calculate final TMDB rating
+        if collections[cname]["movie_count"] > 0:
+            collections[cname]["tmdb_rating"] = collections[cname]["tmdb_rating_sum"] / collections[cname]["movie_count"]
+        # Clean up temporary fields
+        if "year_min" in collections[cname]:
+            del collections[cname]["year_min"]
+        if "tmdb_rating_sum" in collections[cname]:
+            del collections[cname]["tmdb_rating_sum"]
+    
     available = individuals + list(collections.values())
     
     # Apply sorting — using raw_score instead of normalized_score
@@ -612,6 +629,8 @@ async def search_score_queue(
                         "collection_id": item["collection_id"],
                         "movie_title": cname,
                         "movie_year": None,
+                        "year_min": None,
+                        "tmdb_rating_sum": 0.0,
                         "normalized_score": item["normalized_score"],
                         "raw_score": item["raw_score"],
                         "size_gb": 0.0,
@@ -622,19 +641,37 @@ async def search_score_queue(
                         "movie_count": 0,
                         "plex_play_count": 0,
                     }
+                
+                # Track earliest year (min)
+                if item["movie_year"]:
+                    if collections[cname]["year_min"] is None or item["movie_year"] < collections[cname]["year_min"]:
+                        collections[cname]["year_min"] = item["movie_year"]
+
                 collections[cname]["movies"].append(item)
                 collections[cname]["movie_count"] += 1
                 collections[cname]["size_gb"] += item["size_gb"] or 0.0
                 collections[cname]["age_days"] = max(
                     collections[cname]["age_days"], item["age_days"] or 0
                 )
-                collections[cname]["tmdb_rating"] = (
-                    collections[cname]["tmdb_rating"] + (item["tmdb_rating"] or 0.0)
-                ) / collections[cname]["movie_count"]
+                collections[cname]["tmdb_rating_sum"] += (item["tmdb_rating"] or 0.0)
+                
                 # Aggregate play count (sum of all members)
                 collections[cname]["plex_play_count"] += item["plex_play_count"] or 0
             else:
                 individuals.append(item)
+
+        # After building all collections, set movie_year and calculate final rating average
+        for cname in collections:
+            if collections[cname].get("year_min"):
+                collections[cname]["movie_year"] = collections[cname]["year_min"]
+            # Calculate final TMDB rating
+            if collections[cname]["movie_count"] > 0:
+                collections[cname]["tmdb_rating"] = collections[cname]["tmdb_rating_sum"] / collections[cname]["movie_count"]
+            # Clean up temporary fields
+            if "year_min" in collections[cname]:
+                del collections[cname]["year_min"]
+            if "tmdb_rating_sum" in collections[cname]:
+                del collections[cname]["tmdb_rating_sum"]
         
         # Merge and sort
         available = individuals + list(collections.values())
