@@ -114,8 +114,10 @@ async function loadScheduledDeletions() {
             }
             
             // Get movie year (handle collections)
-            let yearDisplay = item.movie_year || 'N/A';
-            if (item.is_collection && !item.movie_year) {
+            let yearDisplay = 'N/A';
+            if (item.movie_year !== null && item.movie_year !== undefined) {
+                yearDisplay = String(item.movie_year);
+            } else if (item.is_collection) {
                 yearDisplay = 'Various';
             }
             
