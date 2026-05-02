@@ -117,6 +117,7 @@ async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
                     "is_collection": True,
                     "collection_name": cname,
                     "movie_title": cname,
+                    "movie_id": None,
                     "movie_year": None,
                     "year_min": None,
                     "score": item["score"],
@@ -125,6 +126,10 @@ async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
                     "movies": [],
                     "size_gb": 0.0,
                 }
+            
+            # Set movie_id from the first movie in the collection
+            if collections[cname]["movie_id"] is None and item.get("movie_id"):
+                collections[cname]["movie_id"] = item["movie_id"]
             
             # Track earliest year in collection
             if item["movie_year"]:
