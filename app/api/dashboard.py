@@ -179,6 +179,52 @@ async def remove_from_queue(movie_id: int):
         if existing["collection_name"]:
             # Remove all members of the collection together
             collection_name = existing["collection_name"]
+            
+            # ===== FIRST: Remove all movies in collection from Plex =====
+            try:
+                # Get Plex config
+                plex_config = conn.execute("SELECT url, api_key, enabled, collection_key FROM plex_config WHERE id = 1").fetchone()
+                if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_key"]:
+                    # Get all movies in this collection
+                    collection_members = conn.execute(
+                        "SELECT movie_title, movie_year FROM scheduled_deletions WHERE collection_name = ? AND status = 'scheduled'",
+                        (collection_name,)
+                    ).fetchall()
+                    
+                    if collection_members:
+                        plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
+                        collection_key = plex_config["collection_key"]
+                        
+                        # Get library map for title|year lookups
+                        library_items = await plex_client.get_library_items()
+                        library_map = {}
+                        for item in library_items:
+                            title = item.get("title")
+                            year = item.get("year")
+                            rating_key = item.get("rating_key")
+                            if title and year and rating_key:
+                                key = f"{title.lower()}|{year}"
+                                library_map[key] = rating_key
+                        
+                        # Remove each movie from Plex collection
+                        for member in collection_members:
+                            movie_title = member["movie_title"]
+                            movie_year = member["movie_year"]
+                            lookup_key = f"{movie_title.lower()}|{movie_year}"
+                            rating_key = library_map.get(lookup_key)
+                            if rating_key:
+                                success = await plex_client.remove_from_collection(collection_key, rating_key)
+                                if success:
+                                    logger.info(f"Removed '{movie_title}' from Plex collection for collection '{collection_name}'")
+                                else:
+                                    logger.warning(f"Failed to remove '{movie_title}' from Plex collection")
+                            else:
+                                logger.debug(f"Could not find rating key for '{movie_title} ({movie_year})'")
+            except Exception as plex_error:
+                logger.warning(f"Failed to remove collection movies from Plex: {plex_error}")
+            # ===== END PLEX CLEANUP =====
+            
+            # Then delete all members from scheduled_deletions
             members = conn.execute(
                 "SELECT movie_title FROM scheduled_deletions WHERE collection_name = ? AND status = 'scheduled'",
                 (collection_name,)
