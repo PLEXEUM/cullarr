@@ -66,6 +66,7 @@ def init_db():
             score_cron TEXT DEFAULT '0 3 * * 0',
             cull_cron TEXT DEFAULT '0 2 * * *',
             max_queued INTEGER DEFAULT 20,
+            deletions_per_day INTEGER DEFAULT 0,
             delete_after_days INTEGER DEFAULT 7,
             protection_days INTEGER DEFAULT 30,
             collection_grouping BOOLEAN DEFAULT 0,
@@ -219,6 +220,15 @@ def migrate_db():
             "ALTER TABLE settings ADD COLUMN min_score_threshold INTEGER DEFAULT 0"
         )
         print("Migration applied: added min_score_threshold to settings")
+    except Exception:
+        pass  # Column already exists, safe to ignore
+
+    # Migration: Add deletions_per_day to settings table
+    try:
+        cursor.execute(
+            "ALTER TABLE settings ADD COLUMN deletions_per_day INTEGER DEFAULT 0"
+        )
+        print("Migration applied: added deletions_per_day to settings")
     except Exception:
         pass  # Column already exists, safe to ignore
 

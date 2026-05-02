@@ -26,6 +26,7 @@ class SettingsInput(BaseModel):
     score_cron: str
     cull_cron: str
     max_queued: int
+    deletions_per_day: int = 0
     delete_after_days: int
     collection_grouping: bool
     min_score_threshold: int = 0
@@ -174,6 +175,7 @@ async def get_settings():
             "score_cron": "0 3 * * 0",
             "cull_cron": "0 2 * * *",
             "max_queued": 20,
+            "deletions_per_day": 0,
             "delete_after_days": 7,
             "protection_days": 30,
             "collection_grouping": False,
@@ -197,6 +199,13 @@ async def save_settings(data: SettingsInput):
     is_valid, error = validate_max_queued(data.max_queued)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)
+    
+    # Validate deletions_per_day (0 = unlimited, 1-100 = max per day)
+    if data.deletions_per_day < 0 or data.deletions_per_day > 100:
+        raise HTTPException(status_code=400, detail="Deletions per day must be between 0 and 100")
+    
+    if data.min_score_threshold < 0 or data.min_score_threshold > 100:
+        raise HTTPException(status_code=400, detail="Minimum score threshold must be between 0 and 100")
 
     is_valid, error = validate_delete_after_days(data.delete_after_days)
     if not is_valid:
@@ -210,11 +219,11 @@ async def save_settings(data: SettingsInput):
         conn.execute(
             """UPDATE settings SET
                 enabled = ?, score_cron = ?, cull_cron = ?,
-                max_queued = ?, delete_after_days = ?,
+                max_queued = ?, deletions_per_day = ?, delete_after_days = ?,
                 collection_grouping = ?, min_score_threshold = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = 1""",
             (1 if data.enabled else 0, data.score_cron, data.cull_cron,
-            data.max_queued, data.delete_after_days,
+            data.max_queued, data.deletions_per_day, data.delete_after_days,
             1 if data.collection_grouping else 0, data.min_score_threshold)
         )
         conn.commit()

@@ -360,12 +360,14 @@ async def run_score_cycle():
                 )
                 max_queued = settings["max_queued"] if settings else 20
                 available_slots = max_queued - used_slots
+                deletions_per_day = settings["deletions_per_day"] if settings else 0
 
                 logger.info(f"Queue status: {used_slots}/{max_queued} slots used, {available_slots} available")
+                logger.info(f"Deletions per day: {deletions_per_day} (0 = unlimited)")
 
                 if available_slots <= 0:
                     logger.info("Queue full, no new movies added")
-                    return None
+                    return None, None, None  # Return None for to_add, scheduled_id_set, and deletions_per_day
 
                 # Filter already-queued movie IDs
                 scheduled_ids = thread_conn.execute(
@@ -390,19 +392,38 @@ async def run_score_cycle():
                         if entry["movie_id"] not in scheduled_id_set:
                             candidates.append(entry)
 
-                to_add = candidates[:available_slots]
-                return to_add, scheduled_id_set
+                # Apply staggering if deletions_per_day > 0
+                if deletions_per_day > 0 and candidates:
+                    # Calculate how many days to spread over
+                    import math
+                    days_needed = math.ceil(len(candidates) / deletions_per_day)
+                    
+                    # Create batches with staggered scheduled dates
+                    staggered_candidates = []
+                    for i, candidate in enumerate(candidates):
+                        batch_number = i // deletions_per_day
+                        # Attach stagger_days to each candidate
+                        candidate_with_stagger = candidate.copy()
+                        candidate_with_stagger["_stagger_days"] = batch_number
+                        staggered_candidates.append(candidate_with_stagger)
+                    
+                    to_add = staggered_candidates[:available_slots]
+                    logger.info(f"Staggering {len(to_add)} candidates over {days_needed} days ({deletions_per_day} per day)")
+                else:
+                    to_add = candidates[:available_slots]
+                    
+                return to_add, scheduled_id_set, deletions_per_day
             finally:
                 thread_conn.close()
 
         # Run DB operations in thread pool to prevent blocking
         result = await asyncio.to_thread(_process_queue_operations)
         
-        if result is None:
-            # Queue was full
+        if result is None or result[0] is None:
+            # Queue was full or no candidates
             return
         
-        to_add, scheduled_id_set = result
+        to_add, scheduled_id_set, deletions_per_day = result
 
         # ===== NEW: Track current queue IDs before adding new movies =====
         current_queue_ids = set()
@@ -420,33 +441,39 @@ async def run_score_cycle():
             thread_conn = get_connection()
             try:
                 added = []
+                base_delay_days = settings["delete_after_days"] if settings else 7
+                
                 for movie in to_add:
+                    # Apply staggering if present
+                    stagger_days = movie.get("_stagger_days", 0) if isinstance(movie, dict) else 0
                     scheduled_date = datetime.now() + timedelta(
-                        days=settings["delete_after_days"] if settings else 7
+                        days=base_delay_days + stagger_days
                     )
+                    
+                    # Clean up temporary stagger field before saving
+                    movie_copy = movie.copy() if isinstance(movie, dict) else movie
+                    if isinstance(movie_copy, dict) and "_stagger_days" in movie_copy:
+                        del movie_copy["_stagger_days"]
+                    
                     rating_key = rating_key_map.get(movie.get("movie_id")) if rating_key_map else None
-                    entries = _queue_entries_for_movie(movie, scheduled_date.isoformat(), rating_key)
-
-                    try:
-                        for entry in entries:
-                            thread_conn.execute(
-                                """INSERT OR IGNORE INTO scheduled_deletions
-                                (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating, size_gb, quality,
-                                 monitored, score, score_factors, scheduled_date, status, collection_name, plex_rating_key)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)""",
-                                entry
-                            )
-
-                        label = movie.get("collection_title") or movie["movie_title"]
-                        count = len(entries)
-                        if movie.get("is_collection"):
-                            logger.info(f"Added to queue: {label} (collection: {count} movies)")
-                        else:
-                            logger.info(f"Added to queue: {label} (score: {movie['normalized_score']:.1f})")
-                        added.append(movie)
-                    except Exception as e:
-                        label = movie.get("collection_title") or movie.get("movie_title")
-                        logger.error(f"Failed to add {label} to queue: {e}")
+                    entries = _queue_entries_for_movie(movie_copy, scheduled_date.isoformat(), rating_key)
+                    
+                    for entry in entries:
+                        thread_conn.execute(
+                            """INSERT OR IGNORE INTO scheduled_deletions
+                            (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating, size_gb, quality,
+                             monitored, score, score_factors, scheduled_date, status, collection_name, plex_rating_key)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)""",
+                            entry
+                        )
+                    
+                    label = movie.get("collection_title") or movie.get("movie_title", "Unknown")
+                    count = len(entries)
+                    if movie.get("is_collection"):
+                        logger.info(f"Added to queue: {label} (collection: {count} movies) - scheduled for +{base_delay_days + stagger_days} days")
+                    else:
+                        logger.info(f"Added to queue: {label} (score: {movie.get('normalized_score', 0):.1f}) - scheduled for +{base_delay_days + stagger_days} days")
+                    added.append(movie)
                 
                 thread_conn.commit()
                 return added

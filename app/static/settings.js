@@ -5,6 +5,7 @@ let ageSlider, sizeSlider, ratingSlider, qualitySlider, watchedSlider;
 let ageVal, sizeVal, ratingVal, qualityVal, watchedVal;
 let ageMaxDays, sizeMaxGb;
 let minScoreThreshold;
+let deletionsPerDay;
 let debounceTimer = null;
 
 // Preset configurations (1-10 scale, no sum constraint)
@@ -158,6 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ageMaxDays = document.getElementById('age-max-days');
     sizeMaxGb = document.getElementById('size-max-gb');
     minScoreThreshold = document.getElementById('min-score-threshold');
+    deletionsPerDay = document.getElementById('deletions-per-day');
     
     // Load data
     loadRadarrConfig();
@@ -706,6 +708,7 @@ async function loadSettings() {
         document.getElementById('score-cron').value = data.score_cron || '0 3 * * 0';
         document.getElementById('cull-cron').value = data.cull_cron || '0 2 * * *';
         document.getElementById('max-queued').value = data.max_queued || 20;
+        if (deletionsPerDay) deletionsPerDay.value = data.deletions_per_day || 0;
         document.getElementById('delete-after-days').value = data.delete_after_days || 7;
         document.getElementById('protection-days').value = data.protection_days || 30;
         document.getElementById('collection-grouping').checked = data.collection_grouping || false;
@@ -721,6 +724,7 @@ async function saveSettings() {
         score_cron: document.getElementById('score-cron').value,
         cull_cron: document.getElementById('cull-cron').value,
         max_queued: parseInt(document.getElementById('max-queued').value),
+        deletions_per_day: parseInt(deletionsPerDay?.value || 0),
         delete_after_days: parseInt(document.getElementById('delete-after-days').value),
         collection_grouping: document.getElementById('collection-grouping').checked,
         min_score_threshold: parseInt(minScoreThreshold?.value || 0)
