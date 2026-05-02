@@ -365,17 +365,37 @@
                 </div>
             </div>
 
-            <!-- New row for deletion spacing -->
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-sm block mb-1">Deletions per day:</label>
-                    <input type="number" id="deletions-per-day" value="0" min="0" max="100">
-                    <p class="text-xs mt-1" style="color: var(--text-secondary);">0 = unlimited (schedule all on same day)</p>
-                </div>
-                <div>
-                    <!-- Empty placeholder for alignment, or could add info here -->
-                    <div class="text-xs mt-6" style="color: var(--text-secondary);">
-                        ℹ️ Spreads deletions over multiple days to avoid batch removal
+            <!-- Collapsible Advanced Deletion Spacing Section -->
+            <div class="card rounded-xl overflow-hidden mt-4">
+                <button onclick="toggleDeletionSpacing()" class="w-full flex items-center justify-between p-4 text-left">
+                    <div class="flex items-center gap-3">
+                        <svg class="w-5 h-5" style="color: var(--accent);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <div>
+                            <h2 class="font-semibold">Advanced Deletion Spacing</h2>
+                            <p class="text-xs" style="color: var(--text-secondary);">Control the rate of deletions over time</p>
+                        </div>
+                    </div>
+                    <svg id="deletion-spacing-icon" class="w-5 h-5 transition-transform transform rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </button>
+                <div id="deletion-spacing-section" class="border-t p-4 space-y-4" style="border-color: var(--border-color); display: none;">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-sm block mb-1">Deletions per day:</label>
+                            <input type="number" id="deletions-per-day" value="0" min="0" max="100">
+                            <p class="text-xs mt-1" style="color: var(--text-secondary);">0 = unlimited (schedule all on same day)</p>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="text-xs" style="color: var(--text-secondary);">
+                                ℹ️ When enabled, new movies added to queue will be spread out over multiple days.
+                                <br><br>
+                                <strong>Example:</strong> 5 per day with 15 new movies:
+                                <br>Day 7: 5 movies | Day 8: 5 movies | Day 9: 5 movies
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

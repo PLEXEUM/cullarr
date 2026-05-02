@@ -230,6 +230,18 @@ function toggleAdvancedSettings() {
     }
 }
 
+function toggleDeletionSpacing() {
+    const section = document.getElementById('deletion-spacing-section');
+    const icon = document.getElementById('deletion-spacing-icon');
+    if (section.style.display === 'none' || section.style.display === '') {
+        section.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        section.style.display = 'none';
+        icon.style.transform = 'rotate(0deg)';
+    }
+}
+
 function updateWeightDisplay(id) {
     const val = document.getElementById(id).value;
     const displayId = id.replace('-weight', '-weight-val');
