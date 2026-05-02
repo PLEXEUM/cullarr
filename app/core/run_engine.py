@@ -394,25 +394,27 @@ async def run_score_cycle():
 
                 # Apply staggering if deletions_per_day > 0
                 if deletions_per_day > 0 and candidates:
-                    
                     # Debug: log type and value
                     logger.info(f"DEBUG: deletions_per_day type={type(deletions_per_day).__name__}, value={deletions_per_day}")
                     logger.info(f"DEBUG: len(candidates)={len(candidates)}")
-
-                    # Calculate how many days to spread over
-                    import math
-                    days_needed = math.ceil(len(candidates) / deletions_per_day)
+                    logger.info(f"DEBUG: available_slots={available_slots}")
                     
-                    # Create batches with staggered scheduled dates
+                    # Calculate how many days to spread over (based on available slots, not all candidates)
+                    import math
+                    days_needed = math.ceil(available_slots / deletions_per_day)
+                    logger.info(f"DEBUG: days_needed calculation result={days_needed}")
+                    
+                    # Create staggered batches for the candidates we will take
+                    # Only stagger up to available_slots
                     staggered_candidates = []
-                    for i, candidate in enumerate(candidates):
+                    for i, candidate in enumerate(candidates[:available_slots]):
                         batch_number = i // deletions_per_day
                         # Attach stagger_days to each candidate
                         candidate_with_stagger = candidate.copy()
                         candidate_with_stagger["_stagger_days"] = batch_number
                         staggered_candidates.append(candidate_with_stagger)
                     
-                    to_add = staggered_candidates[:available_slots]
+                    to_add = staggered_candidates
                     logger.info(f"Staggering {len(to_add)} candidates over {days_needed} days ({deletions_per_day} per day)")
                 else:
                     to_add = candidates[:available_slots]
