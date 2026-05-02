@@ -394,6 +394,11 @@ async def run_score_cycle():
 
                 # Apply staggering if deletions_per_day > 0
                 if deletions_per_day > 0 and candidates:
+                    
+                    # Debug: log type and value
+                    logger.info(f"DEBUG: deletions_per_day type={type(deletions_per_day).__name__}, value={deletions_per_day}")
+                    logger.info(f"DEBUG: len(candidates)={len(candidates)}")
+
                     # Calculate how many days to spread over
                     import math
                     days_needed = math.ceil(len(candidates) / deletions_per_day)
