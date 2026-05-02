@@ -360,7 +360,7 @@ async def run_score_cycle():
                 )
                 max_queued = settings["max_queued"] if settings else 20
                 available_slots = max_queued - used_slots
-                deletions_per_day = settings["deletions_per_day"] if settings else 0
+                deletions_per_day = int(settings["deletions_per_day"]) if settings and settings["deletions_per_day"] is not None else 0
 
                 logger.info(f"Queue status: {used_slots}/{max_queued} slots used, {available_slots} available")
                 logger.info(f"Deletions per day: {deletions_per_day} (0 = unlimited)")
