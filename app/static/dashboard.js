@@ -471,8 +471,8 @@ async function triggerScoreRun() {
         if (res.ok) {
             showToast(dryRun ? 'Dry run started — results will appear when complete' : 'Score run started', 'success');
             // Store that this is a dry run so polling knows to show modal
+            window.lastRunType = 'Score';
             window.pendingDryRun = dryRun ? 'score' : null;
-            window.lastRunType = 'Score';  // ← ADD THIS LINE
             startRunStatusPolling();
         } else {
             const err = await res.json();
@@ -499,8 +499,8 @@ async function triggerCullRun() {
         const res = await fetch(url, { method: 'POST' });
         if (res.ok) {
             showToast(dryRun ? 'Cull dry run started — results will appear when complete' : 'Cull run started', 'success');
+            window.lastRunType = 'Cull';
             window.pendingDryRun = dryRun ? 'cull' : null;
-            window.lastRunType = 'Cull';  // ← ADD THIS LINE
             startRunStatusPolling();
         } else {
             const err = await res.json();
@@ -603,7 +603,7 @@ function startRunStatusPolling() {
                 } else if (!data.dry_run && data.is_running === false) {
                     // Show completion toast for non-dry runs when they finish
                     showToast(`${window.lastRunType} run completed`, 'success');
-                    window.lastRunType = null;  // ← Clear after use
+                    // Do NOT clear lastRunType here - next run will overwrite
                 }
     
                 await loadDashboard();
