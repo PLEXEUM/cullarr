@@ -601,19 +601,22 @@ function startRunStatusPolling() {
                 } else if (data.dry_run) {
                     showToast('Dry run completed - no items would be affected', 'info');
                 } else if (!data.dry_run && data.is_running === false) {
-                    // Show completion toast for non-dry runs when they finish
+                    // STOP POLLING FIRST to prevent multiple toasts
+                    clearInterval(runStatusInterval);
+                    runStatusInterval = null;
+                    
+                    // THEN show completion toast
                     showToast(`${window.lastRunType} run completed`, 'success');
                     // Do NOT clear lastRunType here - next run will overwrite
+                    
+                    await loadDashboard();
+                    
+                    // Clear pending dry run flag
+                    window.pendingDryRun = null;
+                } else {
+                    // If we get here, the run is still in progress or not completed
+                    // Keep polling
                 }
-    
-                await loadDashboard();
-    
-                // Clear pending dry run flag
-                window.pendingDryRun = null;
-    
-                // STOP POLLING HERE
-                clearInterval(runStatusInterval);
-                runStatusInterval = null;
             }
         } catch (e) {
             console.error('Failed to poll run status:', e);
