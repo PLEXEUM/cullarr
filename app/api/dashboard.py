@@ -827,7 +827,7 @@ async def get_settings_summary():
     conn = get_connection()
     try:
         settings = conn.execute("""
-            SELECT delete_after_days, protection_days, collection_grouping, max_queued
+            SELECT delete_after_days, protection_days, collection_grouping, max_queued, deletions_per_day
             FROM settings WHERE id = 1
         """).fetchone()
 
@@ -843,5 +843,6 @@ async def get_settings_summary():
         "protection_days": settings["protection_days"] if settings else 30,
         "collection_grouping": bool(settings["collection_grouping"]) if settings else False,
         "max_queued": settings["max_queued"] if settings else 20,
+        "deletions_per_day": settings["deletions_per_day"] if settings else 0,
         "weights": dict(weights) if weights else {},
     }
