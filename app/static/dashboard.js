@@ -8,6 +8,7 @@ let scoreQueueSearch = '';
 let scoreQueueSearchActive = false;
 let refreshInterval = null;
 let runStatusInterval = null;
+let scheduledDeletionsCollapsed = false;
 
 // Load all dashboard data
 async function loadDashboard() {
@@ -408,8 +409,53 @@ async function loadSettingsSummary() {
         document.getElementById('delete-after').textContent = `${data.delete_after_days} days`;
         document.getElementById('protection-days').textContent = `${data.protection_days} days`;
         document.getElementById('collection-grouping').textContent = data.collection_grouping ? 'On' : 'Off';
+        
+        // Display deletion rate indicator
+        const rateElement = document.getElementById('deletion-rate');
+        if (rateElement && data.deletions_per_day !== undefined) {
+            const rate = data.deletions_per_day;
+            if (rate === 0) {
+                rateElement.textContent = '↻ 0/unlimited';
+            } else {
+                rateElement.textContent = `↻ ${rate}/day`;
+            }
+        }
     } catch (e) {
         console.error('Failed to load settings summary:', e);
+    }
+}
+
+// Toggle Scheduled Deletions card collapse/expand
+function toggleScheduledDeletions() {
+    const section = document.getElementById('scheduled-deletions-section');
+    const icon = document.getElementById('scheduled-deletions-icon');
+    
+    if (!section || !icon) return;
+    
+    if (section.style.display === 'none') {
+        section.style.display = 'block';
+        icon.style.transform = 'rotate(0deg)';
+        scheduledDeletionsCollapsed = false;
+        localStorage.setItem('scheduledDeletionsCollapsed', 'false');
+    } else {
+        section.style.display = 'none';
+        icon.style.transform = 'rotate(180deg)';
+        scheduledDeletionsCollapsed = true;
+        localStorage.setItem('scheduledDeletionsCollapsed', 'true');
+    }
+}
+
+// Load saved collapse state on page load
+function loadScheduledDeletionsState() {
+    const savedState = localStorage.getItem('scheduledDeletionsCollapsed');
+    if (savedState === 'true') {
+        const section = document.getElementById('scheduled-deletions-section');
+        const icon = document.getElementById('scheduled-deletions-icon');
+        if (section && icon) {
+            section.style.display = 'none';
+            icon.style.transform = 'rotate(180deg)';
+            scheduledDeletionsCollapsed = true;
+        }
     }
 }
 
@@ -896,6 +942,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Load saved collapse state for Scheduled Deletions
+    loadScheduledDeletionsState();
     
     // Auto-refresh every 30 seconds — queue status and deletions only, not score queue
     if (refreshInterval) clearInterval(refreshInterval);
