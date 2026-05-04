@@ -434,12 +434,12 @@ function toggleScheduledDeletions() {
     
     if (section.style.display === 'none') {
         section.style.display = 'block';
-        icon.style.transform = 'rotate(0deg)';
+        icon.style.transform = 'rotate(180deg)';  // Points UP when expanded
         scheduledDeletionsCollapsed = false;
         localStorage.setItem('scheduledDeletionsCollapsed', 'false');
     } else {
         section.style.display = 'none';
-        icon.style.transform = 'rotate(180deg)';
+        icon.style.transform = 'rotate(0deg)';    // Points DOWN when collapsed
         scheduledDeletionsCollapsed = true;
         localStorage.setItem('scheduledDeletionsCollapsed', 'true');
     }
@@ -453,7 +453,7 @@ function loadScheduledDeletionsState() {
         const icon = document.getElementById('scheduled-deletions-icon');
         if (section && icon) {
             section.style.display = 'none';
-            icon.style.transform = 'rotate(180deg)';
+            icon.style.transform = 'rotate(0deg)';
             scheduledDeletionsCollapsed = true;
         }
     }
