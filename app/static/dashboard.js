@@ -596,10 +596,24 @@ function startRunStatusPolling() {
     
                 // Check if this was a dry run with results
                 if (data.dry_run && data.dry_run_results && data.dry_run_results.length > 0) {
+                    // STOP POLLING FIRST to prevent modal from reopening
+                    clearInterval(runStatusInterval);
+                    runStatusInterval = null;
+                    
                     const title = window.pendingDryRun === 'score' ? 'Score Dry Run Preview' : 'Cull Dry Run Preview';
                     showDryRunModal(title, data.dry_run_results, window.pendingDryRun || 'score');
+                    
+                    await loadDashboard();
+                    window.pendingDryRun = null;
                 } else if (data.dry_run) {
+                    // STOP POLLING FIRST
+                    clearInterval(runStatusInterval);
+                    runStatusInterval = null;
+                    
                     showToast('Dry run completed - no items would be affected', 'info');
+                    
+                    await loadDashboard();
+                    window.pendingDryRun = null;
                 } else if (!data.dry_run && data.is_running === false) {
                     // STOP POLLING FIRST to prevent multiple toasts
                     clearInterval(runStatusInterval);
@@ -607,11 +621,8 @@ function startRunStatusPolling() {
                     
                     // THEN show completion toast
                     showToast(`${window.lastRunType} run completed`, 'success');
-                    // Do NOT clear lastRunType here - next run will overwrite
                     
                     await loadDashboard();
-                    
-                    // Clear pending dry run flag
                     window.pendingDryRun = null;
                 } else {
                     // If we get here, the run is still in progress or not completed
