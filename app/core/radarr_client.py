@@ -7,6 +7,9 @@ from app.utils.redactor import redact
 
 logger = get_logger()
 
+# Retry configuration (can be adjusted via environment variables in the future)
+DEFAULT_RETRY_ATTEMPTS = 3
+DEFAULT_RETRY_DELAY_BASE = 2  # seconds, exponential backoff: 2, 4, 8...
 
 class RadarrClient:
     def __init__(self, base_url: str, api_key: str):
@@ -22,7 +25,7 @@ class RadarrClient:
         url = f"{self.base_url}/api/v3/{endpoint}"
         last_error = None
 
-        for attempt in range(1, 4):
+        for attempt in range(1, DEFAULT_RETRY_ATTEMPTS + 1):
             try:
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     response = await client.request(method, url, headers=self.headers, **kwargs)
@@ -41,13 +44,13 @@ class RadarrClient:
                     return response.json() if response.text else {}
             except httpx.HTTPStatusError as e:
                 last_error = e
-                logger.warning(f"Radarr API error (attempt {attempt}/3): {e.response.status_code}")
+                logger.warning(f"Radarr API error (attempt {attempt}/{DEFAULT_RETRY_ATTEMPTS}): {e.response.status_code}")
             except httpx.RequestError as e:
                 last_error = e
-                logger.warning(f"Radarr connection error (attempt {attempt}/3): {redact(str(e))}")
+                logger.warning(f"Radarr connection error (attempt {attempt}/{DEFAULT_RETRY_ATTEMPTS}): {redact(str(e))}")
 
-            if attempt < 3:
-                wait = 2 ** attempt
+            if attempt < DEFAULT_RETRY_ATTEMPTS:
+                wait = DEFAULT_RETRY_DELAY_BASE ** attempt
                 await asyncio.sleep(wait)
 
         raise ConnectionError(f"Radarr API unreachable after 3 attempts")
@@ -68,6 +71,10 @@ class RadarrClient:
         # Radarr /api/v3/movie always returns a flat list — no pagination
         if isinstance(data, list):
             logger.info(f"Fetched {len(data)} movies total")
+            # Add debug sample (optional)
+            if data and len(data) > 0:
+                sample_movie = data[0]
+                logger.debug(f"Sample movie: {sample_movie.get('title')} (ID: {sample_movie.get('id')})")
             return data
 
         # Unexpected response shape — log and return empty

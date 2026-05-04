@@ -33,7 +33,7 @@ class SettingsInput(BaseModel):
 
 
 @router.get("/settings/weights")
-async def get_scoring_weights():
+async def get_scoring_weights() -> dict:
     """Get current scoring weights (raw 1-10 values only)."""
     conn = get_connection()
     try:
@@ -211,9 +211,6 @@ async def save_settings(data: SettingsInput):
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)
     
-    if data.min_score_threshold < 0 or data.min_score_threshold > 100:
-        raise HTTPException(status_code=400, detail="Minimum score threshold must be between 0 and 100")
-
     conn = get_connection()
     try:
         conn.execute(
@@ -325,6 +322,9 @@ async def recalibrate_advanced_settings():
 
         age_max_days = max(30, min(age_max_days, 3650))
         size_max_gb = max(5, min(size_max_gb, 1000))
+
+        # Log the bounded values for debugging
+        logger.info(f"Recalibration result - age_max_days: {age_max_days}, size_max_gb: {size_max_gb:.1f}")
 
         # ===== ADD DEBUG HERE =====
         logger.info(f"RECALIBRATE DEBUG: After bounds - age_max_days={age_max_days}, size_max_gb={size_max_gb:.2f}")

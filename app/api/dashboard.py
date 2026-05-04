@@ -27,6 +27,10 @@ async def get_queue_status():
             WHERE status = 'scheduled'
         """).fetchone()
 
+         # Safe default if no results
+        if queue_stats is None:
+            queue_stats = {"total_movies": 0, "collection_slots": 0, "individual_slots": 0}
+
         settings = conn.execute("SELECT max_queued FROM settings WHERE id = 1").fetchone()
         max_queued = settings["max_queued"] if settings else 20
 
@@ -314,7 +318,7 @@ async def get_score_queue(
     refresh: bool = False,
     sort_by: str = Query("score", description="Sort column: score, title, year, age, size, rating, quality, watched"),
     sort_order: str = Query("desc", description="Sort order: asc or desc")
-):
+) -> dict:
     """
     Get scored movies from cache. If refresh=True or cache is empty,
     triggers a live fetch from Radarr and rebuilds the cache.
@@ -371,6 +375,8 @@ async def _rebuild_score_cache():
             logger.info(f"Plex API Key exists: {bool(plex_config['api_key'])}")
         
         settings = conn.execute("SELECT protection_days, collection_grouping FROM settings WHERE id = 1").fetchone()
+        if settings is None:
+            settings = {"protection_days": 30, "collection_grouping": 0}
     finally:
         conn.close()
 

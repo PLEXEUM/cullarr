@@ -1,7 +1,7 @@
 import asyncio
 import json
 from datetime import datetime, timedelta
-from typing import Dict
+from typing import Dict, List, Optional, Any, Tuple
 from app.db.database import get_connection
 from app.core.radarr_client import RadarrClient
 from app.core.plex_client import PlexClient
@@ -77,6 +77,9 @@ async def _apply_plex_collections(
         collection_obj = server.fetchItem(int(collection_key))
         collection_name = collection_obj.title
         logger.info(f"Using Plex collection: '{collection_name}'")
+
+        # Add this debug line (optional, helps troubleshooting)
+        logger.debug(f"Will add {len(movies)} movie entries to collection '{collection_name}'")
     
         # ===== ADD DEBUG HERE =====
         logger.info(f"🎯 Target collection name: '{collection_name}'")

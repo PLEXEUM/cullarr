@@ -2,7 +2,7 @@ import json
 import asyncio
 import httpx
 import xml.etree.ElementTree as ET
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple 
 from datetime import datetime
 from app.utils.logger import get_logger
 from app.utils.redactor import redact
@@ -291,6 +291,10 @@ class PlexClient:
             start += len(metadata)
     
         logger.info(f"Fetched play history for {len(result)} items from Plex (all users)")
+        # Add debug sample (optional, helps troubleshooting)
+        if result:
+            sample_keys = list(result.keys())[:3]
+            logger.debug(f"Sample play history keys: {sample_keys}")
         return result
 
     async def get_play_counts_by_tmdb(self) -> Dict[str, Dict]:

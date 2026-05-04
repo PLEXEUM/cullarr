@@ -3,6 +3,9 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import os
+import asyncio  # Add this for shutdown
+import uuid  # Add this for request ID middleware
+from starlette.middleware.base import BaseHTTPMiddleware  # Add this
 
 from app.api import radarr, plex, plex_oauth, settings, run, dashboard, logs
 from app.db.database import init_db, migrate_db
@@ -17,8 +20,22 @@ setup_logger(log_level=log_level, log_max_size_mb=log_max_size_mb, log_max_files
 
 logger = get_logger()
 
+# ===== ADD REQUEST ID MIDDLEWARE CLASS HERE (after logger, before app creation) =====
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = str(uuid.uuid4())[:8]  # Short ID for readability
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+# ===== END MIDDLEWARE =====
+
 # Create FastAPI app
 app = FastAPI(title="Cullarr", version="1.0.0")
+
+# ===== ADD MIDDLEWARE TO APP (right after app creation) =====
+app.add_middleware(RequestIDMiddleware)
+# ===== END MIDDLEWARE ADD =====
 
 # Setup templates
 templates = Jinja2Templates(directory="app/templates")
@@ -58,6 +75,13 @@ async def logs_page(request: Request):
     """Logs page"""
     return templates.TemplateResponse("logs.html", {"request": request})
 
+# ===== ADD HEALTH CHECK ENDPOINT HERE (after frontend routes) =====
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker/Kubernetes."""
+    return {"status": "healthy", "service": "cullarr"}
+# ===== END HEALTH CHECK =====
+
 # Startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
@@ -69,6 +93,7 @@ async def startup_event():
 async def shutdown_event():
     """Shutdown scheduler on app stop"""
     shutdown_scheduler()
+    await asyncio.sleep(0.5)  # Allow final logs to write
     logger.info("Cullarr stopped")
 
 if __name__ == "__main__":

@@ -4,12 +4,12 @@ import asyncio
 from functools import partial
 from pathlib import Path
 
-DB_PATH = Path("/app/config/cullarr.db")
+DB_PATH = Path("/app/config") / "cullarr.db"
 
 def get_connection():
     """Get a database connection with WAL mode enabled."""
     os.makedirs(DB_PATH.parent, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)  # ← ADD timeout parameter
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -301,6 +301,19 @@ def migrate_db():
         print("Migration applied: added plex_rating_key to scheduled_deletions")
     except Exception:
         pass  # Column already exists, safe to ignore
+
+    # Add indexes for better query performance (safe, no functional change)
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_scheduled_deletions_status_date ON scheduled_deletions(status, scheduled_date)")
+        print("Migration applied: added index on scheduled_deletions(status, scheduled_date)")
+    except Exception:
+        pass  # Index may already exist
+    
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_scheduled_deletions_movie_id ON scheduled_deletions(movie_id)")
+        print("Migration applied: added index on scheduled_deletions(movie_id)")
+    except Exception:
+        pass  # Index may already exist
     
     conn.commit()
     conn.close()
