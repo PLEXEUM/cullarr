@@ -1,7 +1,7 @@
 // Dashboard JavaScript for Cullarr
 
 let scoreQueuePage = 1;
-let scoreQueuePerPage = 20;
+let scoreQueuePerPage = 10;
 let scoreQueueSortBy = 'score';
 let scoreQueueSortOrder = 'desc';
 let scoreQueueSearch = '';
