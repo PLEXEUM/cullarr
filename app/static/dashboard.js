@@ -598,9 +598,10 @@ function startRunStatusPolling() {
                     showDryRunModal(title, data.dry_run_results, window.pendingDryRun || 'score');
                 } else if (data.dry_run) {
                     showToast('Dry run completed - no items would be affected', 'info');
-                } else if (!data.dry_run && data.is_running === false && data.current === 0 && data.total === 0) {
-                    // Only show completion toast for non-dry runs that actually did something
-                    showToast('Run completed', 'success');
+                } else if (!data.dry_run && data.is_running === false) {
+                    // Show completion toast for non-dry runs when they finish
+                    const runType = data.run_type || (window.pendingDryRun === 'score' ? 'Score' : 'Cull');
+                    showToast(`${runType} run completed`, 'success');
                 }
     
                 await loadDashboard();
