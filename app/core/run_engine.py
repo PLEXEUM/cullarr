@@ -376,12 +376,13 @@ async def run_score_cycle():
             
             # Check if this movie was already scheduled
             if movie_id in existing_scheduled:
-                # Keep existing scheduled date
+                # Keep existing scheduled date - restore it from memory
+                original_date = existing_scheduled[movie_id]
                 conn.execute(
-                    "UPDATE scored_movies_cache SET scheduled_for_deletion = 1 WHERE movie_id = ?",
-                    (movie_id,)
+                    "UPDATE scored_movies_cache SET scheduled_for_deletion = 1, scheduled_date = ? WHERE movie_id = ?",
+                    (original_date, movie_id)
                 )
-                logger.debug(f"Keeping scheduled date for movie_id {movie_id} (stays in top {max_queued})")
+                logger.debug(f"Keeping scheduled date {original_date} for movie_id {movie_id} (stays in top {max_queued})")
             else:
                 # New movie entering top N - calculate scheduled date
                 stagger_days = 0
