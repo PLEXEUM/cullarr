@@ -7,6 +7,7 @@ from app.db.database import get_connection
 from datetime import datetime
 from app.core.run_engine import run_score_cycle, run_cull_cycle
 from app.core.scheduler import get_next_score_run, get_next_cull_run
+from app.core.run_state import _active_run
 from app.utils.logger import get_logger
 
 router = APIRouter()
@@ -14,21 +15,6 @@ logger = get_logger()
 
 # AsyncIO lock to prevent race conditions on _active_run
 _run_lock = asyncio.Lock()
-
-# Global state for tracking active runs
-_active_run = {
-    "is_running": False,
-    "run_id": None,
-    "run_type": None,
-    "current": 0,
-    "total": 0,
-    "current_movie": "",
-    "cancelled": False,
-    "dry_run": False,
-    "dry_run_results": None,
-    "run_sequence": 0,  
-    "last_updated": None, 
-}
 
 
 async def _set_run_active(run_id: str, run_type: str, dry_run: bool = False):
@@ -75,7 +61,7 @@ async def _run_dry_score(run_id: str):
         settings = conn.execute("SELECT * FROM settings WHERE id = 1").fetchone()
 
         scheduled_ids = conn.execute(
-            "SELECT movie_id FROM scheduled_deletions"
+            "SELECT movie_id FROM scored_movies_cache WHERE scheduled_for_deletion = 1"
         ).fetchall()
         scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
         conn.close()

@@ -143,6 +143,8 @@ def init_db():
             collection_name TEXT,
             collection_id INTEGER,
             is_collection BOOLEAN DEFAULT 0,
+            scheduled_for_deletion BOOLEAN DEFAULT 0,
+            scheduled_date DATETIME,
             cached_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -315,6 +317,57 @@ def migrate_db():
     except Exception:
         pass  # Index may already exist
     
+    # Migration: Add scheduled_for_deletion and scheduled_date to scored_movies_cache
+    try:
+        cursor.execute("ALTER TABLE scored_movies_cache ADD COLUMN scheduled_for_deletion BOOLEAN DEFAULT 0")
+        print("Migration applied: added scheduled_for_deletion to scored_movies_cache")
+    except Exception:
+        pass  # Column already exists
+    
+    try:
+        cursor.execute("ALTER TABLE scored_movies_cache ADD COLUMN scheduled_date DATETIME")
+        print("Migration applied: added scheduled_date to scored_movies_cache")
+    except Exception:
+        pass  # Column already exists
+    
+    # Migration: Copy existing scheduled_deletions data to scored_movies_cache
+    try:
+        # Check if scheduled_deletions table has data and if we haven't already migrated
+        count = cursor.execute("SELECT COUNT(*) as count FROM scheduled_deletions WHERE status = 'scheduled'").fetchone()
+        if count and count["count"] > 0:
+            # Update scored_movies_cache with scheduled info from scheduled_deletions
+            cursor.execute("""
+                UPDATE scored_movies_cache 
+                SET scheduled_for_deletion = 1, 
+                    scheduled_date = (
+                        SELECT scheduled_date 
+                        FROM scheduled_deletions 
+                        WHERE scheduled_deletions.movie_id = scored_movies_cache.movie_id
+                        AND scheduled_deletions.status = 'scheduled'
+                        LIMIT 1
+                    )
+                WHERE movie_id IN (
+                    SELECT movie_id FROM scheduled_deletions WHERE status = 'scheduled'
+                )
+            """)
+            print(f"Migration applied: copied {cursor.rowcount} scheduled movies to scored_movies_cache")
+    except Exception as e:
+        print(f"Migration note: could not copy scheduled data (may already be migrated): {e}")
+    
+    # Migration: Add index on scheduled_for_deletion for faster queries
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_scored_movies_cache_scheduled ON scored_movies_cache(scheduled_for_deletion, scheduled_date)")
+        print("Migration applied: added index on scored_movies_cache(scheduled_for_deletion, scheduled_date)")
+    except Exception:
+        pass  # Index may already exist
+
+    # Migration: Drop old scheduled_deletions table (cleanup)
+    try:
+        cursor.execute("DROP TABLE IF EXISTS scheduled_deletions")
+        print("Migration applied: dropped old scheduled_deletions table")
+    except Exception as e:
+        print(f"Migration note: could not drop scheduled_deletions: {e}")     
+
     conn.commit()
     conn.close()
 

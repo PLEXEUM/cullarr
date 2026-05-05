@@ -23,8 +23,8 @@ async def get_queue_status():
                 COUNT(*) as total_movies,
                 COUNT(DISTINCT CASE WHEN collection_name IS NOT NULL THEN collection_name END) as collection_slots,
                 COUNT(CASE WHEN collection_name IS NULL THEN 1 END) as individual_slots
-            FROM scheduled_deletions
-            WHERE status = 'scheduled'
+            FROM scored_movies_cache
+            WHERE scheduled_for_deletion = 1
         """).fetchone()
 
          # Safe default if no results
@@ -92,16 +92,26 @@ async def get_queue_status():
 @router.get("/dashboard/scheduled")
 async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
     """
-    Get scheduled deletions queue.
+    Get scheduled deletions queue from scored_movies_cache.
     Collections are grouped into single entries with a movies list.
     """
     conn = get_connection()
     try:
         scheduled = conn.execute("""
-            SELECT id, movie_id, movie_title, movie_year, size_gb, quality,
-                   score, scheduled_date, status, collection_name
-            FROM scheduled_deletions
-            WHERE status = 'scheduled'
+            SELECT 
+                movie_id as id,
+                movie_id,
+                movie_title,
+                movie_year,
+                size_gb,
+                quality,
+                normalized_score as score,
+                scheduled_date,
+                'scheduled' as status,
+                collection_name
+            FROM scored_movies_cache
+            WHERE scheduled_for_deletion = 1
+              AND scheduled_date IS NOT NULL
             ORDER BY collection_name ASC, scheduled_date ASC
             LIMIT ?
         """, (limit,)).fetchall()
@@ -167,102 +177,93 @@ async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
 @router.delete("/dashboard/scheduled/{movie_id}")
 async def remove_from_queue(movie_id: int):
     """
-    Remove a movie from the scheduled deletions queue.
+    Remove a movie from the scheduled deletions queue by clearing its scheduled flag.
     If the movie is part of a collection, removes all members of that collection.
     """
     conn = get_connection()
     try:
+        # Check if movie exists in cache and is scheduled
         existing = conn.execute(
-            "SELECT id, movie_title, collection_name FROM scheduled_deletions WHERE movie_id = ? AND status = 'scheduled'",
+            """SELECT movie_id, movie_title, collection_name 
+               FROM scored_movies_cache 
+               WHERE movie_id = ? AND scheduled_for_deletion = 1""",
             (movie_id,)
         ).fetchone()
 
         if not existing:
-            raise HTTPException(status_code=404, detail="Movie not found in queue")
+            raise HTTPException(status_code=404, detail="Movie not found in scheduled queue")
 
+        # Get Plex config for collection cleanup
+        plex_config = conn.execute("SELECT url, api_key, enabled, collection_key FROM plex_config WHERE id = 1").fetchone()
+        
         if existing["collection_name"]:
-            # Remove all members of the collection together
+            # Remove all members of the collection
             collection_name = existing["collection_name"]
             
-            # ===== FIRST: Remove all movies in collection from Plex =====
-            try:
-                # Get Plex config
-                plex_config = conn.execute("SELECT url, api_key, enabled, collection_key FROM plex_config WHERE id = 1").fetchone()
-                if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_key"]:
-                    # Get all movies in this collection
-                    collection_members = conn.execute(
-                        "SELECT movie_title, movie_year FROM scheduled_deletions WHERE collection_name = ? AND status = 'scheduled'",
-                        (collection_name,)
-                    ).fetchall()
-                    
-                    if collection_members:
-                        plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
-                        collection_key = plex_config["collection_key"]
-                        
-                        # Get library map for title|year lookups
-                        library_items = await plex_client.get_library_items()
-                        library_map = {}
-                        for item in library_items:
-                            title = item.get("title")
-                            year = item.get("year")
-                            rating_key = item.get("rating_key")
-                            if title and year and rating_key:
-                                key = f"{title.lower()}|{year}"
-                                library_map[key] = rating_key
-                        
-                        # Remove each movie from Plex collection
-                        for member in collection_members:
-                            movie_title = member["movie_title"]
-                            movie_year = member["movie_year"]
-                            lookup_key = f"{movie_title.lower()}|{movie_year}"
-                            rating_key = library_map.get(lookup_key)
-                            if rating_key:
-                                success = await plex_client.remove_from_collection(collection_key, rating_key)
-                                if success:
-                                    logger.info(f"Removed '{movie_title}' from Plex collection for collection '{collection_name}'")
-                                else:
-                                    logger.warning(f"Failed to remove '{movie_title}' from Plex collection")
-                            else:
-                                logger.debug(f"Could not find rating key for '{movie_title} ({movie_year})'")
-            except Exception as plex_error:
-                logger.warning(f"Failed to remove collection movies from Plex: {plex_error}")
-            # ===== END PLEX CLEANUP =====
-            
-            # Then delete all members from scheduled_deletions
-            members = conn.execute(
-                "SELECT movie_title FROM scheduled_deletions WHERE collection_name = ? AND status = 'scheduled'",
+            # Get all movies in this collection
+            collection_members = conn.execute(
+                """SELECT movie_id, movie_title, movie_year 
+                   FROM scored_movies_cache 
+                   WHERE collection_name = ? AND scheduled_for_deletion = 1""",
                 (collection_name,)
             ).fetchall()
+            
+            # Remove from Plex collection if configured
+            if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_key"]:
+                try:
+                    plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
+                    collection_key = plex_config["collection_key"]
+                    
+                    # Get library map for title|year lookups
+                    library_items = await plex_client.get_library_items()
+                    library_map = {}
+                    for item in library_items:
+                        title = item.get("title")
+                        year = item.get("year")
+                        rating_key = item.get("rating_key")
+                        if title and year and rating_key:
+                            key = f"{title.lower()}|{year}"
+                            library_map[key] = rating_key
+                    
+                    for member in collection_members:
+                        lookup_key = f"{member['movie_title'].lower()}|{member['movie_year']}"
+                        rating_key = library_map.get(lookup_key)
+                        if rating_key:
+                            await plex_client.remove_from_collection(collection_key, rating_key)
+                            logger.info(f"Removed '{member['movie_title']}' from Plex collection")
+                except Exception as plex_error:
+                    logger.warning(f"Failed to remove from Plex collection: {plex_error}")
+            
+            # Clear scheduled flags for all collection members
             conn.execute(
-                "DELETE FROM scheduled_deletions WHERE collection_name = ? AND status = 'scheduled'",
+                """UPDATE scored_movies_cache 
+                   SET scheduled_for_deletion = 0, scheduled_date = NULL 
+                   WHERE collection_name = ? AND scheduled_for_deletion = 1""",
                 (collection_name,)
             )
-            titles = [m["movie_title"] for m in members]
             conn.commit()
-            logger.info(f"Removed collection '{collection_name}' from queue ({len(titles)} movies)")
+            
+            logger.info(f"Removed collection '{collection_name}' from queue ({len(collection_members)} movies)")
             return {
                 "success": True,
-                "message": f"Removed collection '{collection_name}' ({len(titles)} movies) from queue"
+                "message": f"Removed collection '{collection_name}' ({len(collection_members)} movies) from queue"
             }
         else:
-            # ===== FIRST: Remove from Plex collection (BEFORE deleting from queue) =====
-            try:
-                # Get Plex config
-                plex_config = conn.execute("SELECT url, api_key, enabled, collection_key FROM plex_config WHERE id = 1").fetchone()
-                if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_key"]:
-                    # Get movie title and year to find rating key by title/year lookup
+            # Remove single movie
+            # Remove from Plex collection if configured
+            if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_key"]:
+                try:
+                    # Get movie details
                     movie_data = conn.execute(
-                        "SELECT movie_title, movie_year FROM scheduled_deletions WHERE movie_id = ? AND status = 'scheduled'",
+                        "SELECT movie_title, movie_year FROM scored_movies_cache WHERE movie_id = ?",
                         (movie_id,)
                     ).fetchone()
-            
+                    
                     if movie_data:
-                        movie_title = movie_data["movie_title"]
-                        movie_year = movie_data["movie_year"]
-                        collection_key = plex_config["collection_key"]
                         plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
-                
-                        # Get library map to find rating key by title|year
+                        collection_key = plex_config["collection_key"]
+                        
+                        # Get library map
                         library_items = await plex_client.get_library_items()
                         library_map = {}
                         for item in library_items:
@@ -272,34 +273,25 @@ async def remove_from_queue(movie_id: int):
                             if title and year and rating_key:
                                 key = f"{title.lower()}|{year}"
                                 library_map[key] = rating_key
-                
-                        lookup_key = f"{movie_title.lower()}|{movie_year}"
+                        
+                        lookup_key = f"{movie_data['movie_title'].lower()}|{movie_data['movie_year']}"
                         rating_key = library_map.get(lookup_key)
-                
                         if rating_key:
-                            # Use the new READ-MODIFY-WRITE remove method
-                            success = await plex_client.remove_from_collection(collection_key, rating_key)
-                            if success:
-                                logger.info(f"Manually removed '{movie_title}' from Plex collection 'Movies Leaving Soon'")
-                            else:
-                                logger.warning(f"Failed to remove '{movie_title}' from Plex collection")
-                        else:
-                            logger.debug(f"Could not find rating key for '{movie_title} ({movie_year})', skipping Plex removal")
-                    else:
-                        logger.debug(f"No movie data found for movie_id {movie_id}, skipping Plex removal")
-    
-            except Exception as plex_error:
-                logger.warning(f"Failed to remove from Plex collection for manually removed movie: {plex_error}")
-            # ===== END PLEX CLEANUP =====
-    
-            # THEN delete from the queue
+                            await plex_client.remove_from_collection(collection_key, rating_key)
+                            logger.info(f"Removed '{movie_data['movie_title']}' from Plex collection")
+                except Exception as plex_error:
+                    logger.warning(f"Failed to remove from Plex collection: {plex_error}")
+            
+            # Clear scheduled flag
             conn.execute(
-                "DELETE FROM scheduled_deletions WHERE movie_id = ? AND status = 'scheduled'",
+                """UPDATE scored_movies_cache 
+                   SET scheduled_for_deletion = 0, scheduled_date = NULL 
+                   WHERE movie_id = ?""",
                 (movie_id,)
             )
             conn.commit()
-            logger.info(f"Manually removed from queue: {existing['movie_title']}")
-    
+            
+            logger.info(f"Removed '{existing['movie_title']}' from scheduled queue")
             return {"success": True, "message": f"Removed {existing['movie_title']} from queue"}
 
     except HTTPException:
@@ -315,190 +307,13 @@ async def remove_from_queue(movie_id: int):
 async def get_score_queue(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    refresh: bool = False,
     sort_by: str = Query("score", description="Sort column: score, title, year, age, size, rating, quality, watched"),
     sort_order: str = Query("desc", description="Sort order: asc or desc")
 ) -> dict:
     """
-    Get scored movies from cache. If refresh=True or cache is empty,
-    triggers a live fetch from Radarr and rebuilds the cache.
+    Get scored movies from cache. Cache is updated by scheduled score runs.
     """
-    conn = get_connection()
-    try:
-        cache_count = conn.execute(
-            "SELECT COUNT(*) as count FROM scored_movies_cache"
-        ).fetchone()
-        has_cache = cache_count and cache_count["count"] > 0
-        
-        # Check if Plex is enabled but cache has no play counts
-        plex_config = conn.execute("SELECT enabled FROM plex_config WHERE id = 1").fetchone()
-        plex_enabled = bool(plex_config and plex_config["enabled"]) if plex_config else False
-        
-        play_counts_exist = False
-        if has_cache and plex_enabled:
-            # Check if any cache entries have play counts > 0
-            play_count_check = conn.execute(
-                "SELECT COUNT(*) as count FROM scored_movies_cache WHERE plex_play_count > 0"
-            ).fetchone()
-            play_counts_exist = play_count_check and play_count_check["count"] > 0
-        
-        # Rebuild if: refresh requested, OR no cache, OR (Plex enabled but no play counts in cache)
-        needs_rebuild = refresh or not has_cache or (plex_enabled and not play_counts_exist)
-        
-    except Exception:
-        has_cache = False
-        needs_rebuild = True
-    finally:
-        conn.close()
-
-    if needs_rebuild:
-        await _rebuild_score_cache()
-
     return await _get_score_queue_from_cache(page, per_page, sort_by, sort_order)
-
-
-async def _rebuild_score_cache():
-    """Fetch movies from Radarr, score them, and write to cache table with transaction safety."""
-    conn = get_connection()
-    try:
-        radarr_config = conn.execute("SELECT url, api_key FROM radarr_config WHERE id = 1").fetchone()
-        if not radarr_config or not radarr_config["url"] or not radarr_config["api_key"]:
-            logger.warning("Radarr not configured, cannot rebuild score cache")
-            return
-
-        plex_config = conn.execute("SELECT url, api_key, enabled FROM plex_config WHERE id = 1").fetchone()
-        plex_enabled = bool(plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"])
-        
-        logger.info(f"Plex enabled: {plex_enabled}")
-        if plex_enabled:
-            logger.info(f"Plex URL: {plex_config['url']}")
-            logger.info(f"Plex API Key exists: {bool(plex_config['api_key'])}")
-        
-        settings = conn.execute("SELECT protection_days, collection_grouping FROM settings WHERE id = 1").fetchone()
-        if settings is None:
-            settings = {"protection_days": 30, "collection_grouping": 0}
-    finally:
-        conn.close()
-
-    try:
-        radarr_client = RadarrClient(radarr_config["url"], radarr_config["api_key"])
-        movies = await radarr_client.get_movies()
-
-        plex_play_counts = None
-        if plex_enabled:
-            plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
-            ok, connection_msg = await plex_client.test_connection()
-            logger.info(f"Plex connection test: {ok} - {connection_msg}")
-            if ok:
-                plex_play_counts = await plex_client.get_play_counts_by_tmdb()
-                logger.info(f"Fetched {len(plex_play_counts)} play counts from Plex")
-                sample_items = list(plex_play_counts.items())[:5]
-                for tmdb_id, data in sample_items:
-                    logger.info(f"Sample play count - TMDb: {tmdb_id}, plays: {data.get('play_count', 0)}")
-            else:
-                logger.warning(f"Plex connection failed: {connection_msg}")
-        else:
-            logger.info("Plex not enabled, skipping play counts")
-
-        # ===== WRAP HEAVY DB OPERATIONS IN THREAD POOL =====
-        def _rebuild_db_operations():
-            conn = get_connection()
-            try:
-                # Start transaction
-                conn.execute("BEGIN TRANSACTION")
-                
-                engine = ScoringEngine(conn)
-                if settings:
-                    engine.protection_days = settings["protection_days"]
-                    engine.collection_grouping = bool(settings["collection_grouping"])
-
-                scored = engine.get_scored_movies(movies, plex_play_counts, plex_enabled)
-
-                # Clear old cache
-                conn.execute("DELETE FROM scored_movies_cache")
-
-                for entry in scored:
-                    if entry.get("is_collection"):
-                        for member in entry.get("movies", []):
-                            play_count = 0
-                            if plex_play_counts and member.get("tmdb_id"):
-                                plex_entry = plex_play_counts.get(str(member["tmdb_id"]))
-                                if plex_entry:
-                                    play_count = plex_entry.get("play_count", 0)
-
-                            conn.execute("""
-                                INSERT INTO scored_movies_cache
-                                (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
-                                 size_gb, age_days, quality, monitored, normalized_score,
-                                 raw_score, factors, plex_play_count,
-                                 collection_name, collection_id, is_collection, cached_at)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
-                            """, (
-                                member["movie_id"],
-                                member["movie_title"],
-                                member["movie_year"],
-                                member.get("tmdb_id"),
-                                member["tmdb_rating"],
-                                member["size_gb"],
-                                member["age_days"],
-                                member["quality"],
-                                1 if member["monitored"] else 0,
-                                entry["normalized_score"],
-                                entry["raw_score"],
-                                json.dumps(member["factors"]),
-                                play_count,
-                                entry.get("collection_title"),
-                                entry.get("collection_id"),
-                            ))
-                    else:
-                        play_count = 0
-                        if plex_play_counts and entry.get("tmdb_id"):
-                            plex_entry = plex_play_counts.get(str(entry["tmdb_id"]))
-                            if plex_entry:
-                                play_count = plex_entry.get("play_count", 0)
-
-                        conn.execute("""
-                            INSERT INTO scored_movies_cache
-                            (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
-                             size_gb, age_days, quality, monitored, normalized_score,
-                             raw_score, factors, plex_play_count,
-                             collection_name, collection_id, is_collection, cached_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
-                        """, (
-                            entry["movie_id"],
-                            entry["movie_title"],
-                            entry["movie_year"],
-                            entry.get("tmdb_id"),
-                            entry["tmdb_rating"],
-                            entry["size_gb"],
-                            entry["age_days"],
-                            entry["quality"],
-                            1 if entry["monitored"] else 0,
-                            entry["normalized_score"],
-                            entry["raw_score"],
-                            json.dumps(entry["factors"]),
-                            play_count,
-                            None,
-                            None,
-                        ))
-
-                conn.commit()
-                return len(scored)
-                
-            except Exception as e:
-                conn.execute("ROLLBACK")
-                logger.error(f"Failed to rebuild score cache, transaction rolled back: {e}")
-                raise
-            finally:
-                conn.close()
-
-        # Run DB operations in thread pool to prevent blocking
-        entry_count = await asyncio.to_thread(_rebuild_db_operations)
-        logger.info(f"Score cache rebuilt with {entry_count} entries")
-        # ===== END THREAD POOL WRAPPER =====
-
-    except Exception as e:
-        logger.error(f"Failed to rebuild score cache: {e}")
 
 
 async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "score", sort_order: str = "desc") -> dict:
@@ -513,7 +328,7 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
         plex_enabled = bool(plex_config and plex_config["enabled"]) if plex_config else False
         
         scheduled_ids = conn.execute(
-            "SELECT movie_id FROM scheduled_deletions"
+            "SELECT movie_id FROM scored_movies_cache WHERE scheduled_for_deletion = 1"
         ).fetchall()
         scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
 
@@ -639,8 +454,7 @@ async def search_score_queue(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     sort_by: str = Query("score", description="Sort column: score, title, year, age, size, rating, quality, watched"),
-    sort_order: str = Query("desc", description="Sort order: asc or desc"),
-    refresh: bool = False  # <-- ADD THIS LINE
+    sort_order: str = Query("desc", description="Sort order: asc or desc")
 ):
     """
     Search scored movies cache by title or collection name.
@@ -651,15 +465,10 @@ async def search_score_queue(
         # Check if Plex is enabled
         plex_config = conn.execute("SELECT enabled FROM plex_config WHERE id = 1").fetchone()
         plex_enabled = bool(plex_config and plex_config["enabled"]) if plex_config else False
-        
-        # Rebuild cache if refresh=True
-        if refresh:
-            # Run cache rebuild in background or synchronously
-            await _rebuild_score_cache()
 
         # Get scheduled movie IDs to exclude
         scheduled_ids = conn.execute(
-            "SELECT movie_id FROM scheduled_deletions"
+            "SELECT movie_id FROM scored_movies_cache WHERE scheduled_for_deletion = 1"
         ).fetchall()
         scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
         

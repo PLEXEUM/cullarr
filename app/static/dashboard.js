@@ -164,34 +164,16 @@ async function removeFromQueue(movieId, title) {
 }
 
 // Score Queue
-async function loadScoreQueue(forceRefresh = false, silent = false) {
-    // Show loading state on refresh button if forceRefresh is true
-    const refreshBtn = document.getElementById('refresh-queue-btn');
-    const originalBtnHtml = refreshBtn ? refreshBtn.innerHTML : '';
-    
-    if (forceRefresh && refreshBtn) {
-        refreshBtn.disabled = true;
-        refreshBtn.innerHTML = '⏳';
-        if (!silent) {
-            showToast('Refreshing score queue... this may take a moment', 'info');
-        }
-    }
-    
+async function loadScoreQueue() {
     try {
         let url;
         
         // If search is active, use search endpoint
         if (scoreQueueSearchActive && scoreQueueSearch.trim() !== '') {
             url = `/api/dashboard/score-queue/search?q=${encodeURIComponent(scoreQueueSearch)}&page=${scoreQueuePage}&per_page=${scoreQueuePerPage}&sort_by=${scoreQueueSortBy}&sort_order=${scoreQueueSortOrder}`;
-            if (forceRefresh) {
-                url += '&refresh=true';
-            }
         } else {
             // Normal pagination (only load current page)
             url = `/api/dashboard/score-queue?page=${scoreQueuePage}&per_page=${scoreQueuePerPage}&sort_by=${scoreQueueSortBy}&sort_order=${scoreQueueSortOrder}`;
-            if (forceRefresh) {
-                url += '&refresh=true';
-            }
         }
         
         const res = await fetch(url);
@@ -205,9 +187,6 @@ async function loadScoreQueue(forceRefresh = false, silent = false) {
                 tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No movies found. Run a score cycle or configure Radarr first.</td></tr>';
             }
             document.getElementById('score-queue-pagination').innerHTML = '';
-            if (forceRefresh) {
-                showToast('Score queue refreshed - no movies found', 'info');
-            }
             return;
         }
 
@@ -290,20 +269,8 @@ async function loadScoreQueue(forceRefresh = false, silent = false) {
         // Update sort icons
         updateSortIcons();
 
-        if (forceRefresh) {
-            showToast('Score queue refreshed successfully', 'success');
-        }
-
     } catch (e) {
         console.error('Failed to load score queue:', e);
-        if (forceRefresh) {
-            showToast('Refresh failed: ' + e.message, 'error');
-        }
-    } finally {
-        if (forceRefresh && refreshBtn) {
-            refreshBtn.disabled = false;
-            refreshBtn.innerHTML = originalBtnHtml;
-        }
     }
 }
 
@@ -856,7 +823,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('run-score-btn').addEventListener('click', triggerScoreRun);
     document.getElementById('run-cull-btn').addEventListener('click', triggerCullRun);
-    document.getElementById('refresh-queue-btn').addEventListener('click', () => loadScoreQueue(true));
     document.getElementById('clear-failed-btn').addEventListener('click', clearFailedDeletions);
     document.getElementById('per-page-select').addEventListener('change', (e) => {
         scoreQueuePerPage = parseInt(e.target.value);
