@@ -272,13 +272,15 @@ async def run_score_cycle():
         
         logger.info(f"Scored {len(scored_movies)} entries ({len(movies)} total movies)")
 
-        # ===== STEP 1: Get existing scheduled dates BEFORE clearing =====
+        # ===== STEP 1: Get existing scheduled movies (for Plex cleanup later) =====
         existing_scheduled = {}
+        existing_scheduled_movies = []  # ← ADD THIS
         existing = conn.execute(
-            "SELECT movie_id, scheduled_date FROM scored_movies_cache WHERE scheduled_for_deletion = 1 AND scheduled_date IS NOT NULL"
+            "SELECT movie_id, movie_title, movie_year, scheduled_date FROM scored_movies_cache WHERE scheduled_for_deletion = 1 AND scheduled_date IS NOT NULL"
         ).fetchall()
         for row in existing:
             existing_scheduled[row["movie_id"]] = row["scheduled_date"]
+            existing_scheduled_movies.append(dict(row))  # ← ADD THIS
         
         logger.info(f"Found {len(existing_scheduled)} currently scheduled movies with existing dates")
 
@@ -414,13 +416,39 @@ async def run_score_cycle():
         
         conn.commit()
         
+        # ===== STEP 6b: Get new scheduled movie IDs =====
+        new_scheduled_ids = set()
+        new_scheduled = conn.execute(
+            "SELECT movie_id FROM scored_movies_cache WHERE scheduled_for_deletion = 1"
+        ).fetchall()
+        for row in new_scheduled:
+            new_scheduled_ids.add(row["movie_id"])
+        
+        # ===== STEP 6c: Find movies that were removed from the schedule =====
+        old_scheduled_ids = set(existing_scheduled.keys())
+        removed_movie_ids = old_scheduled_ids - new_scheduled_ids
+        
+        # ===== STEP 6d: Remove removed movies from Plex collection =====
+        if removed_movie_ids and plex_enabled and plex_client and plex_config and plex_config["collection_key"]:
+            # Get full movie details for removed movies
+            placeholders = ",".join("?" * len(removed_movie_ids))
+            removed_movies_data = conn.execute(
+                f"SELECT movie_id, movie_title, movie_year FROM scored_movies_cache WHERE movie_id IN ({placeholders})",
+                tuple(removed_movie_ids)
+            ).fetchall()
+            
+            if removed_movies_data:
+                removed_movies_list = [dict(row) for row in removed_movies_data]
+                logger.info(f"Removing {len(removed_movies_list)} movies from Plex collection (fell out of queue due to reranking)")
+                await _remove_plex_collections(plex_client, removed_movies_list, plex_library_map)
+        
         scheduled_count = conn.execute(
             "SELECT COUNT(*) as count FROM scored_movies_cache WHERE scheduled_for_deletion = 1"
         ).fetchone()["count"]
         
         logger.info(f"Score cycle complete: {scheduled_count} movies scheduled for deletion (max_queued: {max_queued})")
         
-        # ===== STEP 6: Sync with Plex collection if enabled =====
+        # ===== STEP 7: Sync with Plex collection if enabled =====
         if plex_enabled and plex_client and plex_config and plex_config["collection_key"]:
             # Get all scheduled movies
             scheduled_movies = conn.execute("""
