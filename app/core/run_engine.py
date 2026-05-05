@@ -12,6 +12,62 @@ from app.core.run_state import _active_run
 logger = get_logger()
 
 
+# ===== ADD THIS NEW FUNCTION HERE =====
+async def _update_queued_movie_scores(
+    conn,
+    queued_movies: List[dict],
+    scored_movies_map: Dict[int, dict],
+    threshold: float,
+    plex_enabled: bool,
+    plex_client=None,
+    plex_library_map: dict = None,
+    collection_key: str = None
+) -> int:
+    """
+    Update scores for queued movies and remove those that no longer qualify.
+    Returns number of movies removed from queue.
+    """
+    removed_count = 0
+    removed_movies = []
+    
+    for queued in queued_movies:
+        movie_id = queued["movie_id"]
+        current_score = queued["score"]
+        
+        # Find the updated score for this movie
+        updated_movie = scored_movies_map.get(movie_id)
+        if not updated_movie:
+            continue
+            
+        new_score = updated_movie.get("normalized_score", 0)
+        
+        # If score dropped below threshold, remove from queue
+        if new_score <= threshold:
+            logger.info(f"Removing '{queued['movie_title']}' from queue - score dropped from {current_score:.1f} to {new_score:.1f} (below threshold {threshold})")
+            conn.execute(
+                "DELETE FROM scheduled_deletions WHERE movie_id = ? AND status = 'scheduled'",
+                (movie_id,)
+            )
+            removed_count += 1
+            removed_movies.append(dict(queued))
+        else:
+            # Just update the score
+            conn.execute(
+                "UPDATE scheduled_deletions SET score = ? WHERE movie_id = ? AND status = 'scheduled'",
+                (new_score, movie_id)
+            )
+            logger.debug(f"Updated score for '{queued['movie_title']}' from {current_score:.1f} to {new_score:.1f}")
+    
+    # Remove from Plex collection if enabled
+    if removed_movies and plex_enabled and plex_client and collection_key:
+        logger.info(f"Removing {len(removed_movies)} movies from Plex collection (scores dropped below threshold)")
+        await _remove_plex_collections(plex_client, removed_movies, plex_library_map)
+    
+    conn.commit()
+    return removed_count
+# ===== END NEW FUNCTION =====
+
+
 async def acquire_run_lock(run_type: str) -> bool:
     """Acquire lock for a run. Returns True if acquired, False if already running."""
     conn = get_connection()
@@ -345,6 +401,41 @@ async def run_score_cycle():
         
         logger.info(f"Scored {len(scored_movies)} entries ({len(movies)} total movies)")
 
+        # ===== NEW: Update scores for already-queued movies =====
+        # Get currently queued movies
+        queued_movies = conn.execute(
+            "SELECT * FROM scheduled_deletions WHERE status = 'scheduled'"
+        ).fetchall()
+        
+        if queued_movies:
+            # Create a map of movie_id -> updated score entry
+            scored_movies_map = {}
+            for entry in scored_movies:
+                if entry.get("is_collection"):
+                    for member in entry.get("movies", []):
+                        scored_movies_map[member["movie_id"]] = entry
+                else:
+                    scored_movies_map[entry["movie_id"]] = entry
+            
+            threshold = settings["min_score_threshold"] if settings else 0
+            
+            # Update scores and remove those that dropped below threshold
+            removed_count = await _update_queued_movie_scores(
+                conn, 
+                list(queued_movies), 
+                scored_movies_map, 
+                threshold,
+                plex_enabled,
+                plex_client if plex_enabled else None,
+                plex_library_map if plex_enabled else None,
+                plex_config["collection_key"] if plex_config and plex_enabled else None
+            )
+            
+            if removed_count > 0:
+                logger.info(f"Removed {removed_count} movies from queue due to score drop (e.g., from being watched)")
+        # ===== END NEW CODE =====
+
+
         # ===== WRAP HEAVY DB OPERATIONS IN THREAD POOL =====
         def _process_queue_operations():
             thread_conn = get_connection()
@@ -372,14 +463,16 @@ async def run_score_cycle():
                     logger.info("Queue full, no new movies added")
                     return None, None, None  # Return None for to_add, scheduled_id_set, and deletions_per_day
 
+                # Get threshold from settings (moved up)
+                threshold = settings["min_score_threshold"] if settings else 0
+                
                 # Filter already-queued movie IDs
                 scheduled_ids = thread_conn.execute(
                     "SELECT movie_id FROM scheduled_deletions"
                 ).fetchall()
                 scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
-
-                # Get threshold from settings
-                threshold = settings["min_score_threshold"] if settings else 0
+                
+                logger.info(f"Current queue has {len(scheduled_id_set)} movies scheduled")
 
                 # Filter candidates
                 candidates = []
