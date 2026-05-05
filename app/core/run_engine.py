@@ -270,12 +270,22 @@ async def run_score_cycle():
         _active_run["current_movie"] = f"Scored {len(scored_movies)} entries"
         _active_run["current"] = 60
         
-        logger.info(f"Scored {len(scored_movies)} entries ({len(movies)} total movies)")
+                logger.info(f"Scored {len(scored_movies)} entries ({len(movies)} total movies)")
 
-        # ===== STEP 1: Clear existing scheduled flags and dates =====
+        # ===== STEP 1: Get existing scheduled dates BEFORE clearing =====
+        existing_scheduled = {}
+        existing = conn.execute(
+            "SELECT movie_id, scheduled_date FROM scored_movies_cache WHERE scheduled_for_deletion = 1 AND scheduled_date IS NOT NULL"
+        ).fetchall()
+        for row in existing:
+            existing_scheduled[row["movie_id"]] = row["scheduled_date"]
+        
+        logger.info(f"Found {len(existing_scheduled)} currently scheduled movies with existing dates")
+
+        # ===== STEP 2: Clear existing scheduled flags and dates =====
         conn.execute("UPDATE scored_movies_cache SET scheduled_for_deletion = 0, scheduled_date = NULL")
         
-        # ===== STEP 2: Insert or update all scored movies in cache =====
+        # ===== STEP 3: Insert or update all scored movies in cache =====
         for entry in scored_movies:
             if entry.get("is_collection"):
                 for member in entry.get("movies", []):
@@ -334,7 +344,7 @@ async def run_score_cycle():
         conn.commit()
         logger.info(f"Updated scored_movies_cache with {len(scored_movies)} entries")
 
-        # ===== STEP 3: Determine top N movies to schedule =====
+        # ===== STEP 4: Determine top N movies to schedule =====
         max_queued = settings["max_queued"] if settings else 20
         threshold = settings["min_score_threshold"] if settings else 0
         deletions_per_day = int(settings["deletions_per_day"]) if settings and settings["deletions_per_day"] is not None else 0
@@ -353,12 +363,8 @@ async def run_score_cycle():
         
         logger.info(f"Top {len(top_movies)} movies qualify for scheduling (threshold: {threshold})")
         
-        # ===== STEP 4: Assign scheduled dates with staggering =====
-        # First, preserve existing scheduled dates for movies staying in top N
-        existing_scheduled = {}
-        for movie in all_movies:
-            if movie["scheduled_date"]:
-                existing_scheduled[movie["movie_id"]] = movie["scheduled_date"]
+        # ===== STEP 5: Assign scheduled dates with staggering =====
+        # NOTE: existing_scheduled was populated BEFORE we cleared the flags
         
         # Calculate staggering for new movies
         current_time = datetime.now()
@@ -396,7 +402,7 @@ async def run_score_cycle():
                 
                 logger.info(f"Scheduled new movie (rank #{idx+1}) for {scheduled_date.isoformat()} (+{base_delay_days + stagger_days} days)")
         
-        # ===== STEP 5: Ensure all other movies are marked as not scheduled =====
+        # ===== STEP 6: Ensure all other movies are marked as not scheduled =====
         conn.execute("""
             UPDATE scored_movies_cache 
             SET scheduled_for_deletion = 0, scheduled_date = NULL
