@@ -426,6 +426,7 @@ class ScoringEngine:
                 "quality": movies[0]["quality"],
                 "monitored": all(m["monitored"] for m in movies),
                 "factors": movies[0]["factors"],  # representative factors from first movie
+                 "plex_play_count": sum(m.get("plex_play_count", 0) for m in movies),  # ← ADD THIS
             })
 
         return result
@@ -461,6 +462,7 @@ class ScoringEngine:
                     "monitored": result["monitored"],
                     "raw_score": result["score"],
                     "factors": result["factors"],
+                    "plex_play_count": result.get("watched_details", {}).get("play_count", 0) if result.get("watched_details") else 0,
                     "collection": collection,
                     "is_collection": False,
                 })
