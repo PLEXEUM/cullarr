@@ -144,15 +144,15 @@ async function loadScheduledDeletions() {
                     <td class="px-4 py-2" style="color: var(--text-secondary)">${deleteDate}</span></td>
                     <td class="px-4 py-2" ${countdownClass}>${countdownText}</span></td>
                     <td class="px-4 py-2">
-                        <button onclick="removeFromQueue(${item.movie_id}, '${escapeHtml(item.movie_title)}')"
-                            class="btn-sm btn-danger">✕ Remove</button>
-                    </td>
-                    <td class="px-4 py-2">
                         <button class="btn-sm btn-outline scheduled-details-btn" 
                             data-title="${escapeHtml(item.movie_title)}"
                             data-score="${item.score}"
                             data-factors='${factorsJson}'
                             data-is-collection="false">🔍 Details</button>
+                    </td>
+                    <td class="px-4 py-2">
+                        <button onclick="removeFromQueue(${item.movie_id}, '${escapeHtml(item.movie_title)}')"
+                            class="btn-sm btn-danger">✕ Remove</button>
                     </td>
                 </tr>
             `;
