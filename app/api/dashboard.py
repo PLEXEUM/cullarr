@@ -108,7 +108,8 @@ async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
                 normalized_score as score,
                 scheduled_date,
                 'scheduled' as status,
-                collection_name
+                collection_name,
+                factors
             FROM scored_movies_cache
             WHERE scheduled_for_deletion = 1
               AND scheduled_date IS NOT NULL

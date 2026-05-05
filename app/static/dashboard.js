@@ -125,6 +125,17 @@ async function loadScheduledDeletions() {
             // Determine if this is a collection (for year display)
             const isCollection = item.collection_name ? true : false;
             
+            // Prepare factors JSON for details modal
+            let factors = [];
+            if (item.factors) {
+                try {
+                    factors = typeof item.factors === 'string' ? JSON.parse(item.factors) : item.factors;
+                } catch (e) {
+                    factors = [];
+                }
+            }
+            const factorsJson = JSON.stringify(factors).replace(/'/g, "&#39;");
+            
             return `
                 <tr style="border-bottom: 1px solid var(--border-color);">
                     <td class="px-4 py-2"><span class="badge ${scoreClass}">${item.score.toFixed(1)}</span></td>
@@ -135,7 +146,14 @@ async function loadScheduledDeletions() {
                     <td class="px-4 py-2">
                         <button onclick="removeFromQueue(${item.movie_id}, '${escapeHtml(item.movie_title)}')"
                             class="btn-sm btn-danger">✕ Remove</button>
-                   </td>
+                    </td>
+                    <td class="px-4 py-2">
+                        <button class="btn-sm btn-outline scheduled-details-btn" 
+                            data-title="${escapeHtml(item.movie_title)}"
+                            data-score="${item.score}"
+                            data-factors='${factorsJson}'
+                            data-is-collection="false">🔍 Details</button>
+                    </td>
                 </tr>
             `;
         }).join('');
@@ -922,6 +940,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 showScoreDetails(title, score, factors, isCollection, movies, movieCount);
+            }
+        });
+    }
+
+    // Event delegation for scheduled deletions details buttons
+    const scheduledTable = document.getElementById('scheduled-table');
+    if (scheduledTable) {
+        scheduledTable.addEventListener('click', (e) => {
+            const btn = e.target.closest('.scheduled-details-btn');
+            if (btn) {
+                e.preventDefault();
+                const title = btn.getAttribute('data-title');
+                const score = parseFloat(btn.getAttribute('data-score'));
+                const isCollection = btn.getAttribute('data-is-collection') === 'true';
+                
+                let factors = [];
+                try {
+                    const factorsAttr = btn.getAttribute('data-factors');
+                    if (factorsAttr && factorsAttr !== 'undefined') {
+                        factors = JSON.parse(factorsAttr);
+                    }
+                } catch (err) {
+                    console.error('Failed to parse factors:', err);
+                    factors = [];
+                }
+                
+                showScoreDetails(title, score, factors, isCollection, [], 0);
             }
         });
     }
