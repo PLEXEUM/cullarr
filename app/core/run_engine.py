@@ -384,18 +384,19 @@ async def run_score_cycle():
                 )
                 logger.debug(f"Keeping scheduled date {original_date} for movie_id {movie_id} (stays in top {max_queued})")
             else:
-                # New movie entering top N - calculate scheduled date
-                stagger_days = 0
+                # New movie entering top N - calculate scheduled date based on rank position
+                # Formula: deletion date = today + (base_delay_days * (batch_number + 1))
+                # where batch_number = rank_position // deletions_per_day
                 if deletions_per_day > 0:
-                    # How many new movies are before this one in the top N?
-                    # Count new movies among top movies up to this index
-                    new_movies_before = sum(
-                        1 for i in range(idx) 
-                        if top_movies[i]["movie_id"] not in existing_scheduled
-                    )
-                    stagger_days = new_movies_before // deletions_per_day
+                    # Calculate which batch this movie falls into (0-indexed batches)
+                    batch_number = idx // deletions_per_day
+                    # Total delay = base_delay_days * (batch_number + 1)
+                    total_delay_days = base_delay_days * (batch_number + 1)
+                else:
+                    # No staggering - all new movies get base delay
+                    total_delay_days = base_delay_days
                 
-                scheduled_date = current_time + timedelta(days=base_delay_days + stagger_days)
+                scheduled_date = current_time + timedelta(days=total_delay_days)
                 
                 conn.execute("""
                     UPDATE scored_movies_cache 
@@ -403,7 +404,7 @@ async def run_score_cycle():
                     WHERE movie_id = ?
                 """, (scheduled_date.isoformat(), movie_id))
                 
-                logger.info(f"Scheduled new movie (rank #{idx+1}) for {scheduled_date.isoformat()} (+{base_delay_days + stagger_days} days)")
+                logger.info(f"Scheduled new movie (rank #{idx+1}) for {scheduled_date.isoformat()} (+{total_delay_days} days)")
         
         # ===== STEP 6: Ensure all other movies are marked as not scheduled =====
         conn.execute("""
