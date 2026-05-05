@@ -270,7 +270,7 @@ async def run_score_cycle():
         _active_run["current_movie"] = f"Scored {len(scored_movies)} entries"
         _active_run["current"] = 60
         
-                logger.info(f"Scored {len(scored_movies)} entries ({len(movies)} total movies)")
+        logger.info(f"Scored {len(scored_movies)} entries ({len(movies)} total movies)")
 
         # ===== STEP 1: Get existing scheduled dates BEFORE clearing =====
         existing_scheduled = {}
