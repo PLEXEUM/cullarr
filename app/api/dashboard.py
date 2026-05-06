@@ -359,20 +359,19 @@ async def manual_schedule_movie(movie_id: int):
             WHERE movie_id = ? OR collection_id = ?
         """, (scheduled_date.isoformat(), movie_id, movie_id))
         
-        conn.commit()
-        
         # For collections, mark both the collection row AND all member movies
         if movie["is_collection"] and movie["collection_name"]:
             # Update all member movies in this collection
-            conn.execute("""
+            cursor = conn.execute("""
                 UPDATE scored_movies_cache 
                 SET scheduled_for_deletion = 1, 
                     scheduled_date = ?,
                     manually_scheduled = 1
                 WHERE collection_name = ? AND is_collection = 0
             """, (scheduled_date.isoformat(), movie["collection_name"]))
-    
-            member_count = conn.rowcount
+
+            member_count = cursor.rowcount  # ← Use cursor.rowcount instead
+            conn.commit()
             logger.info(f"Manually scheduled collection '{movie['collection_name']}' with {member_count} movies (collection_id: {movie_id})")
             return {"success": True, "message": f"Collection '{movie['movie_title']}' scheduled for deletion ({member_count} movies)"}
         else:
