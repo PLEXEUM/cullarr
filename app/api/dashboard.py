@@ -146,6 +146,7 @@ async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
                     "is_collection": True,
                     "collection_name": cname,
                     "collection_id": item.get("collection_id"),
+                    "movie_id": None,
                     "movie_title": cname,
                     "movie_year": None,
                     "year_min": None,
