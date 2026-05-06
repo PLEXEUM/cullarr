@@ -7,7 +7,6 @@ from app.utils.logger import get_logger
 from plexapi.server import PlexServer
 import json
 import asyncio
-from datetime import datetime, timedelta
 
 router = APIRouter()
 logger = get_logger()
@@ -109,16 +108,10 @@ async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
                 normalized_score as score,
                 scheduled_date,
                 'scheduled' as status,
-                collection_name,
-                collection_id,
-                is_collection,
-                factors,
-                tmdb_rating,
-                age_days,
-                plex_play_count,
-                manually_scheduled
+                collection_name
             FROM scored_movies_cache
-            WHERE scheduled_date IS NOT NULL
+            WHERE scheduled_for_deletion = 1
+              AND scheduled_date IS NOT NULL
             ORDER BY collection_name ASC, scheduled_date ASC
             LIMIT ?
         """, (limit,)).fetchall()
@@ -309,83 +302,6 @@ async def remove_from_queue(movie_id: int):
     finally:
         conn.close()
             
-
-@router.post("/dashboard/score-queue/{movie_id}/schedule")
-async def manual_schedule_movie(movie_id: int):
-    """
-    Manually add a movie to scheduled deletions.
-    Sets scheduled_for_deletion = 1, manually_scheduled = 1.
-    Scheduled date = today + delete_after_days + stagger.
-    """
-    conn = get_connection()
-    try:
-        # Check if movie exists in cache
-        movie = conn.execute(
-            """SELECT movie_id, movie_title, collection_name, is_collection 
-                FROM scored_movies_cache 
-                WHERE movie_id = ? OR collection_id = ?""",
-            (movie_id, movie_id)
-        ).fetchone()
-        
-        if not movie:
-            raise HTTPException(status_code=404, detail="Movie not found")
-        
-        # Check if already scheduled
-        existing = conn.execute(
-            "SELECT scheduled_for_deletion FROM scored_movies_cache WHERE (movie_id = ? OR collection_id = ?) AND scheduled_for_deletion = 1",
-            (movie_id, movie_id)
-        ).fetchone()
-        
-        if existing:
-            return {"success": False, "message": "Movie already scheduled for deletion"}
-        
-        # Get settings
-        settings = conn.execute(
-            "SELECT delete_after_days, deletions_per_day, max_queued FROM settings WHERE id = 1"
-        ).fetchone()
-        
-        delete_after_days = settings["delete_after_days"] if settings else 7
-        deletions_per_day = int(settings["deletions_per_day"]) if settings and settings["deletions_per_day"] is not None else 0
-        
-        # Manual adds use only delete_after_days (no staggering)
-        scheduled_date = datetime.now() + timedelta(days=delete_after_days)
-        
-        # Update movie
-        conn.execute("""
-            UPDATE scored_movies_cache 
-            SET scheduled_for_deletion = 1, 
-                scheduled_date = ?,
-                manually_scheduled = 1
-            WHERE movie_id = ? OR collection_id = ?
-        """, (scheduled_date.isoformat(), movie_id, movie_id))
-        
-        # For collections, mark both the collection row AND all member movies
-        if movie["is_collection"] and movie["collection_name"]:
-            # Update all member movies in this collection
-            cursor = conn.execute("""
-                UPDATE scored_movies_cache 
-                SET scheduled_for_deletion = 1, 
-                    scheduled_date = ?,
-                    manually_scheduled = 1
-                WHERE collection_name = ? AND is_collection = 0
-            """, (scheduled_date.isoformat(), movie["collection_name"]))
-
-            member_count = cursor.rowcount  # ← Use cursor.rowcount instead
-            conn.commit()
-            logger.info(f"Manually scheduled collection '{movie['collection_name']}' with {member_count} movies (collection_id: {movie_id})")
-            return {"success": True, "message": f"Collection '{movie['movie_title']}' scheduled for deletion ({member_count} movies)"}
-        else:
-            logger.info(f"Manually scheduled movie '{movie['movie_title']}' for {scheduled_date.isoformat()}")
-            return {"success": True, "message": f"Movie '{movie['movie_title']}' scheduled for deletion"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to manually schedule movie {movie_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to schedule movie")
-    finally:
-        conn.close()
-
 
 @router.get("/dashboard/score-queue")
 async def get_score_queue(

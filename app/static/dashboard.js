@@ -125,73 +125,23 @@ async function loadScheduledDeletions() {
             // Determine if this is a collection (for year display)
             const isCollection = item.collection_name ? true : false;
             
-            // Prepare factors JSON for details modal
-            let factors = [];
-            if (item.factors) {
-                try {
-                    factors = typeof item.factors === 'string' ? JSON.parse(item.factors) : item.factors;
-                } catch (e) {
-                    factors = [];
-                }
-            }
-            const factorsJson = JSON.stringify(factors).replace(/'/g, "&#39;");
-            
             return `
                 <tr style="border-bottom: 1px solid var(--border-color);">
                     <td class="px-4 py-2"><span class="badge ${scoreClass}">${item.score.toFixed(1)}</span></td>
-                    <td class="px-4 py-2 font-medium">
-                        ${escapeHtml(item.movie_title)}${item.manually_scheduled ? ' <span style="color: var(--accent); font-weight: bold;">(M)</span>' : ''}
-                    </span></td>
+                    <td class="px-4 py-2 font-medium">${escapeHtml(item.movie_title)}</span></td>
                     <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(yearDisplay)}</span></td>
                     <td class="px-4 py-2" style="color: var(--text-secondary)">${deleteDate}</span></td>
                     <td class="px-4 py-2" ${countdownClass}>${countdownText}</span></td>
                     <td class="px-4 py-2">
-                        <button class="btn-sm btn-outline scheduled-details-btn" 
-                            data-title="${escapeHtml(item.movie_title)}"
-                            data-score="${item.score}"
-                            data-factors='${factorsJson}'
-                            data-is-collection="${isCollection}"
-                            data-movies='${JSON.stringify(item.movies || []).replace(/'/g, "&#39;")}'
-                            data-movie-count="${item.movies ? item.movies.length : 0}">🔍 Details</button>
-                    </td>
-                    <td class="px-4 py-2">
                         <button onclick="removeFromQueue(${item.movie_id}, '${escapeHtml(item.movie_title)}')"
                             class="btn-sm btn-danger">✕ Remove</button>
-                    </td>
+                   </td>
                 </tr>
             `;
         }).join('');
         
     } catch (e) {
         console.error('Failed to load scheduled deletions:', e);
-    }
-}
-
-// Schedule a movie manually from Score Queue
-async function scheduleMovie(movieId, title, isCollection = false) {
-    const confirmMsg = isCollection 
-        ? `Schedule entire collection "${title}" for deletion? All movies in this collection will be queued.`
-        : `Schedule "${title}" for deletion?`;
-    
-    if (!confirm(confirmMsg)) return;
-    
-    try {
-        const res = await fetch(`/api/dashboard/score-queue/${movieId}/schedule`, { 
-            method: 'POST' 
-        });
-        const data = await res.json();
-        
-        if (res.ok && data.success) {
-            showToast(data.message || `"${title}" scheduled for deletion`, 'success');
-            // Refresh both queues to reflect changes
-            await loadScoreQueue();
-            await loadScheduledDeletions();
-            await loadQueueStatus();
-        } else {
-            showToast(data.message || 'Failed to schedule movie', 'error');
-        }
-    } catch (e) {
-        showToast('Error: ' + e.message, 'error');
     }
 }
 
@@ -277,9 +227,7 @@ async function loadScoreQueue() {
                             data-movies='${moviesData}'
                             data-movie-count="${movie.movie_count || 0}"
                             class="btn-sm btn-outline details-btn">🔍 Details</button>
-                    <button onclick="scheduleMovie(${movie.movie_id || movie.collection_id}, '${safeTitle}', ${isCollection})"
-                            class="btn-sm btn-success ml-2">📅 Schedule</button>
-                </td>
+                </span>
             </tr>
         `;
         }).join('');
@@ -974,33 +922,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 showScoreDetails(title, score, factors, isCollection, movies, movieCount);
-            }
-        });
-    }
-
-    // Event delegation for scheduled deletions details buttons
-    const scheduledTable = document.getElementById('scheduled-table');
-    if (scheduledTable) {
-        scheduledTable.addEventListener('click', (e) => {
-            const btn = e.target.closest('.scheduled-details-btn');
-            if (btn) {
-                e.preventDefault();
-                const title = btn.getAttribute('data-title');
-                const score = parseFloat(btn.getAttribute('data-score'));
-                const isCollection = btn.getAttribute('data-is-collection') === 'true';
-                
-                let factors = [];
-                try {
-                    const factorsAttr = btn.getAttribute('data-factors');
-                    if (factorsAttr && factorsAttr !== 'undefined') {
-                        factors = JSON.parse(factorsAttr);
-                    }
-                } catch (err) {
-                    console.error('Failed to parse factors:', err);
-                    factors = [];
-                }
-                
-                showScoreDetails(title, score, factors, isCollection, [], 0);
             }
         });
     }

@@ -145,7 +145,6 @@ def init_db():
             is_collection BOOLEAN DEFAULT 0,
             scheduled_for_deletion BOOLEAN DEFAULT 0,
             scheduled_date DATETIME,
-            manually_scheduled BOOLEAN DEFAULT 0,
             cached_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -328,13 +327,6 @@ def migrate_db():
     try:
         cursor.execute("ALTER TABLE scored_movies_cache ADD COLUMN scheduled_date DATETIME")
         print("Migration applied: added scheduled_date to scored_movies_cache")
-    except Exception:
-        pass  # Column already exists
-
-    # Migration: Add manually_scheduled to scored_movies_cache
-    try:
-        cursor.execute("ALTER TABLE scored_movies_cache ADD COLUMN manually_scheduled BOOLEAN DEFAULT 0")
-        print("Migration applied: added manually_scheduled to scored_movies_cache")
     except Exception:
         pass  # Column already exists
     
