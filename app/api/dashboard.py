@@ -116,7 +116,7 @@ async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
                 age_days,
                 plex_play_count
             FROM scored_movies_cache
-              AND scheduled_date IS NOT NULL
+            WHERE scheduled_date IS NOT NULL
             ORDER BY collection_name ASC, scheduled_date ASC
             LIMIT ?
         """, (limit,)).fetchall()
