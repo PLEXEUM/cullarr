@@ -276,8 +276,7 @@ async function loadScoreQueue() {
                             data-movie-count="${movie.movie_count || 0}"
                             class="btn-sm btn-outline details-btn">🔍 Details</button>
                     <button onclick="scheduleMovie(${movie.movie_id || movie.id}, '${safeTitle}', ${isCollection})"
-                            class="btn-sm btn-primary ml-2" 
-                            style="background: var(--success); color: white; border: none;">📅 Schedule</button>
+                            class="btn-sm btn-success ml-2">📅 Schedule</button>
                 </td>
             </tr>
         `;
