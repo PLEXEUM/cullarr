@@ -150,7 +150,9 @@ async function loadScheduledDeletions() {
                             data-title="${escapeHtml(item.movie_title)}"
                             data-score="${item.score}"
                             data-factors='${factorsJson}'
-                            data-is-collection="false">🔍 Details</button>
+                            data-is-collection="${isCollection}"
+                            data-movies='${JSON.stringify(item.movies || []).replace(/'/g, "&#39;")}'
+                            data-movie-count="${item.movies ? item.movies.length : 0}">🔍 Details</button>
                     </td>
                     <td class="px-4 py-2">
                         <button onclick="removeFromQueue(${item.movie_id}, '${escapeHtml(item.movie_title)}')"

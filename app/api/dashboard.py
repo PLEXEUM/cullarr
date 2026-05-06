@@ -347,17 +347,8 @@ async def manual_schedule_movie(movie_id: int):
         delete_after_days = settings["delete_after_days"] if settings else 7
         deletions_per_day = int(settings["deletions_per_day"]) if settings and settings["deletions_per_day"] is not None else 0
         
-        # Get current queue count to calculate stagger
-        current_auto_count = conn.execute(
-            "SELECT COUNT(*) as count FROM scored_movies_cache WHERE scheduled_for_deletion = 1 AND manually_scheduled = 0"
-        ).fetchone()["count"]
-        
-        # Calculate stagger days based on current auto queue length
-        stagger_days = 0
-        if deletions_per_day > 0:
-            stagger_days = current_auto_count // deletions_per_day
-        
-        scheduled_date = datetime.now() + timedelta(days=delete_after_days + stagger_days)
+        # Manual adds use only delete_after_days (no staggering)
+        scheduled_date = datetime.now() + timedelta(days=delete_after_days)
         
         # Update movie
         conn.execute("""
@@ -370,10 +361,20 @@ async def manual_schedule_movie(movie_id: int):
         
         conn.commit()
         
-        # For collections, just mark the collection row (members handled by score run logic)
+        # For collections, mark both the collection row AND all member movies
         if movie["is_collection"] and movie["collection_name"]:
-            logger.info(f"Manually scheduled collection '{movie['collection_name']}' (collection_id: {movie_id})")
-            return {"success": True, "message": f"Collection '{movie['movie_title']}' scheduled for deletion"}
+            # Update all member movies in this collection
+            conn.execute("""
+                UPDATE scored_movies_cache 
+                SET scheduled_for_deletion = 1, 
+                    scheduled_date = ?,
+                    manually_scheduled = 1
+                WHERE collection_name = ? AND is_collection = 0
+            """, (scheduled_date.isoformat(), movie["collection_name"]))
+    
+            member_count = conn.rowcount
+            logger.info(f"Manually scheduled collection '{movie['collection_name']}' with {member_count} movies (collection_id: {movie_id})")
+            return {"success": True, "message": f"Collection '{movie['movie_title']}' scheduled for deletion ({member_count} movies)"}
         else:
             logger.info(f"Manually scheduled movie '{movie['movie_title']}' for {scheduled_date.isoformat()}")
             return {"success": True, "message": f"Movie '{movie['movie_title']}' scheduled for deletion"}
