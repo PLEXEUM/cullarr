@@ -284,8 +284,21 @@ async def run_score_cycle():
         
         logger.info(f"Found {len(existing_scheduled)} currently scheduled movies with existing dates")
 
-        # ===== STEP 2: Clear existing scheduled flags and dates =====
-        conn.execute("UPDATE scored_movies_cache SET scheduled_for_deletion = 0, scheduled_date = NULL")
+        # ===== STEP 2: Clear existing scheduled flags and dates (but preserve manual items) =====
+        # Only clear auto-scheduled items, leave manually scheduled items untouched
+        conn.execute("""
+            UPDATE scored_movies_cache 
+            SET scheduled_for_deletion = 0, scheduled_date = NULL 
+            WHERE COALESCE(manually_scheduled, 0) = 0
+        """)
+        
+         # Get existing manually scheduled movies to preserve their flag
+        existing_manual = set()
+        manual_check = conn.execute(
+            "SELECT movie_id FROM scored_movies_cache WHERE manually_scheduled = 1"
+        ).fetchall()
+        for row in manual_check:
+            existing_manual.add(row["movie_id"])
         
         # ===== STEP 3: Insert or update all scored movies in cache =====
         for entry in scored_movies:
@@ -297,8 +310,8 @@ async def run_score_cycle():
                          size_gb, age_days, quality, monitored, normalized_score,
                          raw_score, factors, plex_play_count,
                          collection_name, collection_id, is_collection,
-                         scheduled_for_deletion, scheduled_date, cached_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, NULL, CURRENT_TIMESTAMP)
+                         scheduled_for_deletion, scheduled_date, manually_scheduled, cached_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, NULL, ?, CURRENT_TIMESTAMP)
                     """, (
                         member["movie_id"],
                         member["movie_title"],
@@ -315,6 +328,7 @@ async def run_score_cycle():
                         member.get("plex_play_count", 0),
                         entry.get("collection_title"),
                         entry.get("collection_id"),
+                        1 if member["movie_id"] in existing_manual else 0,
                     ))
             else:
                 conn.execute("""
@@ -323,8 +337,8 @@ async def run_score_cycle():
                      size_gb, age_days, quality, monitored, normalized_score,
                      raw_score, factors, plex_play_count,
                      collection_name, collection_id, is_collection,
-                     scheduled_for_deletion, scheduled_date, cached_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, CURRENT_TIMESTAMP)
+                     scheduled_for_deletion, scheduled_date, manually_scheduled, cached_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, CURRENT_TIMESTAMP)
                 """, (
                     entry["movie_id"],
                     entry["movie_title"],
@@ -341,6 +355,7 @@ async def run_score_cycle():
                     entry.get("plex_play_count", 0),
                     None,
                     None,
+                    1 if entry["movie_id"] in existing_manual else 0,
                 ))
         
         conn.commit()
@@ -378,9 +393,12 @@ async def run_score_cycle():
             if movie_id in existing_scheduled:
                 # Keep existing scheduled date - restore it from memory
                 original_date = existing_scheduled[movie_id]
+                # Check if this is a manual item - preserve its manual flag
+                is_manual = 1 if movie_id in existing_manual else 0
+
                 conn.execute(
-                    "UPDATE scored_movies_cache SET scheduled_for_deletion = 1, scheduled_date = ? WHERE movie_id = ?",
-                    (original_date, movie_id)
+                    "UPDATE scored_movies_cache SET scheduled_for_deletion = 1, scheduled_date = ?, manually_scheduled = ? WHERE movie_id = ?",
+                    (original_date, is_manual, movie_id)  # ← 3 values: date, manual_flag, movie_id
                 )
                 logger.debug(f"Keeping scheduled date {original_date} for movie_id {movie_id} (stays in top {max_queued})")
             else:
@@ -414,6 +432,7 @@ async def run_score_cycle():
                 SELECT movie_id FROM scored_movies_cache 
                 WHERE scheduled_for_deletion = 1
             )
+            AND COALESCE(manually_scheduled, 0) = 0
         """)
         
         conn.commit()

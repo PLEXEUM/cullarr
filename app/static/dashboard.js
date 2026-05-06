@@ -139,7 +139,9 @@ async function loadScheduledDeletions() {
             return `
                 <tr style="border-bottom: 1px solid var(--border-color);">
                     <td class="px-4 py-2"><span class="badge ${scoreClass}">${item.score.toFixed(1)}</span></td>
-                    <td class="px-4 py-2 font-medium">${escapeHtml(item.movie_title)}</span></td>
+                    <td class="px-4 py-2 font-medium">
+                        ${escapeHtml(item.movie_title)}${item.manually_scheduled ? ' <span style="color: var(--accent); font-weight: bold;">(M)</span>' : ''}
+                    </span></td>
                     <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(yearDisplay)}</span></td>
                     <td class="px-4 py-2" style="color: var(--text-secondary)">${deleteDate}</span></td>
                     <td class="px-4 py-2" ${countdownClass}>${countdownText}</span></td>
@@ -160,6 +162,34 @@ async function loadScheduledDeletions() {
         
     } catch (e) {
         console.error('Failed to load scheduled deletions:', e);
+    }
+}
+
+// Schedule a movie manually from Score Queue
+async function scheduleMovie(movieId, title, isCollection = false) {
+    const confirmMsg = isCollection 
+        ? `Schedule entire collection "${title}" for deletion? All movies in this collection will be queued.`
+        : `Schedule "${title}" for deletion?`;
+    
+    if (!confirm(confirmMsg)) return;
+    
+    try {
+        const res = await fetch(`/api/dashboard/score-queue/${movieId}/schedule`, { 
+            method: 'POST' 
+        });
+        const data = await res.json();
+        
+        if (res.ok && data.success) {
+            showToast(data.message || `"${title}" scheduled for deletion`, 'success');
+            // Refresh both queues to reflect changes
+            await loadScoreQueue();
+            await loadScheduledDeletions();
+            await loadQueueStatus();
+        } else {
+            showToast(data.message || 'Failed to schedule movie', 'error');
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
     }
 }
 
@@ -242,10 +272,13 @@ async function loadScoreQueue() {
                             data-score="${movie.normalized_score}" 
                             data-factors='${factorsJson}'
                             data-is-collection="${isCollection}"
-                            data-movies='${moviesData}'
+                            data-movies='${moviesData}"
                             data-movie-count="${movie.movie_count || 0}"
                             class="btn-sm btn-outline details-btn">🔍 Details</button>
-                </span>
+                    <button onclick="scheduleMovie(${movie.movie_id || movie.id}, '${safeTitle}', ${isCollection})"
+                            class="btn-sm btn-primary ml-2" 
+                            style="background: var(--success); color: white; border: none;">📅 Schedule</button>
+                </td>
             </tr>
         `;
         }).join('');
