@@ -722,9 +722,9 @@ async function loadSettings() {
         document.getElementById('max-queued').value = data.max_queued !== undefined ? data.max_queued : 20;
         if (deletionsPerDay) deletionsPerDay.value = data.deletions_per_day !== undefined ? data.deletions_per_day : 0;
         document.getElementById('delete-after-days').value = data.delete_after_days !== undefined ? data.delete_after_days : 7;
-        document.getElementById('protection-days').value = data.protection_days || 30;
+        document.getElementById('protection-days').value = data.protection_days !== undefined ? data.protection_days : 30;
         document.getElementById('collection-grouping').checked = data.collection_grouping || false;
-        if (minScoreThreshold) minScoreThreshold.value = data.min_score_threshold || 0;
+        if (minScoreThreshold) minScoreThreshold.value = data.min_score_threshold !== undefined ? data.min_score_threshold : 0;
     } catch (e) {
         console.error('Failed to load settings:', e);
     }
