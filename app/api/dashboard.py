@@ -322,9 +322,9 @@ async def manual_schedule_movie(movie_id: int):
         # Check if movie exists in cache
         movie = conn.execute(
             """SELECT movie_id, movie_title, collection_name, is_collection 
-               FROM scored_movies_cache 
-               WHERE movie_id = ?""",
-            (movie_id,)
+                FROM scored_movies_cache 
+                WHERE movie_id = ? OR collection_id = ?""",
+            (movie_id, movie_id)
         ).fetchone()
         
         if not movie:
@@ -332,8 +332,8 @@ async def manual_schedule_movie(movie_id: int):
         
         # Check if already scheduled
         existing = conn.execute(
-            "SELECT scheduled_for_deletion FROM scored_movies_cache WHERE movie_id = ? AND scheduled_for_deletion = 1",
-            (movie_id,)
+            "SELECT scheduled_for_deletion FROM scored_movies_cache WHERE (movie_id = ? OR collection_id = ?) AND scheduled_for_deletion = 1",
+            (movie_id, movie_id)
         ).fetchone()
         
         if existing:
@@ -365,22 +365,14 @@ async def manual_schedule_movie(movie_id: int):
             SET scheduled_for_deletion = 1, 
                 scheduled_date = ?,
                 manually_scheduled = 1
-            WHERE movie_id = ?
-        """, (scheduled_date.isoformat(), movie_id))
+            WHERE movie_id = ? OR collection_id = ?
+        """, (scheduled_date.isoformat(), movie_id, movie_id))
         
         conn.commit()
         
-        # If this is a collection, also schedule all members
+        # For collections, just mark the collection row (members handled by score run logic)
         if movie["is_collection"] and movie["collection_name"]:
-            conn.execute("""
-                UPDATE scored_movies_cache 
-                SET scheduled_for_deletion = 1, 
-                    scheduled_date = ?,
-                    manually_scheduled = 1
-                WHERE collection_name = ? AND is_collection = 0
-            """, (scheduled_date.isoformat(), movie["collection_name"]))
-            conn.commit()
-            logger.info(f"Manually scheduled collection '{movie['collection_name']}' ({movie['movie_title']}) with {conn.total_changes} movies")
+            logger.info(f"Manually scheduled collection '{movie['collection_name']}' (collection_id: {movie_id})")
             return {"success": True, "message": f"Collection '{movie['movie_title']}' scheduled for deletion"}
         else:
             logger.info(f"Manually scheduled movie '{movie['movie_title']}' for {scheduled_date.isoformat()}")
