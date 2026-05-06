@@ -93,7 +93,7 @@ async def get_queue_status():
 async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
     """
     Get scheduled deletions queue from scored_movies_cache.
-    Collections are grouped into single entries with a movies list for details.
+    Collections are grouped into single entries with a movies list.
     """
     conn = get_connection()
     try:
@@ -116,7 +116,6 @@ async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
                 age_days,
                 plex_play_count
             FROM scored_movies_cache
-            WHERE scheduled_for_deletion = 1
               AND scheduled_date IS NOT NULL
             ORDER BY collection_name ASC, scheduled_date ASC
             LIMIT ?
@@ -130,24 +129,14 @@ async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
 
     for row in scheduled:
         item = dict(row)
-        # Parse factors JSON if present
-        try:
-            if item.get("factors"):
-                item["factors"] = json.loads(item["factors"]) if isinstance(item["factors"], str) else item["factors"]
-            else:
-                item["factors"] = []
-        except Exception:
-            item["factors"] = []
-        
-        if item["collection_name"] and item.get("is_collection"):
+        if item["collection_name"]:
             cname = item["collection_name"]
             if cname not in collections:
                 collections[cname] = {
                     "is_collection": True,
                     "collection_name": cname,
-                    "collection_id": item.get("collection_id"),
-                    "movie_id": None,
                     "movie_title": cname,
+                    "movie_id": None,
                     "movie_year": None,
                     "year_min": None,
                     "score": item["score"],
@@ -155,7 +144,6 @@ async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
                     "status": item["status"],
                     "movies": [],
                     "size_gb": 0.0,
-                    "factors": item.get("factors", []),
                 }
             
             # Set movie_id from the first movie in the collection
@@ -163,24 +151,11 @@ async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
                 collections[cname]["movie_id"] = item["movie_id"]
             
             # Track earliest year in collection
-            if item.get("movie_year"):
+            if item["movie_year"]:
                 if collections[cname]["year_min"] is None or item["movie_year"] < collections[cname]["year_min"]:
                     collections[cname]["year_min"] = item["movie_year"]
             
-            # Add member to movies list with all details for the modal
-            collections[cname]["movies"].append({
-                "movie_id": item["movie_id"],
-                "movie_title": item["movie_title"],
-                "movie_year": item["movie_year"],
-                "size_gb": item["size_gb"],
-                "quality": item["quality"],
-                "score": item["score"],
-                "normalized_score": item["score"],
-                "tmdb_rating": item.get("tmdb_rating"),
-                "age_days": item.get("age_days"),
-                "plex_play_count": item.get("plex_play_count", 0),
-                "factors": item.get("factors", []),
-            })
+            collections[cname]["movies"].append(item)
             collections[cname]["size_gb"] += item["size_gb"] or 0.0
         else:
             item["is_collection"] = False
@@ -190,7 +165,6 @@ async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
     for cname in collections:
         if collections[cname].get("year_min"):
             collections[cname]["movie_year"] = collections[cname]["year_min"]
-        collections[cname]["movie_count"] = len(collections[cname]["movies"])
         # Clean up temporary field
         if "year_min" in collections[cname]:
             del collections[cname]["year_min"]
