@@ -272,7 +272,7 @@ async function loadScoreQueue() {
                             data-score="${movie.normalized_score}" 
                             data-factors='${factorsJson}'
                             data-is-collection="${isCollection}"
-                            data-movies='${moviesData}"
+                            data-movies='${moviesData}'
                             data-movie-count="${movie.movie_count || 0}"
                             class="btn-sm btn-outline details-btn">🔍 Details</button>
                     <button onclick="scheduleMovie(${movie.movie_id || movie.id}, '${safeTitle}', ${isCollection})"
