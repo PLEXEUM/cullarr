@@ -170,13 +170,16 @@ async function loadScoreQueue() {
                 <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(movie.quality) || 'Unknown'}</span></td>
                 <td class="px-4 py-2">${watchedDisplay}</span></td>
                 <td class="px-4 py-2">
-                    <button data-title="${safeTitle}" 
-                            data-score="${movie.normalized_score}" 
-                            data-factors='${factorsJson}'
-                            data-is-collection="${isCollection}"
-                            data-movies='${moviesData}'
-                            data-movie-count="${movie.movie_count || 0}"
-                            class="btn-sm btn-outline details-btn">🔍 Details</button>
+                    <div class="flex gap-2">
+                        <button class="btn-sm btn-queue-placeholder" disabled> Queue</button>
+                        <button data-title="${safeTitle}" 
+                                data-score="${movie.normalized_score}" 
+                                data-factors='${factorsJson}'
+                                data-is-collection="${isCollection}"
+                                data-movies='${moviesData}'
+                                data-movie-count="${movie.movie_count || 0}"
+                                class="btn-sm btn-outline details-btn">🔍 Details</button>
+                    </div>
                 </span>
             </tr>
         `;

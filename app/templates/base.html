@@ -159,6 +159,20 @@
         .btn-danger:hover {
             background: var(--danger-bg);
         }
+
+        .btn-queue-placeholder {
+            border: 1px solid var(--success);
+            color: var(--success);
+            background: transparent;
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-queue-placeholder:hover {
+            background: var(--success-bg);
+            color: var(--success);
+            opacity: 0.6;
+        }
         
         .badge {
             display: inline-flex;
@@ -271,7 +285,7 @@
         .data-table td:nth-child(1) { width: 6%; }  /* Score */
 
         .data-table th:nth-child(2),
-        .data-table td:nth-child(2) { width: 34%; }  /* Movie */
+        .data-table td:nth-child(2) { width: 28%; }  /* Movie */
 
         /* Columns 3-7 all get equal width */
         .data-table th:nth-child(3),
