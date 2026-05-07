@@ -287,7 +287,7 @@
         .data-table th:nth-child(2),
         .data-table td:nth-child(2) { width: 28%; }  /* Movie */
 
-        /* Columns 3-7 all get equal width */
+        /* Columns 3-8 all get equal width (8% each) */
         .data-table th:nth-child(3),
         .data-table td:nth-child(3),
         .data-table th:nth-child(4),
@@ -297,11 +297,13 @@
         .data-table th:nth-child(6),
         .data-table td:nth-child(6),
         .data-table th:nth-child(7),
-        .data-table td:nth-child(7) { width: 8%; }  /* Equal width for columns 3-7 */
+        .data-table td:nth-child(7),
+        .data-table th:nth-child(8),
+        .data-table td:nth-child(8) { width: 8%; }  /* Equal width for columns 3-8 */
 
-        /* Column 8+ (Watched/Remove, Details) get auto */
-        .data-table th:nth-child(n+8),
-        .data-table td:nth-child(n+8) { width: auto; }
+        /* Column 9 (Actions) gets auto */
+        .data-table th:nth-child(9),
+        .data-table td:nth-child(9) { width: auto; }
 
         /* Movie title truncation */
         .data-table td:nth-child(2) {
