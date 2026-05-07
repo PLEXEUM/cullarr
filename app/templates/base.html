@@ -20,6 +20,8 @@
             --success-bg: rgba(16, 185, 129, 0.15);
             --danger: #ef4444;
             --danger-bg: rgba(239, 68, 68, 0.15);
+            --queue: #3b82f6;
+            --queue-bg: rgba(59, 130, 246, 0.15);
             --warning: #f59e0b;
             --warning-bg: rgba(245, 158, 11, 0.15);
             --info: #3b82f6;
@@ -42,6 +44,8 @@
             --success-bg: rgba(5, 150, 105, 0.1);
             --danger: #dc2626;
             --danger-bg: rgba(220, 38, 38, 0.1);
+            --queue: #2563eb;
+            --queue-bg: rgba(37, 99, 235, 0.1);
             --warning: #d97706;
             --warning-bg: rgba(217, 119, 6, 0.1);
             --info: #2563eb;
@@ -160,18 +164,14 @@
             background: var(--danger-bg);
         }
 
-        .btn-queue-placeholder {
-            border: 1px solid var(--success);
-            color: var(--success);
+        .btn-manual {
+            border: 1px solid var(--queue);
+            color: var(--queue);
             background: transparent;
-            opacity: 0.6;
-            cursor: not-allowed;
         }
-
-        .btn-queue-placeholder:hover {
-            background: var(--success-bg);
-            color: var(--success);
-            opacity: 0.6;
+        
+        .btn-manual:hover {
+            background: var(--queue-bg);
         }
         
         .badge {

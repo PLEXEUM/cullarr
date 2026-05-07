@@ -183,11 +183,10 @@ async function loadScoreQueue() {
                                 ✕ Remove
                             </button>` :
     `                       <button onclick="manualQueueMovie(${movie.movie_id}, '${escapeHtml(movie.movie_title)}', ${movie.is_collection || false}, ${movie.movie_count || 1})" 
-                                class="btn-sm btn-primary" 
-                                style="background: var(--accent);"
+                                class="btn-sm btn-manual" 
                                 title="Manually queue this movie (bypasses queue cap, keeps score)">
                                 ➕ Queue
-                            </button>`
+                            </button>
                         }
                         <button data-title="${safeTitle}" 
                                 data-score="${movie.normalized_score}" 
