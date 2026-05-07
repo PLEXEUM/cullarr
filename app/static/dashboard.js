@@ -122,8 +122,8 @@ async function loadScoreQueue() {
         if (scoreQueueSearchActive && scoreQueueSearch.trim() !== '') {
             url = `/api/dashboard/score-queue/search?q=${encodeURIComponent(scoreQueueSearch)}&page=${scoreQueuePage}&per_page=${scoreQueuePerPage}&sort_by=${scoreQueueSortBy}&sort_order=${scoreQueueSortOrder}`;
         } else {
-            // Normal pagination (only load current page)
-            url = `/api/dashboard/score-queue?page=${scoreQueuePage}&per_page=${scoreQueuePerPage}&sort_by=${scoreQueueSortBy}&sort_order=${scoreQueueSortOrder}`;
+            // Normal pagination - unscheduled only
+            url = `/api/dashboard/score-queue?page=${scoreQueuePage}&per_page=${scoreQueuePerPage}&sort_by=${scoreQueueSortBy}&sort_order=${scoreQueueSortOrder}&scheduled=0`;
         }
         
         const res = await fetch(url);
