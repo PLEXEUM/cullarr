@@ -280,9 +280,9 @@ async function loadFailedDeletions() {
             // Status display
             let statusHtml = '';
             if (item.status === 'deleted') {
-                statusHtml = '<span class="badge badge-success">✓ Deleted</span>';
+                statusHtml = '<span class="badge badge-success"> Deleted</span>';
             } else {
-                statusHtml = '<span class="badge badge-danger">✗ Failed</span>';
+                statusHtml = '<span class="badge badge-danger"> Failed</span>';
             }
             
             // Rating display
