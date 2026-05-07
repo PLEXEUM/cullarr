@@ -259,6 +259,25 @@ async def run_score_cycle():
         _active_run["current"] = 10
         _active_run["total"] = 100
 
+        # ===== CLEANUP: Remove stale cache entries for movies no longer in Radarr =====
+        current_movie_ids = {movie["id"] for movie in movies if movie.get("id")}
+
+        if current_movie_ids:
+            # Get all movie IDs currently in cache
+            cached_ids = conn.execute("SELECT movie_id FROM scored_movies_cache").fetchall()
+            cached_id_set = {row["movie_id"] for row in cached_ids}
+    
+            # Find IDs that are in cache but not in Radarr
+            stale_ids = cached_id_set - current_movie_ids
+    
+            if stale_ids:
+                placeholders = ",".join("?" * len(stale_ids))
+                conn.execute(
+                    f"DELETE FROM scored_movies_cache WHERE movie_id IN ({placeholders})",
+                    tuple(stale_ids)
+                )
+                logger.info(f"Cleaned {len(stale_ids)} stale entries from cache (movies no longer in Radarr)")
+
         # Score movies
         engine = ScoringEngine(conn)
         
