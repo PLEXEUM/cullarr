@@ -101,14 +101,25 @@ async function loadScheduledDeletions() {
 }
 
 // Remove a movie from the scheduled deletions queue
-async function removeFromQueue(movieId, title) {
-    if (!confirm(`Remove "${title}" from the deletion queue?`)) return;
+async function removeFromQueue(movieId, title, isCollection = false) {
+    let confirmMessage = isCollection ? `Remove entire collection "${title}" from the deletion queue?` : `Remove "${title}" from the deletion queue?`;
+    if (!confirm(confirmMessage)) return;
+    
     try {
-        const res = await fetch(`/api/dashboard/scheduled/${movieId}`, { method: 'DELETE' });
+        // For collections, we need to remove by collection_name
+        let url;
+        if (isCollection) {
+            url = `/api/dashboard/scheduled/collection/by-name/${encodeURIComponent(title)}`;
+        } else {
+            url = `/api/dashboard/scheduled/${movieId}`;
+        }
+        
+        const res = await fetch(url, { method: 'DELETE' });
         if (res.ok) {
             showToast(`Removed "${title}" from queue`, 'success');
             await loadScheduledDeletions();
             await loadQueueStatus();
+            await loadScoreQueue();
         } else {
             const err = await res.json();
             showToast(err.detail || 'Failed to remove from queue', 'error');
@@ -177,15 +188,18 @@ async function loadScoreQueue() {
                 <td class="px-4 py-2">
                     <div class="flex gap-2">
                         ${movie.scheduled_for_deletion === 1 ? 
-                            `<button onclick="removeFromQueue(${movie.movie_id}, '${escapeHtml(movie.movie_title)}')" 
+                            // For collections that are scheduled, we need a way to remove all members
+                            // The existing removeFromQueue works with collection_name
+                            `<button onclick="removeFromQueue(null, '${escapeHtml(movie.movie_title)}', true)" 
                                 class="btn-sm btn-danger" 
-                                title="Remove from scheduled deletions">
+                                title="Remove entire collection from scheduled deletions">
                                 ✕ Remove
                             </button>` : 
-                            `<button onclick="manualQueueMovie(${movie.movie_id}, '${escapeHtml(movie.movie_title)}', ${movie.is_collection || false}, ${movie.movie_count || 1})" 
+                            // For collections not scheduled, use collection_id
+                            `<button onclick="manualQueueCollection(${movie.collection_id}, '${escapeHtml(movie.movie_title)}', ${movie.movie_count})" 
                                 class="btn-sm btn-manual" 
-                                title="Manually queue this movie (bypasses queue cap, keeps score)">
-                                ➕ Queue
+                                title="Manually queue entire collection (bypasses queue cap, keeps score)">
+                                ➕ Queue Collection
                             </button>`
                         }
                         <button data-title="${safeTitle}" 
@@ -350,6 +364,29 @@ async function clearFailedDeletions() {
         } else {
             const err = await res.json();
             showToast(err.detail || 'Failed to clear', 'error');
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+    }
+}
+
+// Manual Queue Collection
+async function manualQueueCollection(collectionId, collectionName, movieCount) {
+    const confirmMessage = `Queue collection "${collectionName}" (${movieCount} movies) for deletion?\n\nThis bypasses all protection rules and does not count toward your queue limit.`;
+    
+    if (!confirm(confirmMessage)) return;
+    
+    try {
+        const res = await fetch(`/api/dashboard/scheduled/collection/${collectionId}`, { method: 'POST' });
+        const data = await res.json();
+        
+        if (res.ok) {
+            showToast(data.message, 'success');
+            await loadScoreQueue();
+            await loadScheduledDeletions();
+            await loadQueueStatus();
+        } else {
+            showToast(data.detail || 'Failed to queue collection', 'error');
         }
     } catch (e) {
         showToast('Error: ' + e.message, 'error');

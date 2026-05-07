@@ -438,6 +438,252 @@ async def manually_queue_movie(movie_id: int):
         conn.close()
             
 
+@router.post("/dashboard/scheduled/collection/{collection_id}")
+async def manually_queue_collection(collection_id: int):
+    """
+    Manually add an entire collection to scheduled deletions queue.
+    Bypasses all protection rules - user override.
+    """
+    from app.core.radarr_client import RadarrClient
+    from app.core.plex_client import PlexClient
+    from app.core.scoring_engine import ScoringEngine, extract_collection
+    from datetime import datetime, timedelta
+    import json
+    
+    conn = get_connection()
+    try:
+        # Get settings and configs
+        settings = conn.execute("SELECT delete_after_days, collection_grouping FROM settings WHERE id = 1").fetchone()
+        radarr_config = conn.execute("SELECT url, api_key FROM radarr_config WHERE id = 1").fetchone()
+        plex_config = conn.execute("SELECT url, api_key, enabled, collection_key FROM plex_config WHERE id = 1").fetchone()
+        
+        if not radarr_config or not radarr_config["url"] or not radarr_config["api_key"]:
+            raise HTTPException(status_code=400, detail="Radarr not configured")
+        
+        if not settings or not settings["collection_grouping"]:
+            raise HTTPException(status_code=400, detail="Collection grouping is disabled in settings")
+        
+        delete_after_days = settings["delete_after_days"] if settings else 7
+        
+        # Get all movies from Radarr
+        radarr_client = RadarrClient(radarr_config["url"], radarr_config["api_key"])
+        all_movies = await radarr_client.get_movies()
+        
+        # Find all movies in this collection
+        collection_movies = []
+        collection_name = None
+        
+        for movie in all_movies:
+            coll_info = extract_collection(movie)
+            if coll_info and coll_info[0] == collection_id:
+                collection_movies.append(movie)
+                if not collection_name:
+                    collection_name = coll_info[1]
+        
+        if not collection_movies:
+            raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found or empty")
+        
+        # Calculate scheduled date
+        scheduled_date = datetime.now() + timedelta(days=delete_after_days)
+        scheduled_date_str = scheduled_date.isoformat()
+        
+        # Get Plex play counts if enabled
+        plex_play_counts = None
+        plex_enabled = False
+        plex_client = None
+        
+        if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"]:
+            plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
+            plex_ok, _ = await plex_client.test_connection()
+            if plex_ok:
+                plex_play_counts = await plex_client.get_play_counts_by_tmdb()
+                plex_enabled = True
+        
+        engine = ScoringEngine(conn)
+        
+        # Queue each movie in the collection
+        for movie in collection_movies:
+            m_id = movie.get("id")
+            
+            # Check if already in cache
+            existing = conn.execute(
+                "SELECT * FROM scored_movies_cache WHERE movie_id = ?",
+                (m_id,)
+            ).fetchone()
+            
+            if not existing:
+                # Score the movie
+                score_result = engine.calculate_movie_score(movie, plex_play_counts, plex_enabled)
+                
+                # Get quality string
+                movie_file = movie.get("movieFile", {})
+                current_quality = "Unknown"
+                if movie_file:
+                    file_quality_wrapper = movie_file.get("quality", {})
+                    if isinstance(file_quality_wrapper, dict):
+                        file_quality_obj = file_quality_wrapper.get("quality", {})
+                        if isinstance(file_quality_obj, dict):
+                            current_quality = file_quality_obj.get("name", "Unknown")
+                
+                tmdb_id = movie.get("tmdbId") or movie.get("tmdb_id")
+                
+                # Insert into cache
+                conn.execute("""
+                    INSERT OR REPLACE INTO scored_movies_cache
+                    (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
+                     size_gb, age_days, quality, monitored, normalized_score,
+                     raw_score, factors, plex_play_count,
+                     collection_name, collection_id, is_collection,
+                     scheduled_for_deletion, scheduled_date, cached_at, manual_for_deletion)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, CURRENT_TIMESTAMP, 1)
+                """, (
+                    m_id,
+                    movie.get("title"),
+                    movie.get("year"),
+                    tmdb_id,
+                    score_result.get("tmdb_rating", 0),
+                    score_result.get("size_gb", 0),
+                    score_result.get("age_days", 0),
+                    current_quality,
+                    1 if movie.get("monitored", True) else 0,
+                    score_result.get("score", 0) * 100,
+                    score_result.get("score", 0),
+                    json.dumps(score_result.get("factors", [])),
+                    score_result.get("plex_play_count", 0),
+                    collection_name,
+                    collection_id,
+                ))
+            else:
+                # Update existing cache entry
+                conn.execute("""
+                    UPDATE scored_movies_cache 
+                    SET scheduled_for_deletion = 1, 
+                        scheduled_date = ?,
+                        manual_for_deletion = 1
+                    WHERE movie_id = ?
+                """, (scheduled_date_str, m_id))
+        
+        conn.commit()
+        
+        # Add to Plex collection if configured
+        if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_key"]:
+            try:
+                # Build library map and add to collection
+                plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
+                plex_ok, _ = await plex_client.test_connection()
+                if plex_ok:
+                    library_items = await plex_client.get_library_items()
+                    library_map = {}
+                    for item in library_items:
+                        title = item.get("title")
+                        year = item.get("year")
+                        rating_key = item.get("rating_key")
+                        if title and year and rating_key:
+                            key = f"{title.lower()}|{year}"
+                            library_map[key] = rating_key
+                    
+                    movies_for_plex = []
+                    for m in collection_movies:
+                        movies_for_plex.append({
+                            "movie_id": m.get("id"),
+                            "movie_title": m.get("title"),
+                            "movie_year": m.get("year")
+                        })
+                    
+                    await _apply_plex_collections(plex_client, movies_for_plex, library_map)
+                    logger.info(f"MANUAL: Added collection '{collection_name}' ({len(collection_movies)} movies) to Plex collection")
+            except Exception as plex_error:
+                logger.warning(f"Failed to add to Plex collection: {plex_error}")
+        
+        logger.info(f"MANUAL: Queued collection '{collection_name}' with {len(collection_movies)} movies for deletion on {scheduled_date_str}")
+        
+        return {
+            "success": True,
+            "message": f"Queued collection '{collection_name}' ({len(collection_movies)} movies) for deletion",
+            "scheduled_date": scheduled_date_str,
+            "is_collection": True,
+            "movie_count": len(collection_movies)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to manually queue collection {collection_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to queue collection: {str(e)}")
+    finally:
+        conn.close()
+
+
+@router.delete("/dashboard/scheduled/collection/by-name/{collection_name}")
+async def remove_collection_by_name(collection_name: str):
+    """
+    Remove an entire collection from scheduled deletions by name.
+    """
+    conn = get_connection()
+    try:
+        # Get all scheduled movies in this collection
+        collection_members = conn.execute(
+            """SELECT movie_id, movie_title, movie_year 
+               FROM scored_movies_cache 
+               WHERE collection_name = ? AND scheduled_for_deletion = 1""",
+            (collection_name,)
+        ).fetchall()
+        
+        if not collection_members:
+            raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found in scheduled queue")
+        
+        # Get Plex config for collection cleanup
+        plex_config = conn.execute("SELECT url, api_key, enabled, collection_key FROM plex_config WHERE id = 1").fetchone()
+        
+        # Remove from Plex collection if configured
+        if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_key"]:
+            try:
+                plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
+                collection_key = plex_config["collection_key"]
+                
+                library_items = await plex_client.get_library_items()
+                library_map = {}
+                for item in library_items:
+                    title = item.get("title")
+                    year = item.get("year")
+                    rating_key = item.get("rating_key")
+                    if title and year and rating_key:
+                        key = f"{title.lower()}|{year}"
+                        library_map[key] = rating_key
+                
+                for member in collection_members:
+                    lookup_key = f"{member['movie_title'].lower()}|{member['movie_year']}"
+                    rating_key = library_map.get(lookup_key)
+                    if rating_key:
+                        await plex_client.remove_from_collection(collection_key, rating_key)
+                        logger.info(f"Removed '{member['movie_title']}' from Plex collection")
+            except Exception as plex_error:
+                logger.warning(f"Failed to remove from Plex collection: {plex_error}")
+        
+        # Clear scheduled flags for all collection members
+        conn.execute(
+            """UPDATE scored_movies_cache 
+               SET scheduled_for_deletion = 0, scheduled_date = NULL, manual_for_deletion = 0 
+               WHERE collection_name = ? AND scheduled_for_deletion = 1""",
+            (collection_name,)
+        )
+        conn.commit()
+        
+        logger.info(f"Removed collection '{collection_name}' from queue ({len(collection_members)} movies)")
+        return {
+            "success": True,
+            "message": f"Removed collection '{collection_name}' ({len(collection_members)} movies) from queue"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to remove collection {collection_name}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to remove collection")
+    finally:
+        conn.close()
+
+
 @router.get("/dashboard/score-queue")
 async def get_score_queue(
     page: int = Query(1, ge=1),
