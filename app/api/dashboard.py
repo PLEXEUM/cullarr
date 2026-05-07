@@ -8,6 +8,7 @@ from plexapi.server import PlexServer
 import json
 import asyncio
 from typing import Optional
+from app.core.run_engine import _apply_plex_collections
 
 router = APIRouter()
 logger = get_logger()
@@ -39,6 +40,13 @@ async def get_queue_status():
         individual_slots = queue_stats["individual_slots"] if queue_stats else 0
         scheduled_count = collection_slots + individual_slots
         total_movies = queue_stats["total_movies"] if queue_stats else 0
+
+        # Get count of manually queued movies
+        manual_count = conn.execute("""
+            SELECT COUNT(*) as count 
+            FROM scored_movies_cache 
+            WHERE scheduled_for_deletion = 1 AND manual_for_deletion = 1
+        """).fetchone()["count"]
 
         # Radarr status
         radarr_config = conn.execute("SELECT url, api_key FROM radarr_config WHERE id = 1").fetchone()
@@ -75,6 +83,7 @@ async def get_queue_status():
 
     return {
         "scheduled_count": scheduled_count,
+        "manual_count": manual_count,
         "total_movies": total_movies,
         "max_queued": max_queued,
         "percent_used": round((scheduled_count / max_queued) * 100, 1) if max_queued > 0 else 0,
@@ -198,11 +207,11 @@ async def remove_from_queue(movie_id: int):
                 except Exception as plex_error:
                     logger.warning(f"Failed to remove from Plex collection: {plex_error}")
             
-            # Clear scheduled flag
+            # Clear scheduled flag and manual flag
             conn.execute(
                 """UPDATE scored_movies_cache 
-                   SET scheduled_for_deletion = 0, scheduled_date = NULL 
-                   WHERE movie_id = ?""",
+                SET scheduled_for_deletion = 0, scheduled_date = NULL, manual_for_deletion = 0 
+                WHERE movie_id = ?""",
                 (movie_id,)
             )
             conn.commit()
@@ -215,6 +224,216 @@ async def remove_from_queue(movie_id: int):
     except Exception as e:
         logger.error(f"Failed to remove movie {movie_id} from queue: {e}")
         raise HTTPException(status_code=500, detail="Failed to remove movie from queue")
+    finally:
+        conn.close()
+
+
+@router.post("/dashboard/scheduled/{movie_id}")
+async def manually_queue_movie(movie_id: int):
+    """
+    Manually add a movie to scheduled deletions queue.
+    Bypasses all protection rules - user override.
+    """
+    from app.core.radarr_client import RadarrClient
+    from app.core.plex_client import PlexClient
+    from app.core.scoring_engine import ScoringEngine
+    from datetime import datetime, timedelta
+    import json
+    
+    conn = get_connection()
+    try:
+        # Get settings and configs
+        settings = conn.execute("SELECT delete_after_days, collection_grouping FROM settings WHERE id = 1").fetchone()
+        radarr_config = conn.execute("SELECT url, api_key FROM radarr_config WHERE id = 1").fetchone()
+        plex_config = conn.execute("SELECT url, api_key, enabled, collection_key FROM plex_config WHERE id = 1").fetchone()
+        
+        if not radarr_config or not radarr_config["url"] or not radarr_config["api_key"]:
+            raise HTTPException(status_code=400, detail="Radarr not configured")
+        
+        delete_after_days = settings["delete_after_days"] if settings else 7
+        collection_grouping = bool(settings["collection_grouping"]) if settings else False
+        
+        # Fetch movie from cache first, fallback to Radarr live
+        movie_data = conn.execute(
+            "SELECT * FROM scored_movies_cache WHERE movie_id = ?",
+            (movie_id,)
+        ).fetchone()
+        
+        # Get movie details from Radarr if not in cache
+        radarr_client = RadarrClient(radarr_config["url"], radarr_config["api_key"])
+        movie = await radarr_client.get_movie(movie_id)
+        
+        if not movie:
+            raise HTTPException(status_code=404, detail="Movie not found in Radarr")
+        
+        movie_title = movie.get("title", "Unknown")
+        movie_year = movie.get("year")
+        tmdb_id = movie.get("tmdbId") or movie.get("tmdb_id")
+        
+        # Check if this is a collection
+        is_collection = False
+        collection_movies = []
+        collection_name = None
+        collection_id = None
+        
+        if collection_grouping:
+            # Check if movie is part of a collection
+            collection_info = None
+            from app.core.scoring_engine import extract_collection
+            collection_info = extract_collection(movie)
+            
+            if collection_info:
+                collection_id, collection_name = collection_info
+                is_collection = True
+                
+                # Get all movies in this collection from Radarr
+                all_movies = await radarr_client.get_movies()
+                for m in all_movies:
+                    m_collection = extract_collection(m)
+                    if m_collection and m_collection[0] == collection_id:
+                        collection_movies.append(m)
+                
+                if not collection_movies:
+                    collection_movies = [movie]
+                    is_collection = False
+            else:
+                collection_movies = [movie]
+        else:
+            collection_movies = [movie]
+        
+        # Calculate scheduled date
+        scheduled_date = datetime.now() + timedelta(days=delete_after_days)
+        scheduled_date_str = scheduled_date.isoformat()
+        
+        # Get or create cache entries for each movie
+        for m in collection_movies:
+            m_id = m.get("id")
+            
+            # Check if already in cache
+            existing = conn.execute(
+                "SELECT * FROM scored_movies_cache WHERE movie_id = ?",
+                (m_id,)
+            ).fetchone()
+            
+            if not existing:
+                # Need to score this movie on the fly
+                # Get Plex play counts if enabled
+                plex_play_counts = None
+                plex_enabled = False
+                plex_client = None
+                
+                if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"]:
+                    plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
+                    plex_ok, _ = await plex_client.test_connection()
+                    if plex_ok:
+                        plex_play_counts = await plex_client.get_play_counts_by_tmdb()
+                        plex_enabled = True
+                
+                # Score the movie
+                engine = ScoringEngine(conn)
+                score_result = engine.calculate_movie_score(m, plex_play_counts, plex_enabled)
+                
+                # Get quality string
+                movie_file = m.get("movieFile", {})
+                current_quality = "Unknown"
+                if movie_file:
+                    file_quality_wrapper = movie_file.get("quality", {})
+                    if isinstance(file_quality_wrapper, dict):
+                        file_quality_obj = file_quality_wrapper.get("quality", {})
+                        if isinstance(file_quality_obj, dict):
+                            current_quality = file_quality_obj.get("name", "Unknown")
+                
+                # Insert into cache
+                conn.execute("""
+                    INSERT OR REPLACE INTO scored_movies_cache
+                    (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
+                     size_gb, age_days, quality, monitored, normalized_score,
+                     raw_score, factors, plex_play_count,
+                     collection_name, collection_id, is_collection,
+                     scheduled_for_deletion, scheduled_date, cached_at, manual_for_deletion)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP, 1)
+                """, (
+                    m_id,
+                    m.get("title"),
+                    m.get("year"),
+                    tmdb_id,
+                    score_result.get("tmdb_rating", 0),
+                    score_result.get("size_gb", 0),
+                    score_result.get("age_days", 0),
+                    current_quality,
+                    1 if m.get("monitored", True) else 0,
+                    score_result.get("score", 0) * 100,  # normalized_score
+                    score_result.get("score", 0),  # raw_score
+                    json.dumps(score_result.get("factors", [])),
+                    score_result.get("plex_play_count", 0),
+                    collection_name if is_collection else None,
+                    collection_id if is_collection else None,
+                    1 if is_collection else 0,
+                    scheduled_date_str
+                ))
+            else:
+                # Update existing cache entry
+                conn.execute("""
+                    UPDATE scored_movies_cache 
+                    SET scheduled_for_deletion = 1, 
+                        scheduled_date = ?,
+                        manual_for_deletion = 1
+                    WHERE movie_id = ?
+                """, (scheduled_date_str, m_id))
+        
+        conn.commit()
+        
+        # Add to Plex collection if configured
+        if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_key"]:
+            try:
+                # Build library map and add to collection
+                plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
+                plex_ok, _ = await plex_client.test_connection()
+                if plex_ok:
+                    # Get library map for rating keys
+                    library_items = await plex_client.get_library_items()
+                    library_map = {}
+                    for item in library_items:
+                        title = item.get("title")
+                        year = item.get("year")
+                        rating_key = item.get("rating_key")
+                        if title and year and rating_key:
+                            key = f"{title.lower()}|{year}"
+                            library_map[key] = rating_key
+                    
+                    # Prepare movie list for Plex collection function
+                    movies_for_plex = []
+                    for m in collection_movies:
+                        movies_for_plex.append({
+                            "movie_id": m.get("id"),
+                            "movie_title": m.get("title"),
+                            "movie_year": m.get("year")
+                        })
+                    
+                    await _apply_plex_collections(plex_client, movies_for_plex, library_map)
+                    logger.info(f"MANUAL: Added {len(collection_movies)} movies to Plex collection")
+            except Exception as plex_error:
+                logger.warning(f"Failed to add to Plex collection: {plex_error}")
+        
+        # Log the manual queue action
+        if is_collection:
+            logger.info(f"MANUAL: Queued collection '{collection_name}' with {len(collection_movies)} movies for deletion on {scheduled_date_str}")
+        else:
+            logger.info(f"MANUAL: Queued '{movie_title}' for deletion on {scheduled_date_str}")
+        
+        return {
+            "success": True,
+            "message": f"Queued {movie_title} for deletion on {scheduled_date.strftime('%Y-%m-%d')}",
+            "scheduled_date": scheduled_date_str,
+            "is_collection": is_collection,
+            "movie_count": len(collection_movies)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to manually queue movie {movie_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to queue movie: {str(e)}")
     finally:
         conn.close()
             
@@ -254,7 +473,7 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
                     size_gb, age_days, quality, monitored, normalized_score,
                     raw_score, factors, plex_play_count,
                     collection_name, collection_id, is_collection, cached_at,
-                    scheduled_for_deletion, scheduled_date
+                    scheduled_for_deletion, scheduled_date, manual_for_deletion
             FROM scored_movies_cache
             {where_clause}
         """
@@ -392,7 +611,7 @@ async def search_score_queue(
             SELECT DISTINCT movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
                    size_gb, age_days, quality, monitored, normalized_score,
                    raw_score, factors, plex_play_count,
-                   collection_name, collection_id, is_collection
+                   collection_name, collection_id, is_collection, manual_for_deletion
             FROM scored_movies_cache
             WHERE LOWER(movie_title) LIKE ? 
                OR LOWER(collection_name) LIKE ?

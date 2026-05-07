@@ -29,7 +29,12 @@ async function loadQueueStatus() {
         const percent = data.percent_used || 0;
         document.getElementById('queue-bar').style.width = `${percent}%`;
         document.getElementById('queue-percent').textContent = `${percent}%`;
-        document.getElementById('queue-cap').textContent = `of ${data.max_queued} cap`;
+        const capText = `of ${data.max_queued} cap`;
+        if (data.manual_count && data.manual_count > 0) {
+            document.getElementById('queue-cap').textContent = `${capText} | ${data.manual_count} manual`;
+        } else {
+            document.getElementById('queue-cap').textContent = capText;
+        }
 
         // Radarr status
         const radarrDot = document.getElementById('radarr-status-dot');
@@ -171,7 +176,19 @@ async function loadScoreQueue() {
                 <td class="px-4 py-2">${watchedDisplay}</span></td>
                 <td class="px-4 py-2">
                     <div class="flex gap-2">
-                        <button class="btn-sm btn-queue-placeholder" disabled>➕ Queue</button>
+                        ${movie.scheduled_for_deletion === 1 ? 
+    `                       <button onclick="removeFromQueue(${movie.movie_id}, '${escapeHtml(movie.movie_title)}')" 
+                                class="btn-sm btn-danger" 
+                                title="Remove from scheduled deletions">
+                                ✕ Remove
+                            </button>` :
+    `                       <button onclick="manualQueueMovie(${movie.movie_id}, '${escapeHtml(movie.movie_title)}', ${movie.is_collection || false}, ${movie.movie_count || 1})" 
+                                class="btn-sm btn-primary" 
+                                style="background: var(--accent);"
+                                title="Manually queue this movie (bypasses queue cap, keeps score)">
+                                ➕ Queue
+                            </button>`
+                        }
                         <button data-title="${safeTitle}" 
                                 data-score="${movie.normalized_score}" 
                                 data-factors='${factorsJson}'
@@ -424,8 +441,12 @@ function renderScheduledTable(data) {
     
     tbody.innerHTML = data.items.map(item => {
         let scoreClass = 'score-high';
-        if (item.normalized_score < 60) scoreClass = 'score-medium';
-        if (item.normalized_score < 30) scoreClass = 'score-low';
+        if (item.manual_for_deletion) {
+            scoreClass = 'badge-manual';
+        } else {
+            if (item.normalized_score < 60) scoreClass = 'score-medium';
+            if (item.normalized_score < 30) scoreClass = 'score-low';
+        }
         
         // Calculate countdown from scheduled_date
         let countdownText = '';
@@ -592,6 +613,36 @@ async function triggerCullRun() {
         showToast('Error: ' + e.message, 'error');
         btn.disabled = false;
         btn.textContent = '🗑️ Run Cull';
+    }
+}
+
+// Manual Queue Movie
+async function manualQueueMovie(movieId, title, isCollection = false, movieCount = 1) {
+    // Confirmation dialog
+    let confirmMessage = '';
+    if (isCollection) {
+        confirmMessage = `Queue collection "${title}" (${movieCount} movies) for deletion?\n\nThis bypasses all protection rules and does not count toward your queue limit.`;
+    } else {
+        confirmMessage = `Manually queue "${title}" for deletion?\n\nThis bypasses all protection rules and does not count toward your queue limit.`;
+    }
+    
+    if (!confirm(confirmMessage)) return;
+    
+    try {
+        const res = await fetch(`/api/dashboard/scheduled/${movieId}`, { method: 'POST' });
+        const data = await res.json();
+        
+        if (res.ok) {
+            showToast(data.message, 'success');
+            // Refresh both tables
+            await loadScoreQueue();
+            await loadScheduledDeletions();
+            await loadQueueStatus();
+        } else {
+            showToast(data.detail || 'Failed to queue movie', 'error');
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
     }
 }
 

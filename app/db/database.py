@@ -148,7 +148,8 @@ def init_db():
             is_collection BOOLEAN DEFAULT 0,
             scheduled_for_deletion BOOLEAN DEFAULT 0,
             scheduled_date DATETIME,
-            cached_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            cached_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            manual_for_deletion BOOLEAN DEFAULT 0
         )
     """)
 
@@ -381,7 +382,14 @@ def migrate_db():
             cursor.execute(f"ALTER TABLE deletion_history ADD COLUMN {column} {column_type}")
             print(f"Migration applied: added {column} to deletion_history")
         except Exception:
-            pass  # Column already exists, safe to ignore    
+            pass  # Column already exists, safe to ignore
+
+    # Migration: Add manual_for_deletion to scored_movies_cache
+    try:
+        cursor.execute("ALTER TABLE scored_movies_cache ADD COLUMN manual_for_deletion BOOLEAN DEFAULT 0")
+        print("Migration applied: added manual_for_deletion to scored_movies_cache")
+    except Exception:
+        pass  # Column already exists, safe to ignore   
 
     conn.commit()
     conn.close()

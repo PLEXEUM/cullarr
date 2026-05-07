@@ -303,8 +303,12 @@ async def run_score_cycle():
         
         logger.info(f"Found {len(existing_scheduled)} currently scheduled movies with existing dates")
 
-        # ===== STEP 2: Clear existing scheduled flags and dates =====
-        conn.execute("UPDATE scored_movies_cache SET scheduled_for_deletion = 0, scheduled_date = NULL")
+        # ===== STEP 2: Clear existing scheduled flags and dates (keep manual entries) =====
+        conn.execute("""
+            UPDATE scored_movies_cache 
+            SET scheduled_for_deletion = 0, scheduled_date = NULL 
+            WHERE manual_for_deletion = 0
+        """)
         
         # ===== STEP 3: Insert or update all scored movies in cache =====
         for entry in scored_movies:
@@ -371,16 +375,28 @@ async def run_score_cycle():
         deletions_per_day = int(settings["deletions_per_day"]) if settings and settings["deletions_per_day"] is not None else 0
         base_delay_days = settings["delete_after_days"] if settings else 7
         
-        # Get all movies sorted by normalized_score (highest first)
+        # Count manually queued movies (they stay queued regardless)
+        manual_count = conn.execute("""
+            SELECT COUNT(*) as count 
+            FROM scored_movies_cache 
+            WHERE scheduled_for_deletion = 1 AND manual_for_deletion = 1
+        """).fetchone()["count"]
+
+        logger.info(f"Found {manual_count} manually queued movies (preserved, not counted in slots)")
+
+        # Get all movies sorted by normalized_score (highest first) - exclude manual
         all_movies = conn.execute("""
             SELECT movie_id, normalized_score, scheduled_date
             FROM scored_movies_cache
-            WHERE normalized_score > ?
+            WHERE normalized_score > ? AND manual_for_deletion = 0
             ORDER BY normalized_score DESC
         """, (threshold,)).fetchall()
-        
-        # Top N movies to schedule (or fewer if not enough qualify)
-        top_movies = all_movies[:max_queued]
+
+        # Auto slots = max_queued (manual doesn't reduce slots)
+        auto_slots = max_queued
+        top_movies = all_movies[:auto_slots]
+
+        logger.info(f"Auto-scheduling top {len(top_movies)} movies from {len(all_movies)} eligible (max_queued: {max_queued})")
         
         logger.info(f"Top {len(top_movies)} movies qualify for scheduling (threshold: {threshold})")
         
@@ -395,12 +411,13 @@ async def run_score_cycle():
             
             # Check if this movie was already scheduled
             if movie_id in existing_scheduled:
-                # Keep existing scheduled date - restore it from memory
+                # Keep existing scheduled date (but ensure manual_for_deletion is preserved)
                 original_date = existing_scheduled[movie_id]
                 conn.execute(
                     "UPDATE scored_movies_cache SET scheduled_for_deletion = 1, scheduled_date = ? WHERE movie_id = ?",
                     (original_date, movie_id)
                 )
+            # Note: manual_for_deletion already set and preserved since we didn't clear it
                 logger.debug(f"Keeping scheduled date {original_date} for movie_id {movie_id} (stays in top {max_queued})")
             else:
                 # New movie entering top N - calculate scheduled date based on rank position
@@ -434,6 +451,14 @@ async def run_score_cycle():
                 WHERE scheduled_for_deletion = 1
             )
         """)
+
+        # ===== STEP 6a: Ensure manually queued movies remain scheduled =====
+        conn.execute("""
+            UPDATE scored_movies_cache 
+            SET scheduled_for_deletion = 1 
+            WHERE manual_for_deletion = 1
+        """)
+        logger.info(f"Preserved manually queued movies in schedule")
         
         conn.commit()
         
@@ -466,9 +491,13 @@ async def run_score_cycle():
         scheduled_count = conn.execute(
             "SELECT COUNT(*) as count FROM scored_movies_cache WHERE scheduled_for_deletion = 1"
         ).fetchone()["count"]
-        
-        logger.info(f"Score cycle complete: {scheduled_count} movies scheduled for deletion (max_queued: {max_queued})")
-        
+
+        manual_count_final = conn.execute(
+            "SELECT COUNT(*) as count FROM scored_movies_cache WHERE scheduled_for_deletion = 1 AND manual_for_deletion = 1"
+        ).fetchone()["count"]
+
+        logger.info(f"Score cycle complete: {scheduled_count} movies scheduled (auto: {scheduled_count - manual_count_final}, manual: {manual_count_final})")
+          
         # ===== STEP 7: Sync with Plex collection if enabled (ONLY for newly scheduled movies) =====
         if plex_enabled and plex_client and plex_config and plex_config["collection_key"]:
             # Get movies that were newly scheduled in this run
