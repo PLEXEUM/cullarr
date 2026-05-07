@@ -249,18 +249,58 @@
             box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.3);
         }
 
-        /* Score queue table - fixed column widths and text wrapping */
+        /* Shared table styling for both tables */
+        .data-table {
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        /* Fixed column widths - shared by both tables */
+        .data-table th:nth-child(1),
+        .data-table td:nth-child(1) { width: 70px; }  /* Score */
+
+        .data-table th:nth-child(2),
+        .data-table td:nth-child(2) { width: auto; }  /* Movie - takes remaining space */
+
+        .data-table th:nth-child(3),
+        .data-table td:nth-child(3) { width: 60px; }  /* Year */
+
+        .data-table th:nth-child(4),
+        .data-table td:nth-child(4) { width: 60px; }  /* Age */
+
+        .data-table th:nth-child(5),
+        .data-table td:nth-child(5) { width: 80px; }  /* Size */
+
+        /* Column 6+ flow naturally, no fixed widths needed */
+
+        /* Movie title truncation */
+        .data-table td:nth-child(2) {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .data-table td:nth-child(2):hover {
+            overflow: visible;
+            white-space: normal;
+            word-break: break-word;
+            background: var(--bg-primary);
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Score queue table - additional styling */
         .score-queue-table th:nth-child(2),
         .score-queue-table td:nth-child(2) {
             max-width: 250px;
             word-wrap: break-word;
             white-space: normal;
         }
-        
-        .score-queue-table td {
-            vertical-align: top;
-            padding: 0.75rem 0.5rem;
-        } 
+
+.score-queue-table td {
+    vertical-align: top;
+    padding: 0.75rem 0.5rem;
+}
         
         /* Indeterminate progress bar animation */
         .progress-indeterminate {

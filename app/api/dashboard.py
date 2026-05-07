@@ -89,91 +89,6 @@ async def get_queue_status():
     }
 
 
-@router.get("/dashboard/scheduled")
-async def get_scheduled_deletions(limit: int = Query(50, ge=1, le=200)):
-    """
-    Get scheduled deletions queue from scored_movies_cache.
-    Collections are grouped into single entries with a movies list.
-    """
-    conn = get_connection()
-    try:
-        scheduled = conn.execute("""
-            SELECT 
-                movie_id as id,
-                movie_id,
-                movie_title,
-                movie_year,
-                size_gb,
-                quality,
-                normalized_score as score,
-                scheduled_date,
-                'scheduled' as status,
-                collection_name
-            FROM scored_movies_cache
-            WHERE scheduled_for_deletion = 1
-              AND scheduled_date IS NOT NULL
-            ORDER BY collection_name ASC, scheduled_date ASC
-            LIMIT ?
-        """, (limit,)).fetchall()
-    finally:
-        conn.close()
-
-    # Group collection members together for display
-    collections: dict = {}
-    individuals: list = []
-
-    for row in scheduled:
-        item = dict(row)
-        if item["collection_name"]:
-            cname = item["collection_name"]
-            if cname not in collections:
-                collections[cname] = {
-                    "is_collection": True,
-                    "collection_name": cname,
-                    "movie_title": cname,
-                    "movie_id": None,
-                    "movie_year": None,
-                    "year_min": None,
-                    "score": item["score"],
-                    "scheduled_date": item["scheduled_date"],
-                    "status": item["status"],
-                    "movies": [],
-                    "size_gb": 0.0,
-                }
-            
-            # Set movie_id from the first movie in the collection
-            if collections[cname]["movie_id"] is None and item.get("movie_id"):
-                collections[cname]["movie_id"] = item["movie_id"]
-            
-            # Track earliest year in collection
-            if item["movie_year"]:
-                if collections[cname]["year_min"] is None or item["movie_year"] < collections[cname]["year_min"]:
-                    collections[cname]["year_min"] = item["movie_year"]
-            
-            collections[cname]["movies"].append(item)
-            collections[cname]["size_gb"] += item["size_gb"] or 0.0
-        else:
-            item["is_collection"] = False
-            individuals.append(item)
-    
-    # After the loop, set movie_year for collections from year_min
-    for cname in collections:
-        if collections[cname].get("year_min"):
-            collections[cname]["movie_year"] = collections[cname]["year_min"]
-        # Clean up temporary field
-        if "year_min" in collections[cname]:
-            del collections[cname]["year_min"]
-
-    items = individuals + list(collections.values())
-    items.sort(key=lambda x: x["scheduled_date"])
-
-    return {
-        "items": items,
-        "count": len(items),
-        "total_movies": len(scheduled),
-    }
-
-
 @router.delete("/dashboard/scheduled/{movie_id}")
 async def remove_from_queue(movie_id: int):
     """
@@ -307,12 +222,9 @@ async def remove_from_queue(movie_id: int):
 async def get_score_queue(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    sort_by: str = Query("score", description="Sort column: score, title, year, age, size, rating, quality, watched"),
-    sort_order: str = Query("desc", description="Sort order: asc or desc")
+    sort_by: str = Query("score"),
+    sort_order: str = Query("desc")
 ) -> dict:
-    """
-    Get scored movies from cache. Cache is updated by scheduled score runs.
-    """
     return await _get_score_queue_from_cache(page, per_page, sort_by, sort_order)
 
 
@@ -327,18 +239,16 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
         plex_config = conn.execute("SELECT enabled FROM plex_config WHERE id = 1").fetchone()
         plex_enabled = bool(plex_config and plex_config["enabled"]) if plex_config else False
         
-        scheduled_ids = conn.execute(
-            "SELECT movie_id FROM scored_movies_cache WHERE scheduled_for_deletion = 1"
-        ).fetchall()
-        scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
-
-        all_cached = conn.execute("""
+        # No scheduled filtering - return ALL movies
+        query = f"""
             SELECT movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
-                   size_gb, age_days, quality, monitored, normalized_score,
-                   raw_score, factors, plex_play_count,
-                   collection_name, collection_id, is_collection, cached_at
+                    size_gb, age_days, quality, monitored, normalized_score,
+                    raw_score, factors, plex_play_count,
+                    collection_name, collection_id, is_collection, cached_at,
+                    scheduled_for_deletion, scheduled_date
             FROM scored_movies_cache
-        """).fetchall()
+        """
+        all_cached = conn.execute(query).fetchall()
     finally:
         conn.close()
 
@@ -352,9 +262,6 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
             item["factors"] = json.loads(item["factors"]) if item["factors"] else []
         except Exception:
             item["factors"] = []
-
-        if item["movie_id"] in scheduled_id_set:
-            continue
 
         if item["is_collection"] and item["collection_name"]:
             cname = item["collection_name"]
@@ -454,7 +361,7 @@ async def search_score_queue(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     sort_by: str = Query("score", description="Sort column: score, title, year, age, size, rating, quality, watched"),
-    sort_order: str = Query("desc", description="Sort order: asc or desc")
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
 ):
     """
     Search scored movies cache by title or collection name.
@@ -465,12 +372,6 @@ async def search_score_queue(
         # Check if Plex is enabled
         plex_config = conn.execute("SELECT enabled FROM plex_config WHERE id = 1").fetchone()
         plex_enabled = bool(plex_config and plex_config["enabled"]) if plex_config else False
-
-        # Get scheduled movie IDs to exclude
-        scheduled_ids = conn.execute(
-            "SELECT movie_id FROM scored_movies_cache WHERE scheduled_for_deletion = 1"
-        ).fetchall()
-        scheduled_id_set = {row["movie_id"] for row in scheduled_ids}
         
         # Build search query - search in movie_title and collection_name
         search_term = f"%{q.lower()}%"
@@ -505,10 +406,6 @@ async def search_score_queue(
         for row in matching_movies:
             item = dict(row)
             item["factors"] = json.loads(item["factors"]) if item["factors"] else []
-            
-            # Skip if already scheduled
-            if item["movie_id"] in scheduled_id_set:
-                continue
             
             if item["is_collection"] and item["collection_name"]:
                 cname = item["collection_name"]

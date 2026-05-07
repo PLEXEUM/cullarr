@@ -171,19 +171,22 @@
         </button>
         <div id="scheduled-deletions-section" class="border-t" style="border-color: var(--border-color);">
             <div class="overflow-x-auto">
-                <table class="w-full">
+                <table class="w-full data-table">
                     <thead>
                         <tr>
                             <th>Score</th>
                             <th>Movie</th>
                             <th>Year</th>
+                            <th>Age</th>
+                            <th>Size</th>
                             <th>Deletion Date</th>
                             <th>Countdown</th>
+                            <th></th>
                             <th></th>
                         </tr>
                     </thead>
                     <tbody id="scheduled-table">
-                        <tr><td colspan="6" class="text-center py-8" style="color: var(--text-secondary)">Loading...</td>
+                        <td colspan="9" class="text-center py-8" style="color: var(--text-secondary)">Loading...</td>
                     </tbody>
                 </table>
             </div>
@@ -214,7 +217,7 @@
             </div>
         </div>
         <div class="overflow-x-auto">
-            <table class="w-full score-queue-table">
+            <table class="w-full score-queue-table data-table">
                 <thead>
                     <tr>
                         <th class="sortable" data-sort="score" style="cursor: pointer;">Score <span class="sort-icon">↕</span></th>

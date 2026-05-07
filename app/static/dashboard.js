@@ -74,74 +74,24 @@ async function loadQueueStatus() {
 // Scheduled Deletions
 async function loadScheduledDeletions() {
     try {
-        const res = await fetch('/api/dashboard/scheduled?limit=50');
-        const data = await res.json();
-        const tbody = document.getElementById('scheduled-table');
-        document.getElementById('scheduled-badge').textContent = `${data.count} items`;
-
-        if (!data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No scheduled deletions</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = data.items.map(item => {
-            let scoreClass = 'score-high';
-            if (item.score < 60) scoreClass = 'score-medium';
-            if (item.score < 30) scoreClass = 'score-low';
-            const deleteDate = new Date(item.scheduled_date).toLocaleDateString();
-            
-            // Calculate countdown
-            const now = new Date();
-            const deleteDateTime = new Date(item.scheduled_date);
-            const daysRemaining = Math.ceil((deleteDateTime - now) / (1000 * 60 * 60 * 24));
-            
-            let countdownText = '';
-            let countdownClass = '';
-            if (daysRemaining < 0) {
-                countdownText = 'Overdue';
-                countdownClass = 'style="color: var(--danger); font-weight: bold;"';
-            } else if (daysRemaining === 0) {
-                countdownText = 'Today';
-                countdownClass = 'style="color: var(--warning); font-weight: bold;"';
-            } else if (daysRemaining === 1) {
-                countdownText = 'Tomorrow';
-                countdownClass = 'style="color: var(--warning);"';
-            } else if (daysRemaining <= 3) {
-                countdownText = `${daysRemaining} days`;
-                countdownClass = 'style="color: var(--warning);"';
-            } else {
-                countdownText = `${daysRemaining} days`;
-                countdownClass = '';
-            }
-            
-            // Get movie year (handle collections)
-            let yearDisplay = 'N/A';
-            if (item.movie_year !== null && item.movie_year !== undefined) {
-                yearDisplay = String(item.movie_year);
-            } else if (item.is_collection) {
-                yearDisplay = 'Various';
-            }
-            
-            // Determine if this is a collection (for year display)
-            const isCollection = item.collection_name ? true : false;
-            
-            return `
-                <tr style="border-bottom: 1px solid var(--border-color);">
-                    <td class="px-4 py-2"><span class="badge ${scoreClass}">${item.score.toFixed(1)}</span></td>
-                    <td class="px-4 py-2 font-medium">${escapeHtml(item.movie_title)}</span></td>
-                    <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(yearDisplay)}</span></td>
-                    <td class="px-4 py-2" style="color: var(--text-secondary)">${deleteDate}</span></td>
-                    <td class="px-4 py-2" ${countdownClass}>${countdownText}</span></td>
-                    <td class="px-4 py-2">
-                        <button onclick="removeFromQueue(${item.movie_id}, '${escapeHtml(item.movie_title)}')"
-                            class="btn-sm btn-danger">✕ Remove</button>
-                   </td>
-                </tr>
-            `;
-        }).join('');
+        // Call score-queue endpoint with scheduled=1, larger per_page to get all
+        const res = await fetch('/api/dashboard/score-queue?page=1&per_page=100&scheduled=1&sort_by=score&sort_order=desc');
         
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        const data = await res.json();
+        renderScheduledTable(data);
     } catch (e) {
         console.error('Failed to load scheduled deletions:', e);
+        const tbody = document.getElementById('scheduled-table');
+        const badge = document.getElementById('scheduled-badge');
+        
+        if (badge) badge.textContent = '0 items';
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="9" class="text-center py-8" style="color: var(--danger);">Failed to load scheduled deletions. Please check your connection.</td></tr>`;
+        }
     }
 }
 
@@ -424,6 +374,125 @@ function loadScheduledDeletionsState() {
             scheduledDeletionsCollapsed = true;
         }
     }
+}
+
+function renderScheduledTable(data) {
+    const tbody = document.getElementById('scheduled-table');
+    const badge = document.getElementById('scheduled-badge');
+    
+    if (!data.items || data.items.length === 0) {
+        if (badge) badge.textContent = '0 items';
+        tbody.innerHTML = `<tr><td colspan="9" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No scheduled deletions</td></tr>`;
+        return;
+    }
+    
+    if (badge) badge.textContent = `${data.items.length} items`;
+    
+    tbody.innerHTML = data.items.map(item => {
+        let scoreClass = 'score-high';
+        if (item.normalized_score < 60) scoreClass = 'score-medium';
+        if (item.normalized_score < 30) scoreClass = 'score-low';
+        
+        // Calculate countdown from scheduled_date
+        let countdownText = '';
+        let countdownClass = '';
+        if (item.scheduled_date) {
+            const deleteDate = new Date(item.scheduled_date);
+            const now = new Date();
+            const daysRemaining = Math.ceil((deleteDate - now) / (1000 * 60 * 60 * 24));
+            
+            if (daysRemaining < 0) {
+                countdownText = 'overdue';
+                countdownClass = 'style="color: var(--danger);"';
+            } else if (daysRemaining === 0) {
+                countdownText = 'today';
+                countdownClass = 'style="color: var(--warning);"';
+            } else if (daysRemaining === 1) {
+                countdownText = 'tomorrow';
+                countdownClass = 'style="color: var(--warning);"';
+            } else {
+                countdownText = `${daysRemaining} days`;
+                countdownClass = '';
+            }
+        } else {
+            countdownText = 'pending';
+        }
+        
+        // Format deletion date
+        const deletionDate = item.scheduled_date ? new Date(item.scheduled_date).toLocaleDateString() : 'N/A';
+        
+        // Handle collection display
+        const isCollection = item.is_collection || false;
+        const movieYear = item.movie_year || (isCollection ? 'Various' : 'N/A');
+        
+        // Store factors and movies as JSON for modal
+        const factorsJson = JSON.stringify(item.factors || []).replace(/'/g, "&#39;");
+        const moviesData = isCollection ? JSON.stringify(item.movies || []).replace(/'/g, "&#39;") : '[]';
+        
+        return `
+            <tr style="border-bottom: 1px solid var(--border-color);">
+                <td class="px-4 py-2"><span class="badge ${scoreClass}">${item.normalized_score?.toFixed(1) || '0'}</span></td>
+                <td class="px-4 py-2 font-medium">${escapeHtml(item.movie_title || 'Unknown')}</td>
+                <td class="px-4 py-2" style="color: var(--text-secondary)">${movieYear}</td>
+                <td class="px-4 py-2" style="color: var(--text-secondary)">${item.age_days || 0}d</td>
+                <td class="px-4 py-2">${item.size_gb?.toFixed(1) || 0} GB</td>
+                <td class="px-4 py-2" style="color: var(--text-secondary)">${deletionDate}</td>
+                <td class="px-4 py-2" ${countdownClass}>${countdownText}</td>
+                <td class="px-4 py-2">
+                    <button onclick="removeFromQueue(${item.movie_id}, '${escapeHtml(item.movie_title)}')" 
+                        class="btn-sm btn-danger">✕ Remove</button>
+                </td>
+                <td class="px-4 py-2">
+                    <button data-title="${escapeHtml(item.movie_title)}" 
+                            data-score="${item.normalized_score}" 
+                            data-factors='${factorsJson}'
+                            data-is-collection="${isCollection}"
+                            data-movies='${moviesData}'
+                            data-movie-count="${item.movie_count || 0}"
+                            class="btn-sm btn-outline scheduled-details-btn">🔍 Details</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+    
+    // Attach details modal event listeners to the new buttons
+    document.querySelectorAll('.scheduled-details-btn').forEach(btn => {
+        btn.removeEventListener('click', handleScheduledDetailsClick);
+        btn.addEventListener('click', handleScheduledDetailsClick);
+    });
+}
+
+function handleScheduledDetailsClick(e) {
+    const btn = e.currentTarget;
+    const title = btn.getAttribute('data-title');
+    const score = parseFloat(btn.getAttribute('data-score'));
+    const isCollection = btn.getAttribute('data-is-collection') === 'true';
+    const movieCount = parseInt(btn.getAttribute('data-movie-count') || '0');
+    
+    let factors = [];
+    let movies = [];
+    
+    try {
+        const factorsAttr = btn.getAttribute('data-factors');
+        if (factorsAttr && factorsAttr !== 'undefined') {
+            factors = JSON.parse(factorsAttr);
+        }
+    } catch (err) {
+        console.error('Failed to parse factors:', err);
+    }
+    
+    if (isCollection) {
+        try {
+            const moviesAttr = btn.getAttribute('data-movies');
+            if (moviesAttr && moviesAttr !== 'undefined' && moviesAttr !== '[]') {
+                movies = JSON.parse(moviesAttr);
+            }
+        } catch (err) {
+            console.error('Failed to parse movies:', err);
+        }
+    }
+    
+    showScoreDetails(title, score, factors, isCollection, movies, movieCount);
 }
 
 // Trigger score run
