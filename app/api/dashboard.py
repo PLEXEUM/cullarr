@@ -611,7 +611,7 @@ async def search_score_queue(
             SELECT DISTINCT movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
                    size_gb, age_days, quality, monitored, normalized_score,
                    raw_score, factors, plex_play_count,
-                   collection_name, collection_id, is_collection, manual_for_deletion
+                   collection_name, collection_id, is_collection, manual_for_deletion, scheduled_for_deletion
             FROM scored_movies_cache
             WHERE LOWER(movie_title) LIKE ? 
                OR LOWER(collection_name) LIKE ?
@@ -656,6 +656,7 @@ async def search_score_queue(
                         "movies": [],
                         "movie_count": 0,
                         "plex_play_count": 0,
+                        "scheduled_for_deletion": False,
                     }
                 
                 # Track earliest year (min)
@@ -673,6 +674,11 @@ async def search_score_queue(
                 
                 # Aggregate play count (sum of all members)
                 collections[cname]["plex_play_count"] += item["plex_play_count"] or 0
+
+                # Track if any movie in collection is scheduled
+                if item.get("scheduled_for_deletion"):
+                    collections[cname]["scheduled_for_deletion"] = True
+
             else:
                 individuals.append(item)
 
