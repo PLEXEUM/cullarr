@@ -7,6 +7,7 @@ from app.utils.logger import get_logger
 from plexapi.server import PlexServer
 import json
 import asyncio
+from typing import Optional
 
 router = APIRouter()
 logger = get_logger()
@@ -223,12 +224,13 @@ async def get_score_queue(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     sort_by: str = Query("score"),
-    sort_order: str = Query("desc")
+    sort_order: str = Query("desc"),
+    scheduled: Optional[int] = Query(None, ge=0, le=1, description="0=unscheduled, 1=scheduled, omit=all")
 ) -> dict:
-    return await _get_score_queue_from_cache(page, per_page, sort_by, sort_order)
+    return await _get_score_queue_from_cache(page, per_page, sort_by, sort_order, scheduled)
 
 
-async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "score", sort_order: str = "desc") -> dict:
+async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "score", sort_order: str = "desc", scheduled: Optional[int] = None) -> dict:
     """
     Read paginated score queue from cache, excluding already-scheduled movies.
     Collections are grouped into single entries for display.
@@ -239,7 +241,14 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
         plex_config = conn.execute("SELECT enabled FROM plex_config WHERE id = 1").fetchone()
         plex_enabled = bool(plex_config and plex_config["enabled"]) if plex_config else False
         
-        # No scheduled filtering - return ALL movies
+        # Apply scheduled filter only when specified (0 or 1)
+        if scheduled == 0:
+            where_clause = "WHERE scheduled_for_deletion = 0"
+        elif scheduled == 1:
+            where_clause = "WHERE scheduled_for_deletion = 1"
+        else:
+            where_clause = ""
+
         query = f"""
             SELECT movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
                     size_gb, age_days, quality, monitored, normalized_score,
@@ -247,6 +256,7 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
                     collection_name, collection_id, is_collection, cached_at,
                     scheduled_for_deletion, scheduled_date
             FROM scored_movies_cache
+            {where_clause}
         """
         all_cached = conn.execute(query).fetchall()
     finally:
