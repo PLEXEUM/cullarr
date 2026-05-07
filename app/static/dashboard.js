@@ -177,16 +177,16 @@ async function loadScoreQueue() {
                 <td class="px-4 py-2">
                     <div class="flex gap-2">
                         ${movie.scheduled_for_deletion === 1 ? 
-    `                       <button onclick="removeFromQueue(${movie.movie_id}, '${escapeHtml(movie.movie_title)}')" 
+                            `<button onclick="removeFromQueue(${movie.movie_id}, '${escapeHtml(movie.movie_title)}')" 
                                 class="btn-sm btn-danger" 
                                 title="Remove from scheduled deletions">
                                 ✕ Remove
-                            </button>` :
-    `                       <button onclick="manualQueueMovie(${movie.movie_id}, '${escapeHtml(movie.movie_title)}', ${movie.is_collection || false}, ${movie.movie_count || 1})" 
+                            </button>` : 
+                            `<button onclick="manualQueueMovie(${movie.movie_id}, '${escapeHtml(movie.movie_title)}', ${movie.is_collection || false}, ${movie.movie_count || 1})" 
                                 class="btn-sm btn-manual" 
                                 title="Manually queue this movie (bypasses queue cap, keeps score)">
                                 ➕ Queue
-                            </button>
+                            </button>`
                         }
                         <button data-title="${safeTitle}" 
                                 data-score="${movie.normalized_score}" 
