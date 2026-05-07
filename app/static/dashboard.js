@@ -430,6 +430,15 @@ function renderScheduledTable(data) {
         const factorsJson = JSON.stringify(item.factors || []).replace(/'/g, "&#39;");
         const moviesData = isCollection ? JSON.stringify(item.movies || []).replace(/'/g, "&#39;") : '[]';
         
+        // Get watched count from the data (already in item.plex_play_count)
+        const watchedCount = item.plex_play_count || 0;
+        let watchedHtml = '';
+        if (item.plex_play_count === null || item.plex_play_count === undefined) {
+            watchedHtml = '<span style="color: var(--text-secondary);">N/A</span>';
+        } else {
+            watchedHtml = `<span style="color: var(--text-secondary);">${watchedCount}</span>`;
+        }
+        
         return `
             <tr style="border-bottom: 1px solid var(--border-color);">
                 <td class="px-4 py-2"><span class="badge ${scoreClass}">${item.normalized_score?.toFixed(1) || '0'}</span></td>
@@ -439,18 +448,19 @@ function renderScheduledTable(data) {
                 <td class="px-4 py-2">${item.size_gb?.toFixed(1) || 0} GB</td>
                 <td class="px-4 py-2" style="color: var(--text-secondary)">${deletionDate}</td>
                 <td class="px-4 py-2" ${countdownClass}>${countdownText}</td>
+                <td class="px-4 py-2">${watchedHtml}</td>
                 <td class="px-4 py-2">
-                    <button onclick="removeFromQueue(${item.movie_id}, '${escapeHtml(item.movie_title)}')" 
-                        class="btn-sm btn-danger">✕ Remove</button>
-                </td>
-                <td class="px-4 py-2">
-                    <button data-title="${escapeHtml(item.movie_title)}" 
-                            data-score="${item.normalized_score}" 
-                            data-factors='${factorsJson}'
-                            data-is-collection="${isCollection}"
-                            data-movies='${moviesData}'
-                            data-movie-count="${item.movie_count || 0}"
-                            class="btn-sm btn-outline scheduled-details-btn">🔍 Details</button>
+                    <div class="flex gap-2">
+                        <button onclick="removeFromQueue(${item.movie_id}, '${escapeHtml(item.movie_title)}')" 
+                            class="btn-sm btn-danger">✕ Remove</button>
+                        <button data-title="${escapeHtml(item.movie_title)}" 
+                                data-score="${item.normalized_score}" 
+                                data-factors='${factorsJson}'
+                                data-is-collection="${isCollection}"
+                                data-movies='${moviesData}'
+                                data-movie-count="${item.movie_count || 0}"
+                                class="btn-sm btn-outline scheduled-details-btn">🔍 Details</button>
+                    </div>
                 </td>
             </tr>
         `;
