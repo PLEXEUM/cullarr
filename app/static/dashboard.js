@@ -106,14 +106,14 @@ async function removeFromQueue(movieId, title, isCollection = false) {
     if (!confirm(confirmMessage)) return;
     
     try {
-        // For collections, we need to remove by collection_name
+        // For collections, use collection_id; for individuals, use movie_id
         let url;
         if (isCollection) {
-            url = `/api/dashboard/scheduled/collection/by-name/${encodeURIComponent(title)}`;
+            url = `/api/dashboard/scheduled/collection/${movieId}`;
         } else {
             url = `/api/dashboard/scheduled/${movieId}`;
         }
-        
+                
         const res = await fetch(url, { method: 'DELETE' });
         if (res.ok) {
             showToast(`Removed "${title}" from queue`, 'success');
@@ -190,7 +190,7 @@ async function loadScoreQueue() {
                         ${movie.is_collection ? 
                             // COLLECTION buttons
                             (movie.scheduled_for_deletion === 1 ? 
-                                `<button onclick="removeFromQueue(null, '${escapeHtml(movie.movie_title)}', true)" 
+                                `<button onclick="removeFromQueue(${movie.collection_id}, '${escapeHtml(movie.movie_title)}', true)" 
                                     class="btn-sm btn-danger" 
                                     title="Remove entire collection from scheduled deletions">
                                     ✕ Remove

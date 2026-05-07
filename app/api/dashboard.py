@@ -614,23 +614,36 @@ async def manually_queue_collection(collection_id: int):
         conn.close()
 
 
-@router.delete("/dashboard/scheduled/collection/by-name/{collection_name}")
-async def remove_collection_by_name(collection_name: str):
+@router.delete("/dashboard/scheduled/collection/{collection_id}")
+async def remove_collection_by_id(collection_id: int):
     """
-    Remove an entire collection from scheduled deletions by name.
+    Remove an entire collection from scheduled deletions by collection ID.
     """
     conn = get_connection()
     try:
+        # First, get the collection name from the cache using collection_id
+        collection_info = conn.execute(
+            """SELECT DISTINCT collection_name 
+               FROM scored_movies_cache 
+               WHERE collection_id = ? AND scheduled_for_deletion = 1""",
+            (collection_id,)
+        ).fetchone()
+        
+        if not collection_info:
+            raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found in scheduled queue")
+        
+        collection_name = collection_info["collection_name"]
+        
         # Get all scheduled movies in this collection
         collection_members = conn.execute(
             """SELECT movie_id, movie_title, movie_year 
                FROM scored_movies_cache 
-               WHERE collection_name = ? AND scheduled_for_deletion = 1""",
-            (collection_name,)
+               WHERE collection_id = ? AND scheduled_for_deletion = 1""",
+            (collection_id,)
         ).fetchall()
         
         if not collection_members:
-            raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found in scheduled queue")
+            raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found in scheduled queue")
         
         # Get Plex config for collection cleanup
         plex_config = conn.execute("SELECT url, api_key, enabled, collection_key FROM plex_config WHERE id = 1").fetchone()
@@ -664,12 +677,12 @@ async def remove_collection_by_name(collection_name: str):
         conn.execute(
             """UPDATE scored_movies_cache 
                SET scheduled_for_deletion = 0, scheduled_date = NULL, manual_for_deletion = 0 
-               WHERE collection_name = ? AND scheduled_for_deletion = 1""",
-            (collection_name,)
+               WHERE collection_id = ? AND scheduled_for_deletion = 1""",
+            (collection_id,)
         )
         conn.commit()
         
-        logger.info(f"Removed collection '{collection_name}' from queue ({len(collection_members)} movies)")
+        logger.info(f"Removed collection '{collection_name}' (ID: {collection_id}) from queue ({len(collection_members)} movies)")
         return {
             "success": True,
             "message": f"Removed collection '{collection_name}' ({len(collection_members)} movies) from queue"
@@ -678,7 +691,7 @@ async def remove_collection_by_name(collection_name: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to remove collection {collection_name}: {e}")
+        logger.error(f"Failed to remove collection {collection_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to remove collection")
     finally:
         conn.close()
@@ -758,6 +771,8 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
                     "movies": [],
                     "movie_count": 0,
                     "plex_play_count": 0,
+                    "scheduled_for_deletion": False,
+                    "manual_for_deletion": False,
                 }
             
             if item["movie_year"]:
@@ -903,6 +918,7 @@ async def search_score_queue(
                         "movie_count": 0,
                         "plex_play_count": 0,
                         "scheduled_for_deletion": False,
+                        "manual_for_deletion": False,
                     }
                 
                 # Track earliest year (min)
@@ -924,6 +940,10 @@ async def search_score_queue(
                 # Track if any movie in collection is scheduled
                 if item.get("scheduled_for_deletion"):
                     collections[cname]["scheduled_for_deletion"] = True
+
+                # Track if any movie in collection is manually queued
+                if item.get("manual_for_deletion"):
+                    collections[cname]["manual_for_deletion"] = True
 
             else:
                 individuals.append(item)
