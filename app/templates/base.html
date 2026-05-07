@@ -321,6 +321,22 @@
             z-index: 1;
         }
 
+        /* Error column truncation - same as Movie column */
+        .data-table td:nth-child(9) {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .data-table td:nth-child(9):hover {
+            overflow: visible;
+            white-space: normal;
+            word-break: break-word;
+            background: var(--bg-primary);
+            position: relative;
+            z-index: 1;
+        }
+
         /* Score queue table - additional styling (keep minimal) */
         .score-queue-table td {
             vertical-align: middle;
