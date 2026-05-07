@@ -332,10 +332,11 @@ class ScoringEngine:
             "age_days": age_days,
             "tmdb_rating": tmdb_rating,
             "quality": current_quality,
-            "monitored": movie.get("monitored", True),  # Pass through for reference only
+            "monitored": movie.get("monitored", True),
             "tmdb_id": movie.get("tmdbId") or movie.get("tmdb_id"),
             "factors": factors,
             "watched_details": watched_details,
+            "plex_play_count": play_count,
         }
     
     def _get_watched_details(self, play_count: int, watched_details: dict, plex_enabled: bool) -> str:
@@ -464,7 +465,7 @@ class ScoringEngine:
                     "factors": result["factors"],
                     "collection": collection,
                     "is_collection": False,
-                     "plex_play_count": result.get("plex_play_count", 0),
+                    "plex_play_count": result.get("plex_play_count", 0),
                 })
 
         # Sort by raw score (highest first)
