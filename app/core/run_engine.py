@@ -450,27 +450,32 @@ async def run_score_cycle():
         
         logger.info(f"Score cycle complete: {scheduled_count} movies scheduled for deletion (max_queued: {max_queued})")
         
-        # ===== STEP 7: Sync with Plex collection if enabled =====
+        # ===== STEP 7: Sync with Plex collection if enabled (ONLY for newly scheduled movies) =====
         if plex_enabled and plex_client and plex_config and plex_config["collection_key"]:
-            # Get all scheduled movies
-            scheduled_movies = conn.execute("""
-                SELECT movie_id, movie_title, movie_year, scheduled_for_deletion
-                FROM scored_movies_cache
-                WHERE scheduled_for_deletion = 1
-            """).fetchall()
+            # Get movies that were newly scheduled in this run
+            # These are movies that are now scheduled but were NOT in existing_scheduled
+            newly_scheduled_ids = new_scheduled_ids - old_scheduled_ids
+    
+            if newly_scheduled_ids:
+                placeholders = ",".join("?" * len(newly_scheduled_ids))
+                newly_scheduled_movies = conn.execute(
+                    f"SELECT movie_id, movie_title, movie_year FROM scored_movies_cache WHERE movie_id IN ({placeholders})",
+                    tuple(newly_scheduled_ids)
+                ).fetchall()
+        
+                if newly_scheduled_movies:
+                    # Build library map if not already done
+                    if not plex_library_map:
+                        plex_library_map = await _build_plex_library_map(plex_client)
             
-            if scheduled_movies:
-                # Build library map if not already done
-                if not plex_library_map:
-                    plex_library_map = await _build_plex_library_map(plex_client)
-                
-                # Add scheduled movies to Plex collection
-                rating_key_map = await _apply_plex_collections(
-                    plex_client,
-                    [dict(m) for m in scheduled_movies],
-                    plex_library_map
-                )
-                logger.info(f"Added {len(rating_key_map)} movies to Plex collection")
+                    rating_key_map = await _apply_plex_collections(
+                        plex_client,
+                        [dict(m) for m in newly_scheduled_movies],
+                        plex_library_map
+                    )
+                    logger.info(f"Added {len(rating_key_map)} newly scheduled movies to Plex collection")
+            else:
+                logger.debug("No newly scheduled movies to add to Plex collection")
         
         _active_run["current_movie"] = f"Score cycle complete: {scheduled_count} movies scheduled"
         _active_run["current"] = 100
