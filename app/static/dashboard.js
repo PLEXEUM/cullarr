@@ -187,20 +187,33 @@ async function loadScoreQueue() {
                 <td class="px-4 py-2">${watchedDisplay}</span></td>
                 <td class="px-4 py-2">
                     <div class="flex gap-2">
-                        ${movie.scheduled_for_deletion === 1 ? 
-                            // For collections that are scheduled, we need a way to remove all members
-                            // The existing removeFromQueue works with collection_name
-                            `<button onclick="removeFromQueue(null, '${escapeHtml(movie.movie_title)}', true)" 
-                                class="btn-sm btn-danger" 
-                                title="Remove entire collection from scheduled deletions">
-                                ✕ Remove
-                            </button>` : 
-                            // For collections not scheduled, use collection_id
-                            `<button onclick="manualQueueCollection(${movie.collection_id}, '${escapeHtml(movie.movie_title)}', ${movie.movie_count})" 
-                                class="btn-sm btn-manual" 
-                                title="Manually queue entire collection (bypasses queue cap, keeps score)">
-                                ➕ Queue Collection
-                            </button>`
+                        ${movie.is_collection ? 
+                            // COLLECTION buttons
+                            (movie.scheduled_for_deletion === 1 ? 
+                                `<button onclick="removeFromQueue(null, '${escapeHtml(movie.movie_title)}', true)" 
+                                    class="btn-sm btn-danger" 
+                                    title="Remove entire collection from scheduled deletions">
+                                    ✕ Remove
+                                </button>` : 
+                                `<button onclick="manualQueueCollection(${movie.collection_id}, '${escapeHtml(movie.movie_title)}', ${movie.movie_count})" 
+                                    class="btn-sm btn-manual" 
+                                    title="Manually queue entire collection (bypasses queue cap, keeps score)">
+                                    ➕ Queue
+                                </button>`
+                            ) : 
+                            // INDIVIDUAL buttons
+                            (movie.scheduled_for_deletion === 1 ? 
+                                `<button onclick="removeFromQueue(${movie.movie_id}, '${escapeHtml(movie.movie_title)}', false)" 
+                                    class="btn-sm btn-danger" 
+                                    title="Remove from scheduled deletions">
+                                    ✕ Remove
+                                </button>` : 
+                                `<button onclick="manualQueueMovie(${movie.movie_id}, '${escapeHtml(movie.movie_title)}', false, 1)" 
+                                    class="btn-sm btn-manual" 
+                                    title="Manually queue this movie (bypasses queue cap, keeps score)">
+                                    ➕ Queue
+                                </button>`
+                            )
                         }
                         <button data-title="${safeTitle}" 
                                 data-score="${movie.normalized_score}" 
@@ -209,7 +222,7 @@ async function loadScoreQueue() {
                                 data-movies='${moviesData}'
                                 data-movie-count="${movie.movie_count || 0}"
                                 class="btn-sm btn-outline details-btn">🔍 Details</button>
-                    </div>
+                        </div>
                 </span>
             </tr>
         `;
