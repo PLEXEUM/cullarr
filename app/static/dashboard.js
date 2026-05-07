@@ -171,7 +171,7 @@ async function loadScoreQueue() {
                 <td class="px-4 py-2">${watchedDisplay}</span></td>
                 <td class="px-4 py-2">
                     <div class="flex gap-2">
-                        <button class="btn-sm btn-queue-placeholder" disabled>📥 Queue</button>
+                        <button class="btn-sm btn-queue-placeholder" disabled>➕ Queue</button>
                         <button data-title="${safeTitle}" 
                                 data-score="${movie.normalized_score}" 
                                 data-factors='${factorsJson}'
