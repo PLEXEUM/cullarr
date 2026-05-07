@@ -242,15 +242,16 @@ function sortScoreQueue(sortBy) {
 }
 
 function updateSortIcons() {
+    // Remove active-sort class from all sortable headers
     document.querySelectorAll('.sortable').forEach(header => {
-        const sortColumn = header.dataset.sort;
-        const icon = header.querySelector('.sort-icon');
-        if (sortColumn === scoreQueueSortBy) {
-            icon.textContent = scoreQueueSortOrder === 'desc' ? '↓' : '↑';
-        } else {
-            icon.textContent = '↕';
-        }
+        header.classList.remove('active-sort');
     });
+    
+    // Add active-sort class to the currently sorted column
+    const activeHeader = document.querySelector(`.sortable[data-sort="${scoreQueueSortBy}"]`);
+    if (activeHeader) {
+        activeHeader.classList.add('active-sort');
+    }
 }
 
 // Deletion History
