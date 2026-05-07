@@ -253,17 +253,24 @@
                 <button id="clear-failed-btn" class="btn-sm btn-outline" style="border-color: var(--danger); color: var(--danger);">🗑️ Clear All</button>
             </div>
         </div>
-            <table class="w-full">
+        <div class="overflow-x-auto">
+            <table class="w-full data-table">
                 <thead>
                     <tr>
-                        <th>Movie</th>
-                        <th>Score</th>
-                        <th>Date</th>
-                        <th>Status</th>
+                        <th class="sortable" data-sort="score">Score</th>
+                        <th class="sortable" data-sort="title">Movie</th>
+                        <th class="sortable" data-sort="year">Year</th>
+                        <th class="sortable" data-sort="age">Age</th>
+                        <th class="sortable" data-sort="size">Size</th>
+                        <th class="sortable" data-sort="rating">Rating</th>
+                        <th class="sortable" data-sort="quality">Quality</th>
+                        <th class="sortable" data-sort="status">Status</th>
                         <th>Error</th>
                     </tr>
                 </thead>
-                <tbody id="failed-table"></tbody>
+                <tbody id="failed-table">
+                    <tr><td colspan="9" class="text-center py-8" style="color: var(--text-secondary)">Loading...</td></tr>
+                </tbody>
             </table>
         </div>
         <div class="px-4 py-3 border-t text-xs" style="border-color: var(--border-color); color: var(--text-secondary);">

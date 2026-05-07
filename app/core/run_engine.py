@@ -550,11 +550,11 @@ async def run_cull_cycle(dry_run: bool = False):
         now = datetime.now().isoformat()
         due_movies = conn.execute("""
             SELECT movie_id, movie_title, movie_year, size_gb, normalized_score as score,
-                   scheduled_date, tmdb_id
+                    scheduled_date, tmdb_id, age_days, quality, tmdb_rating
             FROM scored_movies_cache
             WHERE scheduled_for_deletion = 1 
-              AND scheduled_date IS NOT NULL 
-              AND scheduled_date <= ?
+            AND scheduled_date IS NOT NULL 
+            AND scheduled_date <= ?
         """, (now,)).fetchall()
 
         if not due_movies:
@@ -596,14 +596,18 @@ async def run_cull_cycle(dry_run: bool = False):
                     # Record in deletion history
                     conn.execute("""
                         INSERT INTO deletion_history
-                        (movie_id, movie_title, movie_year, size_gb, score, status)
-                        VALUES (?, ?, ?, ?, ?, 'deleted')
+                        (movie_id, movie_title, movie_year, size_gb, score, status,
+                         age_days, tmdb_rating, quality)
+                        VALUES (?, ?, ?, ?, ?, 'deleted', ?, ?, ?)
                     """, (
                         movie["movie_id"],
                         movie["movie_title"],
                         movie["movie_year"],
                         movie["size_gb"],
-                        movie["score"]
+                        movie["score"],
+                        movie.get("age_days"),
+                        movie.get("tmdb_rating"),
+                        movie.get("quality")
                     ))
                     
                     # Remove from cache (movie no longer exists)
@@ -632,15 +636,19 @@ async def run_cull_cycle(dry_run: bool = False):
                     logger.error(f"Delete failed for {movie['movie_title']}: {result['message']}")
                     conn.execute("""
                         INSERT INTO deletion_history
-                        (movie_id, movie_title, movie_year, size_gb, score, status, error_message)
-                        VALUES (?, ?, ?, ?, ?, 'failed', ?)
+                        (movie_id, movie_title, movie_year, size_gb, score, status, error_message,
+                         age_days, tmdb_rating, quality)
+                        VALUES (?, ?, ?, ?, ?, 'failed', ?, ?, ?, ?)
                     """, (
                         movie["movie_id"],
                         movie["movie_title"],
                         movie["movie_year"],
                         movie["size_gb"],
                         movie["score"],
-                        result["message"]
+                        result["message"],
+                        movie.get("age_days"),
+                        movie.get("tmdb_rating"),
+                        movie.get("quality")
                     ))
                     
                     # Remove scheduled flag but keep in cache

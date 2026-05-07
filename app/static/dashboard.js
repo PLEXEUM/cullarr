@@ -272,26 +272,56 @@ async function loadFailedDeletions() {
 
         section.classList.remove('hidden');
         tbody.innerHTML = data.items.map(item => {
+            // Score badge color
+            let scoreClass = 'score-high';
+            if (item.score < 60) scoreClass = 'score-medium';
+            if (item.score < 30) scoreClass = 'score-low';
+            
+            // Status display
             let statusHtml = '';
             if (item.status === 'deleted') {
-                statusHtml = '<span style="color: var(--success);">✅ deleted</span>';
+                statusHtml = '<span class="badge badge-success">✓ Deleted</span>';
             } else {
-                statusHtml = '<span style="color: var(--danger);">❌ failed</span>';
+                statusHtml = '<span class="badge badge-danger">✗ Failed</span>';
             }
+            
+            // Rating display
+            const movieRating = item.tmdb_rating ? item.tmdb_rating.toFixed(1) : 'N/A';
+            
+            // Quality display
+            const movieQuality = item.quality || 'Unknown';
+            
+            // Age display
+            const ageDays = item.age_days || 0;
+            const ageDisplay = ageDays > 0 ? `${ageDays}d` : 'N/A';
+            
+            // Size display
+            const sizeDisplay = item.size_gb ? `${item.size_gb.toFixed(1)} GB` : 'N/A';
+            
+            // Error message (only show for failed)
+            const errorDisplay = item.status === 'failed' && item.error_message 
+                ? `<span class="text-xs" style="color: var(--danger);">${escapeHtml(item.error_message)}</span>` 
+                : '<span style="color: var(--text-secondary);">—</span>';
+            
             return `
                 <tr style="border-bottom: 1px solid var(--border-color);">
-                    <td class="px-4 py-2">${escapeHtml(item.movie_title)} (${item.movie_year || 'N/A'})</td>
-                    <td class="px-4 py-2">${item.score.toFixed(1)}</td>
-                    <td class="px-4 py-2">${new Date(item.deleted_at).toLocaleDateString()}</td>
+                    <td class="px-4 py-2"><span class="badge ${scoreClass}">${item.score.toFixed(1)}</span></td>
+                    <td class="px-4 py-2 font-medium">${escapeHtml(item.movie_title || 'Unknown')}</td>
+                    <td class="px-4 py-2" style="color: var(--text-secondary)">${item.movie_year || 'N/A'}</td>
+                    <td class="px-4 py-2" style="color: var(--text-secondary)">${ageDisplay}</td>
+                    <td class="px-4 py-2" style="color: var(--text-secondary)">${sizeDisplay}</td>
+                    <td class="px-4 py-2"><span class="star">★</span> ${movieRating}</td>
+                    <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(movieQuality)}</td>
                     <td class="px-4 py-2">${statusHtml}</td>
-                    <td class="px-4 py-2" style="color: var(--danger); font-size: 12px;">${escapeHtml(item.error_message || '—')}</td>
-                </tr>
+                    <td class="px-4 py-2">${errorDisplay}</td>
+                 </tr>
             `;
         }).join('');
     } catch (e) {
         console.error('Failed to load deletion history:', e);
     }
 }
+
 
 // Clear Failed Deletions
 async function clearFailedDeletions() {

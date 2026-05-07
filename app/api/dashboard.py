@@ -517,7 +517,8 @@ async def get_failed_deletions():
     conn = get_connection()
     try:
         history = conn.execute("""
-            SELECT id, movie_title, movie_year, size_gb, score, status, error_message, deleted_at
+            SELECT id, movie_title, movie_year, size_gb, score, status, error_message, deleted_at,
+                   age_days, tmdb_rating, quality
             FROM deletion_history
             ORDER BY deleted_at DESC
             LIMIT 50

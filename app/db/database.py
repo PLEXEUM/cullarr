@@ -107,7 +107,10 @@ def init_db():
             score REAL,
             status TEXT,
             error_message TEXT,
-            deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            age_days INTEGER,
+            tmdb_rating REAL,
+            quality TEXT
         )
     """)
 
@@ -366,7 +369,19 @@ def migrate_db():
         cursor.execute("DROP TABLE IF EXISTS scheduled_deletions")
         print("Migration applied: dropped old scheduled_deletions table")
     except Exception as e:
-        print(f"Migration note: could not drop scheduled_deletions: {e}")     
+        print(f"Migration note: could not drop scheduled_deletions: {e}") 
+
+    # Migration: Add missing columns to deletion_history
+    for column, column_type in [
+        ("age_days", "INTEGER"),
+        ("tmdb_rating", "REAL"),
+        ("quality", "TEXT"),
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE deletion_history ADD COLUMN {column} {column_type}")
+            print(f"Migration applied: added {column} to deletion_history")
+        except Exception:
+            pass  # Column already exists, safe to ignore    
 
     conn.commit()
     conn.close()
