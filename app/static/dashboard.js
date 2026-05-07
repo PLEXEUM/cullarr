@@ -554,8 +554,8 @@ function renderScheduledTable(data) {
                 <td class="px-4 py-2">${watchedHtml}</td>
                 <td class="px-4 py-2">
                     <div class="flex gap-2">
-                        <button onclick="removeFromQueue(${item.movie_id}, '${escapeHtml(item.movie_title)}')" 
-                            class="btn-sm btn-danger">✕ Remove</button>
+                        `<button onclick="removeFromQueue(${item.collection_id || item.movie_id}, '${escapeHtml(item.movie_title)}', ${!!item.collection_id})" 
+                            class="btn-sm btn-danger">✕ Remove</button>`
                         <button data-title="${escapeHtml(item.movie_title)}" 
                                 data-score="${item.normalized_score}" 
                                 data-factors='${factorsJson}'
