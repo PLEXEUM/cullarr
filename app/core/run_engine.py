@@ -589,6 +589,7 @@ async def run_score_cycle():
                 SELECT movie_id FROM scored_movies_cache 
                 WHERE scheduled_for_deletion = 1
             )
+            AND manual_for_deletion = 0
         """)
 
         # ===== STEP 6a: Ensure manually queued movies remain scheduled =====
