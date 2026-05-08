@@ -795,6 +795,10 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
             # Track if any movie in collection is manually queued
             if item.get("manual_for_deletion"):
                 collections[cname]["manual_for_deletion"] = True
+
+            # Track the earliest scheduled_date (or just any non-null date)
+            if item.get("scheduled_date") and not collections[cname].get("scheduled_date"):
+                collections[cname]["scheduled_date"] = item["scheduled_date"]
         
         else:
             individuals.append(item)
@@ -928,6 +932,7 @@ async def search_score_queue(
                         "plex_play_count": 0,
                         "scheduled_for_deletion": False,
                         "manual_for_deletion": False,
+                         "scheduled_date": None,
                     }
                 
                 # Track earliest year (min)
@@ -953,6 +958,10 @@ async def search_score_queue(
                 # Track if any movie in collection is manually queued
                 if item.get("manual_for_deletion"):
                     collections[cname]["manual_for_deletion"] = True
+
+                # Track the earliest scheduled_date (or just any non-null date)
+                if item.get("scheduled_date") and not collections[cname].get("scheduled_date"):
+                    collections[cname]["scheduled_date"] = item["scheduled_date"]
 
             else:
                 individuals.append(item)
