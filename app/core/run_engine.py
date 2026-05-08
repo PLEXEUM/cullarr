@@ -319,6 +319,13 @@ async def run_score_cycle():
                         "SELECT manual_for_deletion, scheduled_date FROM scored_movies_cache WHERE movie_id = ?",
                         (member["movie_id"],)
                     ).fetchone()
+
+                    # DEBUG: Log for specific movie
+                    if member["movie_id"] == 4521:
+                        if existing:
+                            logger.info(f"DEBUG COLLECTION: Movie 4521 found - manual={existing[0]}, scheduled_date={existing[1]}")
+                        else:
+                            logger.info(f"DEBUG COLLECTION: Movie 4521 NOT found in cache")
         
                     if existing and existing[0] == 1:
                         # MANUAL MOVIE - Use UPDATE to preserve scheduled_date
@@ -400,6 +407,13 @@ async def run_score_cycle():
                     "SELECT manual_for_deletion, scheduled_date FROM scored_movies_cache WHERE movie_id = ?",
                     (entry["movie_id"],)
                 ).fetchone()
+
+                # DEBUG: Log for specific movie
+                if entry["movie_id"] == 4521:
+                    if existing:
+                        logger.info(f"DEBUG: Movie 4521 found - manual={existing[0]}, scheduled_date={existing[1]}")
+                    else:
+                        logger.info(f"DEBUG: Movie 4521 NOT found in cache")
     
                 if existing and existing[0] == 1:
                     # MANUAL MOVIE - Use UPDATE to preserve scheduled_date
