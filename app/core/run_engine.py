@@ -320,6 +320,7 @@ async def run_score_cycle():
                         (member["movie_id"],)
                     ).fetchone()
                     manual_value = existing["manual_for_deletion"] if existing else 0
+                    scheduled_date_value = existing["scheduled_date"] if existing else None
                     
                     conn.execute("""
                         INSERT OR REPLACE INTO scored_movies_cache
@@ -345,7 +346,8 @@ async def run_score_cycle():
                         member.get("plex_play_count", 0),
                         entry.get("collection_title"),
                         entry.get("collection_id"),
-                        manual_value,  # Preserve manual flag
+                        scheduled_date_value,
+                        manual_value,
                     ))
             else:
                 # Check if movie already exists to preserve manual_for_deletion
@@ -354,6 +356,7 @@ async def run_score_cycle():
                     (entry["movie_id"],)
                 ).fetchone()
                 manual_value = existing["manual_for_deletion"] if existing else 0
+                scheduled_date_value = existing["scheduled_date"] if existing else None
                 
                 conn.execute("""
                     INSERT OR REPLACE INTO scored_movies_cache
@@ -379,7 +382,8 @@ async def run_score_cycle():
                     entry.get("plex_play_count", 0),
                     None,
                     None,
-                    manual_value,  # Preserve manual flag
+                    scheduled_date_value,
+                    manual_value,
                 ))
         
         conn.commit()
