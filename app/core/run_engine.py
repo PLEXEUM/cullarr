@@ -314,14 +314,21 @@ async def run_score_cycle():
         for entry in scored_movies:
             if entry.get("is_collection"):
                 for member in entry.get("movies", []):
+                    # Check if movie already exists to preserve manual_for_deletion
+                    existing = conn.execute(
+                        "SELECT manual_for_deletion FROM scored_movies_cache WHERE movie_id = ?",
+                        (member["movie_id"],)
+                    ).fetchone()
+                    manual_value = existing["manual_for_deletion"] if existing else 0
+                    
                     conn.execute("""
                         INSERT OR REPLACE INTO scored_movies_cache
                         (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
                          size_gb, age_days, quality, monitored, normalized_score,
                          raw_score, factors, plex_play_count,
                          collection_name, collection_id, is_collection,
-                         scheduled_for_deletion, scheduled_date, cached_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, NULL, CURRENT_TIMESTAMP)
+                         scheduled_for_deletion, scheduled_date, cached_at, manual_for_deletion)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, NULL, CURRENT_TIMESTAMP, ?)
                     """, (
                         member["movie_id"],
                         member["movie_title"],
@@ -338,16 +345,24 @@ async def run_score_cycle():
                         member.get("plex_play_count", 0),
                         entry.get("collection_title"),
                         entry.get("collection_id"),
+                        manual_value,  # Preserve manual flag
                     ))
             else:
+                # Check if movie already exists to preserve manual_for_deletion
+                existing = conn.execute(
+                    "SELECT manual_for_deletion FROM scored_movies_cache WHERE movie_id = ?",
+                    (entry["movie_id"],)
+                ).fetchone()
+                manual_value = existing["manual_for_deletion"] if existing else 0
+                
                 conn.execute("""
                     INSERT OR REPLACE INTO scored_movies_cache
                     (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
                      size_gb, age_days, quality, monitored, normalized_score,
                      raw_score, factors, plex_play_count,
                      collection_name, collection_id, is_collection,
-                     scheduled_for_deletion, scheduled_date, cached_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, CURRENT_TIMESTAMP)
+                     scheduled_for_deletion, scheduled_date, cached_at, manual_for_deletion)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, CURRENT_TIMESTAMP, ?)
                 """, (
                     entry["movie_id"],
                     entry["movie_title"],
@@ -364,6 +379,7 @@ async def run_score_cycle():
                     entry.get("plex_play_count", 0),
                     None,
                     None,
+                    manual_value,  # Preserve manual flag
                 ))
         
         conn.commit()

@@ -573,7 +573,7 @@ function renderScheduledTable(data) {
                 countdownText = '0 days';
                 countdownClass = 'style="color: var(--warning);"';
             } else if (daysRemaining === 1) {
-                countdownText = '1 day';
+                countdownText = '1 days';
                 countdownClass = 'style="color: var(--warning);"';
             } else {
                 countdownText = `${daysRemaining} days`;
