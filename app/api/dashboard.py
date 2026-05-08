@@ -697,6 +697,66 @@ async def remove_collection_by_id(collection_id: int):
         conn.close()
 
 
+@router.delete("/dashboard/scheduled/clear")
+async def clear_all_scheduled_deletions():
+    """
+    Clear all scheduled deletions (remove all movies from the queue).
+    """
+    conn = get_connection()
+    try:
+        # Get Plex config for collection cleanup
+        plex_config = conn.execute("SELECT url, api_key, enabled, collection_key FROM plex_config WHERE id = 1").fetchone()
+        
+        # Get all scheduled movies to remove from Plex collections
+        scheduled_movies = conn.execute(
+            """SELECT movie_id, movie_title, movie_year, collection_name 
+               FROM scored_movies_cache 
+               WHERE scheduled_for_deletion = 1"""
+        ).fetchall()
+        
+        # Remove from Plex collection if configured
+        if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_key"] and scheduled_movies:
+            try:
+                plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
+                collection_key = plex_config["collection_key"]
+                
+                library_items = await plex_client.get_library_items()
+                library_map = {}
+                for item in library_items:
+                    title = item.get("title")
+                    year = item.get("year")
+                    rating_key = item.get("rating_key")
+                    if title and year and rating_key:
+                        key = f"{title.lower()}|{year}"
+                        library_map[key] = rating_key
+                
+                for movie in scheduled_movies:
+                    lookup_key = f"{movie['movie_title'].lower()}|{movie['movie_year']}"
+                    rating_key = library_map.get(lookup_key)
+                    if rating_key:
+                        await plex_client.remove_from_collection(collection_key, rating_key)
+                        logger.info(f"Removed '{movie['movie_title']}' from Plex collection")
+            except Exception as plex_error:
+                logger.warning(f"Failed to remove from Plex collection during clear all: {plex_error}")
+        
+        # Clear all scheduled flags
+        conn.execute(
+            """UPDATE scored_movies_cache 
+               SET scheduled_for_deletion = 0, scheduled_date = NULL, manual_for_deletion = 0 
+               WHERE scheduled_for_deletion = 1"""
+        )
+        conn.commit()
+        
+        logger.info(f"Cleared all scheduled deletions ({len(scheduled_movies)} movies)")
+        return {"success": True, "message": f"Cleared {len(scheduled_movies)} movies from queue"}
+        
+    except Exception as e:
+        logger.error(f"Failed to clear scheduled deletions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to clear scheduled deletions")
+    finally:
+        conn.close()
+
+
 @router.get("/dashboard/score-queue")
 async def get_score_queue(
     page: int = Query(1, ge=1),

@@ -389,6 +389,26 @@ async function clearFailedDeletions() {
     }
 }
 
+// Clear All Scheduled Deletions
+async function clearScheduledDeletions() {
+    if (!confirm('Remove ALL movies from the scheduled deletions queue? This cannot be undone.')) return;
+    
+    try {
+        const res = await fetch('/api/dashboard/scheduled/clear', { method: 'DELETE' });
+        if (res.ok) {
+            showToast('All scheduled deletions cleared', 'success');
+            await loadScheduledDeletions();
+            await loadQueueStatus();
+            await loadScoreQueue();
+        } else {
+            const err = await res.json();
+            showToast(err.detail || 'Failed to clear scheduled deletions', 'error');
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+    }
+}
+
 // Manual Queue Collection
 async function manualQueueCollection(collectionId, collectionName, movieCount) {
     const confirmMessage = `Queue collection "${collectionName}" (${movieCount} movies) for deletion?\n\nThis bypasses all protection rules and does not count toward your queue limit.`;
@@ -1078,6 +1098,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('run-score-btn').addEventListener('click', triggerScoreRun);
     document.getElementById('run-cull-btn').addEventListener('click', triggerCullRun);
     document.getElementById('clear-failed-btn').addEventListener('click', clearFailedDeletions);
+    document.getElementById('clear-scheduled-btn').addEventListener('click', clearScheduledDeletions);
     document.getElementById('per-page-select').addEventListener('change', (e) => {
         scoreQueuePerPage = parseInt(e.target.value);
         scoreQueuePage = 1;
