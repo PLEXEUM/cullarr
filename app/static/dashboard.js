@@ -570,13 +570,13 @@ function renderScheduledTable(data) {
                 countdownText = 'overdue';
                 countdownClass = 'style="color: var(--danger);"';
             } else if (daysRemaining === 0) {
-                countdownText = '0 days';
+                countdownText = '0 day(s)';
                 countdownClass = 'style="color: var(--warning);"';
             } else if (daysRemaining === 1) {
-                countdownText = '1 days';
+                countdownText = '1 day(s)';
                 countdownClass = 'style="color: var(--warning);"';
             } else {
-                countdownText = `${daysRemaining} days`;
+                countdownText = `${daysRemaining} day(s)`;
                 countdownClass = '';
             }
         } else {
