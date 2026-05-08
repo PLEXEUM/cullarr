@@ -510,7 +510,7 @@ function loadDeletionHistoryState() {
         const icon = document.getElementById('deletion-history-icon');
         if (section && icon) {
             section.style.display = 'none';
-            icon.style.transform = 'rotate(0deg)';
+            icon.style.transform = 'rotate(180deg)';
             deletionHistoryCollapsed = true;
         }
     }
