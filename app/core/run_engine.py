@@ -326,6 +326,7 @@ async def run_score_cycle():
                         manual_value = 0
                         scheduled_date_value = None
                     
+                    
                     conn.execute("""
                         INSERT OR REPLACE INTO scored_movies_cache
                         (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
@@ -333,7 +334,7 @@ async def run_score_cycle():
                          raw_score, factors, plex_play_count,
                          collection_name, collection_id, is_collection,
                          scheduled_for_deletion, scheduled_date, cached_at, manual_for_deletion)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, NULL, CURRENT_TIMESTAMP, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
                     """, (
                         member["movie_id"],
                         member["movie_title"],
@@ -350,8 +351,10 @@ async def run_score_cycle():
                         member.get("plex_play_count", 0),
                         entry.get("collection_title"),
                         entry.get("collection_id"),
-                        scheduled_date_value,
-                        manual_value,
+                        1,  # is_collection
+                        0,  # scheduled_for_deletion
+                        scheduled_date_value,  # scheduled_date
+                        manual_value,  # manual_for_deletion
                     ))
             else:
                 # Check if movie already exists to preserve manual_for_deletion
@@ -373,7 +376,7 @@ async def run_score_cycle():
                      raw_score, factors, plex_play_count,
                      collection_name, collection_id, is_collection,
                      scheduled_for_deletion, scheduled_date, cached_at, manual_for_deletion)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, CURRENT_TIMESTAMP, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
                 """, (
                     entry["movie_id"],
                     entry["movie_title"],
@@ -388,10 +391,12 @@ async def run_score_cycle():
                     entry["raw_score"],
                     json.dumps(entry["factors"]),
                     entry.get("plex_play_count", 0),
-                    None,
-                    None,
-                    scheduled_date_value,
-                    manual_value,
+                    None,  # collection_name
+                    None,  # collection_id
+                    0,  # is_collection
+                    0,  # scheduled_for_deletion
+                    scheduled_date_value,  # scheduled_date
+                    manual_value,  # manual_for_deletion
                 ))
         
         conn.commit()
