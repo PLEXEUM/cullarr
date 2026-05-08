@@ -27,8 +27,9 @@ async function loadQueueStatus() {
 
         document.getElementById('scheduled-count').textContent = data.scheduled_count;
         const percent = data.percent_used || 0;
-        document.getElementById('queue-bar').style.width = `${percent}%`;
-        document.getElementById('queue-percent').textContent = `${percent}%`;
+        const displayPercent = Math.min(percent, 100);  // Cap at 100% for the bar
+        document.getElementById('queue-bar').style.width = `${displayPercent}%`;
+        document.getElementById('queue-percent').textContent = `${percent}%`;  // Show actual percentage
         const capText = `of ${data.max_queued} cap`;
         if (data.manual_count && data.manual_count > 0) {
             document.getElementById('queue-cap').textContent = `${capText} | ${data.manual_count} manual`;
