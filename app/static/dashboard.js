@@ -570,10 +570,10 @@ function renderScheduledTable(data) {
                 countdownText = 'overdue';
                 countdownClass = 'style="color: var(--danger);"';
             } else if (daysRemaining === 0) {
-                countdownText = 'today';
+                countdownText = '0 days';
                 countdownClass = 'style="color: var(--warning);"';
             } else if (daysRemaining === 1) {
-                countdownText = 'tomorrow';
+                countdownText = '1 day';
                 countdownClass = 'style="color: var(--warning);"';
             } else {
                 countdownText = `${daysRemaining} days`;
