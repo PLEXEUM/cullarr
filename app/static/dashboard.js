@@ -189,7 +189,7 @@ async function loadScoreQueue() {
                     <div class="flex gap-2">
                         ${movie.is_collection ? 
                             // COLLECTION buttons
-                            (movie.scheduled_for_deletion === 1 ? 
+                            (movie.scheduled_for_deletion ?
                                 `<button onclick="removeFromQueue(${movie.collection_id}, '${escapeHtml(movie.movie_title)}', true)" 
                                     class="btn-sm btn-danger" 
                                     title="Remove entire collection from scheduled deletions">
@@ -202,7 +202,7 @@ async function loadScoreQueue() {
                                 </button>`
                             ) : 
                             // INDIVIDUAL buttons
-                            (movie.scheduled_for_deletion === 1 ? 
+                            (movie.scheduled_for_deletion ? 
                                 `<button onclick="removeFromQueue(${movie.movie_id}, '${escapeHtml(movie.movie_title)}', false)" 
                                     class="btn-sm btn-danger" 
                                     title="Remove from scheduled deletions">
