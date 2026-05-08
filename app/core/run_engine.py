@@ -319,8 +319,12 @@ async def run_score_cycle():
                         "SELECT manual_for_deletion FROM scored_movies_cache WHERE movie_id = ?",
                         (member["movie_id"],)
                     ).fetchone()
-                    manual_value = existing["manual_for_deletion"] if existing else 0
-                    scheduled_date_value = existing["scheduled_date"] if existing else None
+                    if existing:
+                        manual_value = existing[0]  # manual_for_deletion is first column
+                        scheduled_date_value = existing[1]  # scheduled_date is second column
+                    else:
+                        manual_value = 0
+                        scheduled_date_value = None
                     
                     conn.execute("""
                         INSERT OR REPLACE INTO scored_movies_cache
@@ -355,8 +359,12 @@ async def run_score_cycle():
                     "SELECT manual_for_deletion FROM scored_movies_cache WHERE movie_id = ?",
                     (entry["movie_id"],)
                 ).fetchone()
-                manual_value = existing["manual_for_deletion"] if existing else 0
-                scheduled_date_value = existing["scheduled_date"] if existing else None
+                if existing:
+                    manual_value = existing[0]  # manual_for_deletion is first column
+                    scheduled_date_value = existing[1]  # scheduled_date is second column
+                else:
+                    manual_value = 0
+                    scheduled_date_value = None
                 
                 conn.execute("""
                     INSERT OR REPLACE INTO scored_movies_cache
