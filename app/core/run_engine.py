@@ -314,19 +314,138 @@ async def run_score_cycle():
         for entry in scored_movies:
             if entry.get("is_collection"):
                 for member in entry.get("movies", []):
-                    # Check if movie already exists to preserve manual_for_deletion
+                    # Check if movie already exists to determine if it's manual
                     existing = conn.execute(
-                         "SELECT manual_for_deletion, scheduled_date FROM scored_movies_cache WHERE movie_id = ?",
+                        "SELECT manual_for_deletion, scheduled_date FROM scored_movies_cache WHERE movie_id = ?",
                         (member["movie_id"],)
                     ).fetchone()
-                    if existing:
-                        manual_value = existing[0]  # manual_for_deletion is first column
-                        scheduled_date_value = existing[1]  # scheduled_date is second column
+        
+                    if existing and existing[0] == 1:
+                        # MANUAL MOVIE - Use UPDATE to preserve scheduled_date
+                        conn.execute("""
+                            UPDATE scored_movies_cache 
+                            SET movie_title = ?,
+                                movie_year = ?,
+                                tmdb_id = ?,
+                                tmdb_rating = ?,
+                                size_gb = ?,
+                                age_days = ?,
+                                quality = ?,
+                                monitored = ?,
+                                normalized_score = ?,
+                                raw_score = ?,
+                                factors = ?,
+                                plex_play_count = ?,
+                                collection_name = ?,
+                                collection_id = ?,
+                                is_collection = ?,
+                                scheduled_for_deletion = 0,
+                                cached_at = CURRENT_TIMESTAMP
+                            WHERE movie_id = ?
+                        """, (
+                            member["movie_title"],
+                            member["movie_year"],
+                            member.get("tmdb_id"),
+                            member["tmdb_rating"],
+                            member["size_gb"],
+                            member["age_days"],
+                            member["quality"],
+                            1 if member["monitored"] else 0,
+                            entry["normalized_score"],
+                            entry["raw_score"],
+                            json.dumps(member["factors"]),
+                            member.get("plex_play_count", 0),
+                            entry.get("collection_title"),
+                            entry.get("collection_id"),
+                            1,  # is_collection
+                            member["movie_id"],
+                        ))
                     else:
-                        manual_value = 0
-                        scheduled_date_value = None
-                    
-                    
+                        # AUTO MOVIE - Use INSERT OR REPLACE
+                        manual_value = existing[0] if existing else 0
+                        scheduled_date_value = existing[1] if existing else None
+            
+                        conn.execute("""
+                            INSERT OR REPLACE INTO scored_movies_cache
+                            (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
+                             size_gb, age_days, quality, monitored, normalized_score,
+                             raw_score, factors, plex_play_count,
+                             collection_name, collection_id, is_collection,
+                             scheduled_for_deletion, scheduled_date, cached_at, manual_for_deletion)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                        """, (
+                            member["movie_id"],
+                            member["movie_title"],
+                            member["movie_year"],
+                            member.get("tmdb_id"),
+                            member["tmdb_rating"],
+                            member["size_gb"],
+                            member["age_days"],
+                            member["quality"],
+                            1 if member["monitored"] else 0,
+                            entry["normalized_score"],
+                            entry["raw_score"],
+                            json.dumps(member["factors"]),
+                            member.get("plex_play_count", 0),
+                            entry.get("collection_title"),
+                            entry.get("collection_id"),
+                            1,  # is_collection
+                            0,  # scheduled_for_deletion
+                            scheduled_date_value,
+                            manual_value,
+                        ))
+            else:
+                # Check if movie already exists to determine if it's manual
+                existing = conn.execute(
+                    "SELECT manual_for_deletion, scheduled_date FROM scored_movies_cache WHERE movie_id = ?",
+                    (entry["movie_id"],)
+                ).fetchone()
+    
+                if existing and existing[0] == 1:
+                    # MANUAL MOVIE - Use UPDATE to preserve scheduled_date
+                    conn.execute("""
+                        UPDATE scored_movies_cache 
+                        SET movie_title = ?,
+                            movie_year = ?,
+                            tmdb_id = ?,
+                            tmdb_rating = ?,
+                            size_gb = ?,
+                            age_days = ?,
+                            quality = ?,
+                            monitored = ?,
+                            normalized_score = ?,
+                            raw_score = ?,
+                            factors = ?,
+                            plex_play_count = ?,
+                            collection_name = ?,
+                            collection_id = ?,
+                            is_collection = ?,
+                            scheduled_for_deletion = 0,
+                            cached_at = CURRENT_TIMESTAMP
+                        WHERE movie_id = ?
+                    """, (
+                        entry["movie_title"],
+                        entry["movie_year"],
+                        entry.get("tmdb_id"),
+                        entry["tmdb_rating"],
+                        entry["size_gb"],
+                        entry["age_days"],
+                        entry["quality"],
+                        1 if entry["monitored"] else 0,
+                        entry["normalized_score"],
+                        entry["raw_score"],
+                        json.dumps(entry["factors"]),
+                        entry.get("plex_play_count", 0),
+                        None,  # collection_name
+                        None,  # collection_id
+                        0,  # is_collection
+                        entry["movie_id"],
+                    ))
+                else:
+                    # AUTO MOVIE - Use INSERT OR REPLACE
+                    manual_value = existing[0] if existing else 0
+                    scheduled_date_value = existing[1] if existing else None
+        
                     conn.execute("""
                         INSERT OR REPLACE INTO scored_movies_cache
                         (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
@@ -336,68 +455,26 @@ async def run_score_cycle():
                          scheduled_for_deletion, scheduled_date, cached_at, manual_for_deletion)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
                     """, (
-                        member["movie_id"],
-                        member["movie_title"],
-                        member["movie_year"],
-                        member.get("tmdb_id"),
-                        member["tmdb_rating"],
-                        member["size_gb"],
-                        member["age_days"],
-                        member["quality"],
-                        1 if member["monitored"] else 0,
+                        entry["movie_id"],
+                        entry["movie_title"],
+                        entry["movie_year"],
+                        entry.get("tmdb_id"),
+                        entry["tmdb_rating"],
+                        entry["size_gb"],
+                        entry["age_days"],
+                        entry["quality"],
+                        1 if entry["monitored"] else 0,
                         entry["normalized_score"],
                         entry["raw_score"],
-                        json.dumps(member["factors"]),
-                        member.get("plex_play_count", 0),
-                        entry.get("collection_title"),
-                        entry.get("collection_id"),
-                        1,  # is_collection
+                        json.dumps(entry["factors"]),
+                        entry.get("plex_play_count", 0),
+                        None,
+                        None,
+                        0,  # is_collection
                         0,  # scheduled_for_deletion
-                        scheduled_date_value,  # scheduled_date
-                        manual_value,  # manual_for_deletion
+                        scheduled_date_value,
+                        manual_value,
                     ))
-            else:
-                # Check if movie already exists to preserve manual_for_deletion
-                existing = conn.execute(
-                    "SELECT manual_for_deletion, scheduled_date FROM scored_movies_cache WHERE movie_id = ?",
-                    (entry["movie_id"],)
-                ).fetchone()
-                if existing:
-                    manual_value = existing[0]  # manual_for_deletion is first column
-                    scheduled_date_value = existing[1]  # scheduled_date is second column
-                else:
-                    manual_value = 0
-                    scheduled_date_value = None
-                
-                conn.execute("""
-                    INSERT OR REPLACE INTO scored_movies_cache
-                    (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
-                     size_gb, age_days, quality, monitored, normalized_score,
-                     raw_score, factors, plex_play_count,
-                     collection_name, collection_id, is_collection,
-                     scheduled_for_deletion, scheduled_date, cached_at, manual_for_deletion)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
-                """, (
-                    entry["movie_id"],
-                    entry["movie_title"],
-                    entry["movie_year"],
-                    entry.get("tmdb_id"),
-                    entry["tmdb_rating"],
-                    entry["size_gb"],
-                    entry["age_days"],
-                    entry["quality"],
-                    1 if entry["monitored"] else 0,
-                    entry["normalized_score"],
-                    entry["raw_score"],
-                    json.dumps(entry["factors"]),
-                    entry.get("plex_play_count", 0),
-                    None,  # collection_name
-                    None,  # collection_id
-                    0,  # is_collection
-                    0,  # scheduled_for_deletion
-                    scheduled_date_value,  # scheduled_date
-                    manual_value,  # manual_for_deletion
-                ))
         
         conn.commit()
         logger.info(f"Updated scored_movies_cache with {len(scored_movies)} entries")
