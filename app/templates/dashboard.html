@@ -241,40 +241,48 @@
 
     <!-- Deletion History -->
     <div id="failed-section" class="card rounded-xl overflow-hidden hidden">
-        <div class="card-header" style="background: var(--danger-bg);">
-            <svg class="card-header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-            </svg>
-            <div>
-                <h2 class="card-header-title" style="color: var(--danger);">Deletion History</h2>
-                <p class="card-header-subtitle">Failed and successful deletions</p>
+        <button onclick="toggleDeletionHistory()" class="w-full flex items-center justify-between p-4 text-left hover:bg-opacity-5 transition-colors">
+            <div class="flex items-center gap-3">
+                <svg class="w-5 h-5" style="color: var(--danger);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
+                <div>
+                    <h2 class="font-semibold" style="color: var(--danger);">Deletion History</h2>
+                    <p class="text-xs" style="color: var(--text-secondary);">Failed and successful deletions</p>
+                </div>
             </div>
-            <div class="ml-auto">
+            <div class="flex items-center gap-3">
+                <span id="failed-badge" class="badge" style="background: var(--danger-bg); color: var(--danger);">0 items</span>
+                <svg id="deletion-history-icon" class="w-5 h-5 transition-transform transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </div>
+        </button>
+        <div id="deletion-history-section" class="border-t" style="border-color: var(--border-color);">
+            <div class="overflow-x-auto">
+                <table class="w-full data-table">
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-sort="score">Score</th>
+                            <th class="sortable" data-sort="title">Movie</th>
+                            <th class="sortable" data-sort="year">Year</th>
+                            <th class="sortable" data-sort="age">Age</th>
+                            <th class="sortable" data-sort="size">Size</th>
+                            <th class="sortable" data-sort="rating">Rating</th>
+                            <th class="sortable" data-sort="quality">Quality</th>
+                            <th class="sortable" data-sort="status">Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="failed-table">
+                        <tr><td colspan="9" class="text-center py-8" style="color: var(--text-secondary)">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="px-4 py-3 border-t flex justify-between items-center" style="border-color: var(--border-color);">
+                <span class="text-xs" style="color: var(--text-secondary);">ℹ️ History of all deleted movies (successful and failed).</span>
                 <button id="clear-failed-btn" class="btn-sm btn-outline" style="border-color: var(--danger); color: var(--danger);">🗑️ Clear All</button>
             </div>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="w-full data-table">
-                <thead>
-                    <tr>
-                        <th class="sortable" data-sort="score">Score</th>
-                        <th class="sortable" data-sort="title">Movie</th>
-                        <th class="sortable" data-sort="year">Year</th>
-                        <th class="sortable" data-sort="age">Age</th>
-                        <th class="sortable" data-sort="size">Size</th>
-                        <th class="sortable" data-sort="rating">Rating</th>
-                        <th class="sortable" data-sort="quality">Quality</th>
-                        <th class="sortable" data-sort="status">Status</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody id="failed-table">
-                    <tr><td colspan="9" class="text-center py-8" style="color: var(--text-secondary)">Loading...</td></tr>
-                </tbody>
-            </table>
-        </div>
-        <div class="px-4 py-3 border-t text-xs" style="border-color: var(--border-color); color: var(--text-secondary);">
-            ℹ️ History of all deleted movies (successful and failed). Click Clear All to remove all records.
         </div>
     </div>
 

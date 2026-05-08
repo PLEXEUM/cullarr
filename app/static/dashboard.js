@@ -327,6 +327,12 @@ async function loadFailedDeletions() {
             } else {
                 statusHtml = '<span class="badge badge-danger"> Failed</span>';
             }
+
+            // Update the badge count
+            const badge = document.getElementById('failed-badge');
+            if (badge && data.items) {
+                badge.textContent = `${data.items.length} items`;
+            }
             
             // Rating display
             const movieRating = item.tmdb_rating ? item.tmdb_rating.toFixed(1) : 'N/A';
@@ -472,6 +478,40 @@ function loadScheduledDeletionsState() {
             section.style.display = 'none';
             icon.style.transform = 'rotate(0deg)';
             scheduledDeletionsCollapsed = true;
+        }
+    }
+}
+
+let deletionHistoryCollapsed = false;
+
+function toggleDeletionHistory() {
+    const section = document.getElementById('deletion-history-section');
+    const icon = document.getElementById('deletion-history-icon');
+    
+    if (!section || !icon) return;
+    
+    if (section.style.display === 'none') {
+        section.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+        deletionHistoryCollapsed = false;
+        localStorage.setItem('deletionHistoryCollapsed', 'false');
+    } else {
+        section.style.display = 'none';
+        icon.style.transform = 'rotate(0deg)';
+        deletionHistoryCollapsed = true;
+        localStorage.setItem('deletionHistoryCollapsed', 'true');
+    }
+}
+
+function loadDeletionHistoryState() {
+    const savedState = localStorage.getItem('deletionHistoryCollapsed');
+    if (savedState === 'true') {
+        const section = document.getElementById('deletion-history-section');
+        const icon = document.getElementById('deletion-history-icon');
+        if (section && icon) {
+            section.style.display = 'none';
+            icon.style.transform = 'rotate(0deg)';
+            deletionHistoryCollapsed = true;
         }
     }
 }
@@ -1033,6 +1073,7 @@ function showDryRunModal(title, items, type = 'score') {
 document.addEventListener('DOMContentLoaded', () => {
     loadDashboard();
     loadSettingsSummary();
+    loadDeletionHistoryState();
 
     document.getElementById('run-score-btn').addEventListener('click', triggerScoreRun);
     document.getElementById('run-cull-btn').addEventListener('click', triggerCullRun);
