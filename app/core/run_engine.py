@@ -319,13 +319,6 @@ async def run_score_cycle():
                         "SELECT manual_for_deletion, scheduled_date FROM scored_movies_cache WHERE movie_id = ?",
                         (member["movie_id"],)
                     ).fetchone()
-
-                    # DEBUG: Log for specific movie
-                    if member["movie_id"] == 4521:
-                        if existing:
-                            logger.info(f"DEBUG COLLECTION: Movie 4521 found - manual={existing[0]}, scheduled_date={existing[1]}")
-                        else:
-                            logger.info(f"DEBUG COLLECTION: Movie 4521 NOT found in cache")
         
                     if existing and existing[0] == 1:
                         # MANUAL MOVIE - Use UPDATE to preserve scheduled_date
@@ -368,11 +361,6 @@ async def run_score_cycle():
                             member["movie_id"],
                         ))
 
-                        # DEBUG: Check scheduled_date after UPDATE
-                        if entry["movie_id"] == 4521:
-                            check = conn.execute("SELECT scheduled_date FROM scored_movies_cache WHERE movie_id = ?", (4521,)).fetchone()
-                            logger.info(f"DEBUG AFTER UPDATE: scheduled_date={check[0] if check else 'None'}")
-
                     else:
                         # AUTO MOVIE - Use INSERT OR REPLACE
                         manual_value = existing[0] if existing else 0
@@ -407,11 +395,6 @@ async def run_score_cycle():
                             scheduled_date_value,
                             manual_value,
                         ))
-
-                        # DEBUG: Check scheduled_date after UPDATE
-                        if member["movie_id"] == 4521:   # <-- FIXED: Use 'member' instead of 'entry'
-                            check = conn.execute("SELECT scheduled_date FROM scored_movies_cache WHERE movie_id = ?", (4521,)).fetchone()
-                            logger.info(f"DEBUG COLLECTION AFTER UPDATE: scheduled_date={check[0] if check else 'None'}")
 
             else:
                 # Check if movie already exists to determine if it's manual
@@ -461,19 +444,10 @@ async def run_score_cycle():
                         entry["movie_id"],
                     ))
 
-                    # DEBUG: Check scheduled_date after UPDATE
-                    if entry["movie_id"] == 4521:
-                        check = conn.execute("SELECT scheduled_date FROM scored_movies_cache WHERE movie_id = ?", (4521,)).fetchone()
-                        logger.info(f"DEBUG AFTER UPDATE: scheduled_date={check[0] if check else 'None'}")
-
                 else:
                     # AUTO MOVIE - Use INSERT OR REPLACE
                     manual_value = existing[0] if existing else 0
                     scheduled_date_value = existing[1] if existing else None
-
-                    # DEBUG: Log if this is a manual movie being incorrectly processed as auto
-                    if entry["movie_id"] == 4521:
-                        logger.info(f"DEBUG AUTO BRANCH: movie 4521 has manual_value={manual_value}, scheduled_date_value={scheduled_date_value}")
         
                     conn.execute("""
                         INSERT OR REPLACE INTO scored_movies_cache
