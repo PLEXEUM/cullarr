@@ -316,7 +316,7 @@ async def run_score_cycle():
                 for member in entry.get("movies", []):
                     # Check if movie already exists to preserve manual_for_deletion
                     existing = conn.execute(
-                        "SELECT manual_for_deletion FROM scored_movies_cache WHERE movie_id = ?",
+                         "SELECT manual_for_deletion, scheduled_date FROM scored_movies_cache WHERE movie_id = ?",
                         (member["movie_id"],)
                     ).fetchone()
                     if existing:
@@ -356,7 +356,7 @@ async def run_score_cycle():
             else:
                 # Check if movie already exists to preserve manual_for_deletion
                 existing = conn.execute(
-                    "SELECT manual_for_deletion FROM scored_movies_cache WHERE movie_id = ?",
+                    "SELECT manual_for_deletion, scheduled_date FROM scored_movies_cache WHERE movie_id = ?",
                     (entry["movie_id"],)
                 ).fetchone()
                 if existing:
