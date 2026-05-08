@@ -492,12 +492,12 @@ function toggleDeletionHistory() {
     
     if (section.style.display === 'none') {
         section.style.display = 'block';
-        icon.style.transform = 'rotate(180deg)';
+        icon.style.transform = 'rotate(0deg)';
         deletionHistoryCollapsed = false;
         localStorage.setItem('deletionHistoryCollapsed', 'false');
     } else {
         section.style.display = 'none';
-        icon.style.transform = 'rotate(0deg)';
+        icon.style.transform = 'rotate(180deg)';
         deletionHistoryCollapsed = true;
         localStorage.setItem('deletionHistoryCollapsed', 'true');
     }
