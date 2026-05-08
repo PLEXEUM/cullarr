@@ -818,31 +818,33 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
     
     available = individuals + list(collections.values())
     
-    # Apply sorting — using raw_score instead of normalized_score
-    sort_mapping = {
-        "score": "raw_score",  # ← CHANGED: was "normalized_score"
-        "title": "movie_title",
-        "year": "movie_year",
-        "age": "age_days",
-        "size": "size_gb",
-        "rating": "tmdb_rating",
-        "quality": "quality",
-        "watched": "plex_play_count",
-    }
-    
-    sort_column = sort_mapping.get(sort_by, "raw_score")
-    reverse = sort_order.lower() == "desc"
-    
-    # Handle None values for sorting - safely compare mixed types
-    def get_sort_key(x):
-        val = x.get(sort_column)
-        # For numeric columns - convert None to 0
-        if sort_column in ["raw_score", "normalized_score", "age_days", "size_gb", "tmdb_rating", "plex_play_count"]:
-            return val if isinstance(val, (int, float)) else 0
-        # For string columns - convert None to empty string
-        return str(val) if val is not None else ""
-
-    available.sort(key=get_sort_key, reverse=reverse)
+    # For scheduled view (scheduled=1), sort by scheduled_date (soonest first)
+    if scheduled == 1:
+        # Sort by scheduled_date (None values go to bottom)
+        available.sort(key=lambda x: (x.get("scheduled_date") is None, x.get("scheduled_date") or "9999-12-31"))
+    else:
+        # Apply sorting — using raw_score instead of normalized_score
+        sort_mapping = {
+            "score": "raw_score",
+            "title": "movie_title",
+            "year": "movie_year",
+            "age": "age_days",
+            "size": "size_gb",
+            "rating": "tmdb_rating",
+            "quality": "quality",
+            "watched": "plex_play_count",
+        }
+        
+        sort_column = sort_mapping.get(sort_by, "raw_score")
+        reverse = sort_order.lower() == "desc"
+        
+        def get_sort_key(x):
+            val = x.get(sort_column)
+            if sort_column in ["raw_score", "normalized_score", "age_days", "size_gb", "tmdb_rating", "plex_play_count"]:
+                return val if isinstance(val, (int, float)) else 0
+            return str(val) if val is not None else ""
+        
+        available.sort(key=get_sort_key, reverse=reverse)    
 
     total = len(available)
     offset = (page - 1) * per_page
