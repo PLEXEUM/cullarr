@@ -787,6 +787,15 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
             )
             collections[cname]["tmdb_rating_sum"] += (item["tmdb_rating"] or 0.0)
             collections[cname]["plex_play_count"] = (collections[cname].get("plex_play_count") or 0) + (item["plex_play_count"] or 0)
+        
+            # Track if any movie in collection is scheduled
+            if item.get("scheduled_for_deletion"):
+                collections[cname]["scheduled_for_deletion"] = True
+
+            # Track if any movie in collection is manually queued
+            if item.get("manual_for_deletion"):
+                collections[cname]["manual_for_deletion"] = True
+        
         else:
             individuals.append(item)
 
