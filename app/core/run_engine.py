@@ -80,20 +80,7 @@ async def _apply_plex_collections(
 
         # Add this debug line (optional, helps troubleshooting)
         logger.debug(f"Will add {len(movies)} movie entries to collection '{collection_name}'")
-    
-        # ===== ADD DEBUG HERE =====
-        logger.info(f"🎯 Target collection name: '{collection_name}'")
-        logger.info(f"📊 Total movies to process: {len(movies)}")
-        # Flatten to see what we're adding
-        flat_debug = []
-        for m in movies:
-            if m.get("is_collection"):
-                flat_debug.extend([sub.get('movie_title') for sub in m.get("movies", [])])
-            else:
-                flat_debug.append(m.get("movie_title"))
-        logger.info(f"🎬 Movies to add to collection: {flat_debug}")
-        # ===== END DEBUG =====
-    
+        
     finally:
         conn.close()
     

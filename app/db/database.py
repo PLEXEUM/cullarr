@@ -153,6 +153,9 @@ def init_db():
         )
     """)
 
+    # Add indexes after table creation
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_scored_movies_cache_manual ON scored_movies_cache(manual_for_deletion)")
+
     # Insert default records if not exists
     cursor.execute("INSERT OR IGNORE INTO radarr_config (id) VALUES (1)")
     cursor.execute("INSERT OR IGNORE INTO plex_config (id) VALUES (1)")
@@ -362,6 +365,13 @@ def migrate_db():
     try:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_scored_movies_cache_scheduled ON scored_movies_cache(scheduled_for_deletion, scheduled_date)")
         print("Migration applied: added index on scored_movies_cache(scheduled_for_deletion, scheduled_date)")
+    except Exception:
+        pass  # Index may already exist
+
+    # Migration: Add index on manual_for_deletion for faster queries
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_scored_movies_cache_manual ON scored_movies_cache(manual_for_deletion)")
+        print("Migration applied: added index on scored_movies_cache(manual_for_deletion)")
     except Exception:
         pass  # Index may already exist
 
