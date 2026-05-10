@@ -735,9 +735,9 @@ async def run_cull_cycle(dry_run: bool = False):
                         movie["movie_year"],
                         movie["size_gb"],
                         movie["score"],
-                        movie.get("age_days"),
-                        movie.get("tmdb_rating"),
-                        movie.get("quality")
+                        movie["age_days"],      # ← Direct access (None is fine)
+                        movie["tmdb_rating"],   # ← Direct access
+                        movie["quality"]        # ← Direct access
                     ))
                     
                     # Remove from cache (movie no longer exists)
@@ -776,9 +776,9 @@ async def run_cull_cycle(dry_run: bool = False):
                         movie["size_gb"],
                         movie["score"],
                         result["message"],
-                        movie.get("age_days"),
-                        movie.get("tmdb_rating"),
-                        movie.get("quality")
+                        movie["age_days"],      # ← Change from .get() to direct access
+                        movie["tmdb_rating"],   # ← Change from .get() to direct access
+                        movie["quality"]        # ← Change from .get() to direct access
                     ))
                     
                     # Remove scheduled flag but keep in cache
