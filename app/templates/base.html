@@ -373,6 +373,17 @@
             0% { transform: translateX(-100%); }
             100% { transform: translateX(300%); }
         }
+
+        /* Mobile responsive - horizontal scroll for tables */
+        @media (max-width: 768px) {
+            .table-wrapper {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            .table-wrapper table {
+                min-width: 600px;
+            }
+        }
     </style>
 </head>
 <body class="min-h-screen">
