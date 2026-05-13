@@ -77,6 +77,7 @@ async def _apply_plex_collections(
         collection_obj = server.fetchItem(int(collection_key))
         collection_name = collection_obj.title
         logger.info(f"Using Plex collection: '{collection_name}'")
+        logger.info(f"Collection key: {collection_key}")
 
         # Add this debug line (optional, helps troubleshooting)
         logger.debug(f"Will add {len(movies)} movie entries to collection '{collection_name}'")
@@ -91,6 +92,8 @@ async def _apply_plex_collections(
             flat_movies.extend(movie.get("movies", []))
         else:
             flat_movies.append(movie)
+
+    logger.info(f"Attempting to add {len(flat_movies)} movies to collection")  # <--- ADD THIS DEBUG
     
     for movie in flat_movies:
         title = movie.get("movie_title")
@@ -98,6 +101,7 @@ async def _apply_plex_collections(
         movie_id = movie.get("movie_id")  # ← ADDED: get movie_id
         
         if not title or not year or not movie_id:  # ← CHANGED: check movie_id
+            logger.warning(f"Skipping movie - missing data: {title}|{year}|{movie_id}")  # <--- ADD THIS DEBUG
             continue
         
         key = f"{title.lower()}|{year}"
@@ -105,7 +109,14 @@ async def _apply_plex_collections(
         
         if not rating_key:
             logger.debug(f"No Plex rating key for '{title} ({year})'")
+            logger.error(f"❌ No Plex rating key for '{title} ({year})' - lookup key: '{key}'")  # <--- ADD THIS DEBUG
+            # Show similar keys for debugging
+            similar = [k for k in list(library_map.keys())[:20] if title.lower() in k]  # <--- ADD THIS DEBUG
+            if similar:
+                logger.debug(f"   Similar keys found: {similar}")  # <--- ADD THIS DEBUG
             continue
+
+        logger.info(f"Found rating_key={rating_key} for '{title} ({year})'")  # <--- ADD THIS DEBUG
         
         # Use the new sync method with collection NAME (string tag)
         success = await plex_client.sync_collection(
@@ -119,7 +130,9 @@ async def _apply_plex_collections(
             rating_key_map[movie_id] = rating_key  # ← ADDED: store rating key
         else:
             logger.warning(f"Failed to add '{title}' to Plex collection")
+            logger.error(f"❌ Failed to add '{title}' to Plex collection")  # <--- Already there but ensure it's there
     
+    logger.info(f"Added {len(rating_key_map)} movies to Plex collection (out of {len(flat_movies)})")  # <--- ADD THIS DEBUG
     return rating_key_map  # ← ADDED: return the map
 
 

@@ -76,10 +76,11 @@ class PlexClient:
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.put(url, headers=headers)
+                logger.debug(f"PUT {endpoint} -> status {response.status_code}")  # <--- ADD THIS DEBUG
                 response.raise_for_status()
                 return True
         except Exception as e:
-            logger.error(f"Plex PUT request failed: {redact(str(e))}")
+            logger.error(f"Plex PUT request failed: {e.response.status_code} - {e.response.text[:200]}")  # <--- MODIFY THIS (add response text)
             return False
 
     async def _delete(self, endpoint: str, timeout: int = 30) -> bool:
@@ -420,12 +421,13 @@ class PlexClient:
         endpoint = f"/library/collections/{collection_rating_key}/items?uri={uri}"
         
         logger.info(f"Adding item {item_rating_key} to collection {collection_rating_key}")
+        logger.debug(f"PUT endpoint: {endpoint}")
         success = await self._put(endpoint)
         
         if success:
             logger.info(f"Successfully added item {item_rating_key} to collection")
         else:
-            logger.error(f"Failed to add item {item_rating_key} to collection")
+            logger.error(f"❌ PUT request failed for item {item_rating_key}")  # <--- MODIFY THIS (add ❌)
         
         return success
 
@@ -476,6 +478,8 @@ class PlexClient:
             collection_name: Name of the collection (e.g., "Movies Leaving Soon")
             should_be_in: True to add, False to remove
         """
+        logger.debug(f"sync_collection: item={item_rating_key}, collection='{collection_name}', should_be_in={should_be_in}")  # <--- ADD THIS DEBUG
+
         # Get collection ratingKey by name
         collection_rating_key = await self.get_collection_by_name(collection_name)
         
@@ -483,6 +487,8 @@ class PlexClient:
             if should_be_in:
                 logger.error(f"Collection '{collection_name}' not found in Plex")
             return False
+
+        logger.debug(f"Found collection_rating_key={collection_rating_key}")  # <--- ADD THIS DEBUG
         
         # For remove operations, we don't need to check current state
         # Just attempt to remove - if not in collection, Plex returns success anyway
