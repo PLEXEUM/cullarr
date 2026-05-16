@@ -170,33 +170,16 @@
             </div>
         </button>
         <div id="scheduled-deletions-section" class="border-t" style="border-color: var(--border-color);">
-            <div class="table-wrapper">
-                <table class="w-full data-table">
-                    <thead>
-                        <tr>
-                            <th>Score</th>
-                            <th>Movie</th>
-                            <th>Year</th>
-                            <th>Age</th>
-                            <th>Size</th>
-                            <th>Date</th>
-                            <th>Time</th>
-                            <th>Watched</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody id="scheduled-table">...</tbody>
-                    <tfoot>
-                        <tr>
-                            <td colspan="9" class="px-4 py-3">
-                                <div class="flex justify-between items-center">
-                                    <span class="text-xs" style="color: var(--text-secondary);">ℹ️ Blue badge indicates manually queued movie (bypasses queue cap).</span>
-                                    <button id="clear-scheduled-btn" class="btn-sm btn-outline" style="border-color: var(--danger); color: var(--danger);">✕ Remove All</button>
-                                </div>
-                            </td>
-                        </tr>
-                    </tfoot>
-                </table>
+            
+            <!-- Scheduled Deletions Poster Grid -->
+            <div id="scheduled-grid" class="poster-grid-container">
+                <div id="scheduled-grid-inner" class="poster-grid">
+                    <!-- Cards will be dynamically inserted here by JavaScript -->
+                </div>
+                <div class="flex justify-between items-center mt-4 px-4 py-3">
+                    <span class="text-xs" style="color: var(--text-secondary);">ℹ️ Blue badge indicates manually queued movie (bypasses queue cap).</span>
+                    <button id="clear-scheduled-btn" class="btn-sm btn-outline" style="border-color: var(--danger); color: var(--danger);">✕ Remove All</button>
+                </div>
             </div>
         </div>
     </div>
@@ -218,36 +201,19 @@
                 </div>
                 <select id="per-page-select" class="text-sm rounded-lg px-2 py-1.5" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary);">
                     <option value="10"selected>10 per page</option>
-                    <option value="20">20 per page</option>
+                    <option value="25">25 per page</option>
                     <option value="50">50 per page</option>
                     <option value="100">100 per page</option>
                 </select>
             </div>
         </div>
-        <div class="table-wrapper">
-            <table class="w-full score-queue-table data-table">
-                <thead>
-                    <tr>
-                        <th class="sortable" data-sort="score">Score</th>
-                        <th class="sortable" data-sort="title">Movie</th>
-                        <th class="sortable" data-sort="year">Year</th>
-                        <th class="sortable" data-sort="age">Age</th>
-                        <th class="sortable" data-sort="size">Size</th>
-                        <th class="sortable" data-sort="rating">Rating</th>
-                        <th class="sortable" data-sort="quality">Quality</th>
-                        <th class="sortable" data-sort="watched">Watched</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody id="score-queue-table">...</tbody>
-                <tfoot>
-                    <tr>
-                        <td colspan="9" class="px-4 py-3">
-                            <div id="score-queue-pagination" class="flex justify-between items-center text-sm"></div>
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
+    
+    <!-- Score Queue Poster Grid -->
+        <div id="score-queue-grid" class="poster-grid-container">
+            <div id="score-queue-grid-inner" class="poster-grid">
+                <!-- Cards will be dynamically inserted here by JavaScript -->
+            </div>
+            <div id="score-queue-pagination" class="flex justify-between items-center text-sm mt-4 px-4 py-3"></div>
         </div>
     </div>
     

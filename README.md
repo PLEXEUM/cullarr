@@ -10,7 +10,7 @@ Cullarr is an automated movie management tool that intelligently scores and remo
 - **Plex Integration** - Tracks watched status and recency for smarter deletion decisions
 - **Collection Support** - Delete entire TMDB collections together
 - **Scheduled Automation** - Cron-based scoring and culling schedules
-- **Web Dashboard** - Clean, responsive UI for easy management
+- **Web Dashboard** - Clean, responsive UI with poster grid view for easy management
 - **Dry Run Mode** - Preview changes before making them
 - **Plex Collection Sync** - Auto-tag scheduled movies to Plex collections
 - **Plex OAuth** - Secure authentication without storing passwords

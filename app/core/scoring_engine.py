@@ -428,6 +428,7 @@ class ScoringEngine:
                 "monitored": all(m["monitored"] for m in movies),
                 "factors": movies[0]["factors"],  # representative factors from first movie
                 "plex_play_count": sum(m.get("plex_play_count", 0) for m in movies),
+                "poster_url": movies[0].get("poster_url"),
             })
 
         return result
@@ -466,6 +467,7 @@ class ScoringEngine:
                     "collection": collection,
                     "is_collection": False,
                     "plex_play_count": result.get("plex_play_count", 0),
+                    "poster_url": movie.get("remotePoster"),
                 })
 
         # Sort by raw score (highest first)

@@ -340,7 +340,8 @@ async def run_score_cycle():
                                 collection_id = ?,
                                 is_collection = ?,
                                 scheduled_for_deletion = 0,
-                                cached_at = CURRENT_TIMESTAMP
+                                cached_at = CURRENT_TIMESTAMP,
+                                poster_url = ?
                             WHERE movie_id = ?
                         """, (
                             member["movie_title"],
@@ -358,6 +359,7 @@ async def run_score_cycle():
                             entry.get("collection_title"),
                             entry.get("collection_id"),
                             1,  # is_collection
+                            member.get("poster_url"),
                             member["movie_id"],
                         ))
 
@@ -372,8 +374,8 @@ async def run_score_cycle():
                              size_gb, age_days, quality, monitored, normalized_score,
                              raw_score, factors, plex_play_count,
                              collection_name, collection_id, is_collection,
-                             scheduled_for_deletion, scheduled_date, cached_at, manual_for_deletion)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                             scheduled_for_deletion, scheduled_date, poster_url, cached_at, manual_for_deletion)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
                         """, (
                             member["movie_id"],
                             member["movie_title"],
@@ -393,6 +395,7 @@ async def run_score_cycle():
                             1,  # is_collection
                             0,  # scheduled_for_deletion
                             scheduled_date_value,
+                            member.get("poster_url"),
                             manual_value,
                         ))
 
@@ -423,7 +426,8 @@ async def run_score_cycle():
                             collection_id = ?,
                             is_collection = ?,
                             scheduled_for_deletion = 0,
-                            cached_at = CURRENT_TIMESTAMP
+                            cached_at = CURRENT_TIMESTAMP,
+                            poster_url = ?
                         WHERE movie_id = ?
                     """, (
                         entry["movie_title"],
@@ -441,6 +445,7 @@ async def run_score_cycle():
                         None,  # collection_name
                         None,  # collection_id
                         0,  # is_collection
+                        entry.get("poster_url"),
                         entry["movie_id"],
                     ))
 
@@ -455,8 +460,8 @@ async def run_score_cycle():
                          size_gb, age_days, quality, monitored, normalized_score,
                          raw_score, factors, plex_play_count,
                          collection_name, collection_id, is_collection,
-                         scheduled_for_deletion, scheduled_date, cached_at, manual_for_deletion)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                         scheduled_for_deletion, scheduled_date, poster_url, cached_at, manual_for_deletion)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
                     """, (
                         entry["movie_id"],
                         entry["movie_title"],
@@ -476,6 +481,7 @@ async def run_score_cycle():
                         0,  # is_collection
                         0,  # scheduled_for_deletion
                         scheduled_date_value,
+                        entry.get("poster_url"),
                         manual_value,
                     ))
         

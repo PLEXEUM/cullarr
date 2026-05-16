@@ -77,10 +77,9 @@ async function loadQueueStatus() {
     }
 }
 
-// Scheduled Deletions
+// Scheduled Deletions - Load and render as poster grid
 async function loadScheduledDeletions() {
     try {
-        // Call score-queue endpoint with scheduled=1, larger per_page to get all
         const res = await fetch('/api/dashboard/score-queue?page=1&per_page=100&scheduled=1&sort_by=score&sort_order=desc');
         
         if (!res.ok) {
@@ -88,15 +87,15 @@ async function loadScheduledDeletions() {
         }
         
         const data = await res.json();
-        renderScheduledTable(data);
+        renderScheduledGrid(data);
     } catch (e) {
         console.error('Failed to load scheduled deletions:', e);
-        const tbody = document.getElementById('scheduled-table');
+        const gridContainer = document.getElementById('scheduled-grid-inner');
         const badge = document.getElementById('scheduled-badge');
         
         if (badge) badge.textContent = '0 items';
-        if (tbody) {
-            tbody.innerHTML = `<tr><td colspan="9" class="text-center py-8" style="color: var(--danger);">Failed to load scheduled deletions. Please check your connection.</td></tr>`;
+        if (gridContainer) {
+            gridContainer.innerHTML = `<div class="col-span-full text-center py-8" style="color: var(--danger);">Failed to load scheduled deletions. Please check your connection.</div>`;
         }
     }
 }
@@ -130,106 +129,126 @@ async function removeFromQueue(movieId, title, isCollection = false) {
     }
 }
 
-// Score Queue
+// Score Queue - Load and render as poster grid
 async function loadScoreQueue() {
     try {
         let url;
         
-        // If search is active, use search endpoint
         if (scoreQueueSearchActive && scoreQueueSearch.trim() !== '') {
             url = `/api/dashboard/score-queue/search?q=${encodeURIComponent(scoreQueueSearch)}&page=${scoreQueuePage}&per_page=${scoreQueuePerPage}&sort_by=${scoreQueueSortBy}&sort_order=${scoreQueueSortOrder}`;
         } else {
-            // Normal pagination - unscheduled only
             url = `/api/dashboard/score-queue?page=${scoreQueuePage}&per_page=${scoreQueuePerPage}&sort_by=${scoreQueueSortBy}&sort_order=${scoreQueueSortOrder}&scheduled=0`;
         }
         
         const res = await fetch(url);
         const data = await res.json();
-        const tbody = document.getElementById('score-queue-table');
+        const gridContainer = document.getElementById('score-queue-grid-inner');
 
         if (!data.items || data.items.length === 0) {
             if (scoreQueueSearchActive) {
-                tbody.innerHTML = `<tr><td colspan="9" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No movies match "${escapeHtml(scoreQueueSearch)}".</td></tr>`;
+                gridContainer.innerHTML = `<div class="col-span-full text-center py-8" style="color: var(--text-secondary)">No movies match "${escapeHtml(scoreQueueSearch)}".</div>`;
             } else {
-                tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No movies found. Run a score cycle or configure Radarr first.</td></tr>';
+                gridContainer.innerHTML = `<div class="col-span-full text-center py-8" style="color: var(--text-secondary)">No movies found. Run a score cycle or configure Radarr first.</div>`;
             }
             document.getElementById('score-queue-pagination').innerHTML = '';
             return;
         }
 
-        tbody.innerHTML = data.items.map(movie => {
+        // Generate poster cards
+        const cardsHtml = data.items.map(movie => {
             let scoreClass = 'score-high';
             if (movie.normalized_score < 60) scoreClass = 'score-medium';
             if (movie.normalized_score < 30) scoreClass = 'score-low';
-            const tmdbRating = movie.tmdb_rating ? movie.tmdb_rating.toFixed(1) : 'N/A';
-
-            const playCount = movie.plex_play_count || 0;
-            let watchedDisplay = '';
-            if (movie.plex_play_count === null || movie.plex_play_count === undefined) {
-                watchedDisplay = '<span style="color: var(--text-secondary);">N/A</span>';
-            } else {
-                watchedDisplay = `<span style="color: var(--text-secondary);">${playCount}</span>`;
-            }
-
-        const safeTitle = escapeHtml(movie.movie_title || 'Unknown');
-        const factorsJson = JSON.stringify(movie.factors || []).replace(/'/g, "&#39;");
-        const isCollection = movie.is_collection || false;
-        const moviesData = isCollection ? JSON.stringify(movie.movies || []).replace(/'/g, "&#39;") : '[]';
-
-        return `
-            <tr style="border-bottom: 1px solid var(--border-color);">
-                <td class="px-4 py-2"><span class="badge ${scoreClass}">${movie.normalized_score.toFixed(1)}</span></td>
-                <td class="px-4 py-2 font-medium">${safeTitle}</td>
-                <td class="px-4 py-2" style="color: var(--text-secondary)">${movie.movie_year || 'N/A'}</td>
-                <td class="px-4 py-2" style="color: var(--text-secondary)">${movie.age_days}d</span></td>
-                <td class="px-4 py-2">${movie.size_gb.toFixed(1)} GB</span></td>
-                <td class="px-4 py-2"><span class="star">★</span> ${tmdbRating}</span></td>
-                <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(movie.quality) || 'Unknown'}</span></td>
-                <td class="px-4 py-2">${watchedDisplay}</span></td>
-                <td class="px-4 py-2">
-                    <div class="flex gap-2">
-                        ${movie.is_collection ? 
-                            // COLLECTION buttons
-                            (movie.scheduled_for_deletion ?
-                                `<button onclick="removeFromQueue(${movie.collection_id}, '${escapeHtml(movie.movie_title)}', true)" 
-                                    class="btn-sm btn-danger" 
-                                    title="Remove entire collection from scheduled deletions">
-                                    ✕ Remove
-                                </button>` : 
-                                `<button onclick="manualQueueCollection(${movie.collection_id}, '${escapeHtml(movie.movie_title)}', ${movie.movie_count})" 
-                                    class="btn-sm btn-manual" 
-                                    title="Manually queue entire collection (bypasses queue cap, keeps score)">
-                                    ➕ Queue
-                                </button>`
-                            ) : 
-                            // INDIVIDUAL buttons
-                            (movie.scheduled_for_deletion ? 
-                                `<button onclick="removeFromQueue(${movie.movie_id}, '${escapeHtml(movie.movie_title)}', false)" 
-                                    class="btn-sm btn-danger" 
-                                    title="Remove from scheduled deletions">
-                                    ✕ Remove
-                                </button>` : 
-                                `<button onclick="manualQueueMovie(${movie.movie_id}, '${escapeHtml(movie.movie_title)}', false, 1)" 
-                                    class="btn-sm btn-manual" 
-                                    title="Manually queue this movie (bypasses queue cap, keeps score)">
-                                    ➕ Queue
-                                </button>`
-                            )
-                        }
-                        <button data-title="${safeTitle}" 
-                                data-score="${movie.normalized_score}" 
-                                data-factors='${factorsJson}'
-                                data-is-collection="${isCollection}"
-                                data-movies='${moviesData}'
-                                data-movie-count="${movie.movie_count || 0}"
-                                class="btn-sm btn-outline details-btn">🔍 Details</button>
+            
+            const posterUrl = movie.poster_url || '/static/no-poster.png';
+            const title = escapeHtml(movie.movie_title || 'Unknown');
+            const movieId = movie.collection_id || movie.movie_id;
+            const isCollection = movie.is_collection || false;
+            
+            // Store data for modal
+            const factorsJson = JSON.stringify(movie.factors || []).replace(/'/g, "&#39;");
+            const moviesData = isCollection ? JSON.stringify(movie.movies || []).replace(/'/g, "&#39;") : '[]';
+            
+            return `
+                <div class="poster-card" data-movie-id="${movieId}" data-title="${title}" data-score="${movie.normalized_score}" data-factors='${factorsJson}' data-is-collection="${isCollection}" data-movies='${moviesData}' data-movie-count="${movie.movie_count || 0}">
+                    <div class="poster-image-container">
+                        <img src="${posterUrl}" alt="${title}" class="poster-image" loading="lazy" onerror="this.src='/static/no-poster.png'">
+                        <div class="poster-overlay">
+                            <button class="details-overlay-btn">🔍 Details</button>
                         </div>
-                </span>
-            </tr>
-        `;
+                    </div>
+                    <div class="poster-meta-bar">
+                        <span class="score-badge ${scoreClass}">${Math.round(movie.normalized_score)}</span>
+                        ${movie.scheduled_for_deletion ? 
+                            `<button class="remove-btn" data-movie-id="${movieId}" data-title="${title}" data-is-collection="${isCollection}">✕ Remove</button>` : 
+                            `<button class="queue-btn" data-movie-id="${movieId}" data-title="${title}" data-is-collection="${isCollection}" data-movie-count="${movie.movie_count || 0}">+ Queue</button>`
+                        }
+                    </div>
+                </div>
+            `;
         }).join('');
+        
+        gridContainer.innerHTML = cardsHtml;
+        
+        // Attach event listeners to cards (poster click opens modal)
+        document.querySelectorAll('#score-queue-grid-inner .poster-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                // Don't open modal if clicking the queue/remove button
+                if (e.target.classList.contains('queue-btn') || e.target.classList.contains('remove-btn')) return;
+                
+                const title = card.dataset.title;
+                const score = parseFloat(card.dataset.score);
+                const isCollection = card.dataset.isCollection === 'true';
+                const movieCount = parseInt(card.dataset.movieCount || '0');
+                
+                let factors = [];
+                let movies = [];
+                
+                try {
+                    if (card.dataset.factors) {
+                        factors = JSON.parse(card.dataset.factors);
+                    }
+                } catch (err) {
+                    console.error('Failed to parse factors:', err);
+                }
+                
+                if (isCollection) {
+                    try {
+                        if (card.dataset.movies && card.dataset.movies !== '[]') {
+                            movies = JSON.parse(card.dataset.movies);
+                        }
+                    } catch (err) {
+                        console.error('Failed to parse movies:', err);
+                    }
+                }
+                
+                showScoreDetails(title, score, factors, isCollection, movies, movieCount);
+            });
+        });
+        
+        // Attach event listeners to queue/remove buttons
+        document.querySelectorAll('#score-queue-grid-inner .queue-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const movieId = parseInt(btn.dataset.movieId);
+                const title = btn.dataset.title;
+                const isCollection = btn.dataset.isCollection === 'true';
+                const movieCount = parseInt(btn.dataset.movieCount || '1');
+                manualQueueMovie(movieId, title, isCollection, movieCount);
+            });
+        });
+        
+        document.querySelectorAll('#score-queue-grid-inner .remove-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const movieId = parseInt(btn.dataset.movieId);
+                const title = btn.dataset.title;
+                const isCollection = btn.dataset.isCollection === 'true';
+                removeFromQueue(movieId, title, isCollection);
+            });
+        });
 
-        // Pagination with page number input
+        // Pagination
         const totalPages = data.pages || 1;
         const searchInfo = scoreQueueSearchActive ? ` (matching "${escapeHtml(scoreQueueSearch)}")` : '';
         document.getElementById('score-queue-pagination').innerHTML = `
@@ -268,6 +287,10 @@ async function loadScoreQueue() {
 
     } catch (e) {
         console.error('Failed to load score queue:', e);
+        const gridContainer = document.getElementById('score-queue-grid-inner');
+        if (gridContainer) {
+            gridContainer.innerHTML = `<div class="col-span-full text-center py-8" style="color: var(--danger);">Failed to load score queue.</div>`;
+        }
     }
 }
 
@@ -537,19 +560,23 @@ function loadDeletionHistoryState() {
     }
 }
 
-function renderScheduledTable(data) {
-    const tbody = document.getElementById('scheduled-table');
+// Render Scheduled Deletions as Poster Grid
+function renderScheduledGrid(data) {
+    const gridContainer = document.getElementById('scheduled-grid-inner');
     const badge = document.getElementById('scheduled-badge');
+    
+    if (!gridContainer) return;
     
     if (!data.items || data.items.length === 0) {
         if (badge) badge.textContent = '0 items';
-        tbody.innerHTML = `<tr><td colspan="9" class="px-4 py-8 text-center" style="color: var(--text-secondary)">No scheduled deletions</td></tr>`;
+        gridContainer.innerHTML = `<div class="col-span-full text-center py-8" style="color: var(--text-secondary);">No scheduled deletions</div>`;
         return;
     }
     
     if (badge) badge.textContent = `${data.items.length} items`;
     
-    tbody.innerHTML = data.items.map(item => {
+    const cardsHtml = data.items.map(item => {
+        // Determine score badge class
         let scoreClass = 'score-high';
         if (item.manual_for_deletion) {
             scoreClass = 'badge-manual';
@@ -558,9 +585,8 @@ function renderScheduledTable(data) {
             if (item.normalized_score < 30) scoreClass = 'score-low';
         }
         
-        // Calculate countdown from scheduled_date
+        // Calculate countdown text
         let countdownText = '';
-        let countdownClass = '';
         if (item.scheduled_date) {
             const deleteDate = new Date(item.scheduled_date);
             const now = new Date();
@@ -568,72 +594,89 @@ function renderScheduledTable(data) {
             
             if (daysRemaining < 0) {
                 countdownText = 'overdue';
-                countdownClass = 'style="color: var(--danger);"';
             } else if (daysRemaining === 0) {
                 countdownText = '0 day(s)';
-                countdownClass = 'style="color: var(--warning);"';
             } else if (daysRemaining === 1) {
                 countdownText = '1 day(s)';
-                countdownClass = 'style="color: var(--warning);"';
             } else {
                 countdownText = `${daysRemaining} day(s)`;
-                countdownClass = '';
             }
-        } else {
-            countdownText = 'pending';
         }
         
-        // Format deletion date
-        const deletionDate = item.scheduled_date ? new Date(item.scheduled_date).toLocaleDateString() : 'N/A';
+        // Get poster URL or fallback
+        const posterUrl = item.poster_url || '/static/no-poster.png';
+        const title = escapeHtml(item.movie_title || 'Unknown');
+        const movieId = item.collection_id || item.movie_id;
+        const isCollection = !!item.collection_id;
         
-        // Handle collection display
-        const isCollection = item.is_collection || false;
-        const movieYear = item.movie_year || (isCollection ? 'Various' : 'N/A');
-        
-        // Store factors and movies as JSON for modal
+        // Store data for modal
         const factorsJson = JSON.stringify(item.factors || []).replace(/'/g, "&#39;");
         const moviesData = isCollection ? JSON.stringify(item.movies || []).replace(/'/g, "&#39;") : '[]';
         
-        // Get watched count from the data (already in item.plex_play_count)
-        const watchedCount = item.plex_play_count || 0;
-        let watchedHtml = '';
-        if (item.plex_play_count === null || item.plex_play_count === undefined) {
-            watchedHtml = '<span style="color: var(--text-secondary);">N/A</span>';
-        } else {
-            watchedHtml = `<span style="color: var(--text-secondary);">${watchedCount}</span>`;
-        }
-        
         return `
-            <tr style="border-bottom: 1px solid var(--border-color);">
-                <td class="px-4 py-2"><span class="badge ${scoreClass}">${item.normalized_score?.toFixed(1) || '0'}</span></td>
-                <td class="px-4 py-2 font-medium">${escapeHtml(item.movie_title || 'Unknown')}</td>
-                <td class="px-4 py-2" style="color: var(--text-secondary)">${movieYear}</td>
-                <td class="px-4 py-2" style="color: var(--text-secondary)">${item.age_days || 0}d</td>
-                <td class="px-4 py-2">${item.size_gb?.toFixed(1) || 0} GB</td>
-                <td class="px-4 py-2" style="color: var(--text-secondary)">${deletionDate}</td>
-                <td class="px-4 py-2" ${countdownClass}>${countdownText}</td>
-                <td class="px-4 py-2">${watchedHtml}</td>
-                <td class="px-4 py-2">
-                    <div class="flex gap-2">
-                        <button onclick="removeFromQueue(${item.collection_id || item.movie_id}, '${escapeHtml(item.movie_title)}', ${!!item.collection_id})" 
-                            class="btn-sm btn-danger">✕ Remove</button>
-                        <button data-title="${escapeHtml(item.movie_title)}" 
-                                data-score="${item.normalized_score}" 
-                                data-factors='${factorsJson}'
-                                data-is-collection="${isCollection}"
-                                data-movies='${moviesData}'
-                                data-movie-count="${item.movie_count || 0}"
-                                class="btn-sm btn-outline scheduled-details-btn">🔍 Details</button>
+            <div class="poster-card" data-movie-id="${movieId}" data-title="${title}" data-score="${item.normalized_score}" data-factors='${factorsJson}' data-is-collection="${isCollection}" data-movies='${moviesData}' data-movie-count="${item.movie_count || 0}">
+                <div class="poster-image-container">
+                    <img src="${posterUrl}" alt="${title}" class="poster-image" loading="lazy" onerror="this.src='/static/no-poster.png'">
+                    <div class="poster-overlay">
+                        <button class="details-overlay-btn">🔍 Details</button>
                     </div>
-                </td>
-            </tr>
+                    ${countdownText ? `<div class="countdown-badge">${countdownText}</div>` : ''}
+                </div>
+                <div class="poster-meta-bar">
+                    <span class="score-badge ${scoreClass}">${Math.round(item.normalized_score)}</span>
+                    <button class="remove-btn" data-movie-id="${movieId}" data-title="${title}" data-is-collection="${isCollection}">✕ Remove</button>
+                </div>
+            </div>
         `;
     }).join('');
     
-    // Attach details modal event listeners to the new buttons
-    document.querySelectorAll('.scheduled-details-btn').forEach(btn => {
-        btn.removeEventListener('click', handleScheduledDetailsClick);
-        btn.addEventListener('click', handleScheduledDetailsClick);
+    gridContainer.innerHTML = cardsHtml;
+    
+    // Attach event listeners to cards (poster click opens modal)
+    document.querySelectorAll('.poster-card').forEach(card => {
+        card.addEventListener('click', (e) => {
+            // Don't open modal if clicking the remove button
+            if (e.target.classList.contains('remove-btn')) return;
+            
+            const title = card.dataset.title;
+            const score = parseFloat(card.dataset.score);
+            const isCollection = card.dataset.isCollection === 'true';
+            const movieCount = parseInt(card.dataset.movieCount || '0');
+            
+            let factors = [];
+            let movies = [];
+            
+            try {
+                if (card.dataset.factors) {
+                    factors = JSON.parse(card.dataset.factors);
+                }
+            } catch (err) {
+                console.error('Failed to parse factors:', err);
+            }
+            
+            if (isCollection) {
+                try {
+                    if (card.dataset.movies && card.dataset.movies !== '[]') {
+                        movies = JSON.parse(card.dataset.movies);
+                    }
+                } catch (err) {
+                    console.error('Failed to parse movies:', err);
+                }
+            }
+            
+            showScoreDetails(title, score, factors, isCollection, movies, movieCount);
+        });
+    });
+    
+    // Attach event listeners to remove buttons
+    document.querySelectorAll('.remove-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const movieId = parseInt(btn.dataset.movieId);
+            const title = btn.dataset.title;
+            const isCollection = btn.dataset.isCollection === 'true';
+            removeFromQueue(movieId, title, isCollection);
+        });
     });
 }
 
@@ -1158,48 +1201,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 searchInput.focus();
             });
         }
-    }
-
-    // Event delegation for details buttons (handles dynamically added rows)
-    const scoreQueueTable = document.getElementById('score-queue-table');
-    if (scoreQueueTable) {
-        scoreQueueTable.addEventListener('click', (e) => {
-            const btn = e.target.closest('.details-btn');
-            if (btn) {
-                e.preventDefault();
-                const title = btn.getAttribute('data-title');
-                const score = parseFloat(btn.getAttribute('data-score'));
-                const isCollection = btn.getAttribute('data-is-collection') === 'true';
-                const movieCount = parseInt(btn.getAttribute('data-movie-count') || '0');
-                
-                let factors = [];
-                let movies = [];
-                
-                try {
-                    const factorsAttr = btn.getAttribute('data-factors');
-                    if (factorsAttr && factorsAttr !== 'undefined') {
-                        factors = JSON.parse(factorsAttr);
-                    }
-                } catch (err) {
-                    console.error('Failed to parse factors:', err);
-                    factors = [];
-                }
-                
-                if (isCollection) {
-                    try {
-                        const moviesAttr = btn.getAttribute('data-movies');
-                        if (moviesAttr && moviesAttr !== 'undefined' && moviesAttr !== '[]') {
-                            movies = JSON.parse(moviesAttr);
-                        }
-                    } catch (err) {
-                        console.error('Failed to parse movies:', err);
-                        movies = [];
-                    }
-                }
-                
-                showScoreDetails(title, score, factors, isCollection, movies, movieCount);
-            }
-        });
     }
 
     // Load saved collapse state for Scheduled Deletions
