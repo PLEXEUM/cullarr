@@ -216,6 +216,14 @@ async def run_score_cycle():
         plex_config = conn.execute("SELECT * FROM plex_config WHERE id = 1").fetchone()
         settings = conn.execute("SELECT * FROM settings WHERE id = 1").fetchone()
 
+        # Helper function to construct poster URL
+        def get_poster_url(movie_id):
+            if not radarr_config or not radarr_config["url"] or not radarr_config["api_key"]:
+                return None
+            radarr_base = radarr_config["url"].rstrip("/")
+            radarr_key = radarr_config["api_key"]
+            return f"{radarr_base}/api/v3/MediaCover/{movie_id}/poster.jpg?apikey={radarr_key}"
+
         if not radarr_config or not radarr_config["url"] or not radarr_config["api_key"]:
             logger.error("Radarr not configured, cannot run score cycle")
             return
@@ -322,6 +330,7 @@ async def run_score_cycle():
         
                     if existing and existing[0] == 1:
                         # MANUAL MOVIE - Use UPDATE to preserve scheduled_date
+                        poster_url = get_poster_url(member["movie_id"])
                         conn.execute("""
                             UPDATE scored_movies_cache 
                             SET movie_title = ?,
@@ -359,7 +368,7 @@ async def run_score_cycle():
                             entry.get("collection_title"),
                             entry.get("collection_id"),
                             1,  # is_collection
-                            member.get("poster_url"),
+                            poster_url,
                             member["movie_id"],
                         ))
 
@@ -368,6 +377,7 @@ async def run_score_cycle():
                         manual_value = existing[0] if existing else 0
                         scheduled_date_value = existing[1] if existing else None
             
+                        poster_url = get_poster_url(member["movie_id"])
                         conn.execute("""
                             INSERT OR REPLACE INTO scored_movies_cache
                             (movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
@@ -395,7 +405,7 @@ async def run_score_cycle():
                             1,  # is_collection
                             0,  # scheduled_for_deletion
                             scheduled_date_value,
-                            member.get("poster_url"),
+                            poster_url,
                             manual_value,
                         ))
 
@@ -408,6 +418,7 @@ async def run_score_cycle():
     
                 if existing and existing[0] == 1:
                     # MANUAL MOVIE - Use UPDATE to preserve scheduled_date
+                    poster_url = get_poster_url(entry["movie_id"])
                     conn.execute("""
                         UPDATE scored_movies_cache 
                         SET movie_title = ?,
@@ -445,7 +456,7 @@ async def run_score_cycle():
                         None,  # collection_name
                         None,  # collection_id
                         0,  # is_collection
-                        entry.get("poster_url"),
+                        poster_url,
                         entry["movie_id"],
                     ))
 
@@ -481,7 +492,7 @@ async def run_score_cycle():
                         0,  # is_collection
                         0,  # scheduled_for_deletion
                         scheduled_date_value,
-                        entry.get("poster_url"),
+                        poster_url,
                         manual_value,
                     ))
         
