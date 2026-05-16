@@ -464,6 +464,7 @@ async def run_score_cycle():
                     # AUTO MOVIE - Use INSERT OR REPLACE
                     manual_value = existing[0] if existing else 0
                     scheduled_date_value = existing[1] if existing else None
+                    poster_url = get_poster_url(entry["movie_id"])
         
                     conn.execute("""
                         INSERT OR REPLACE INTO scored_movies_cache
