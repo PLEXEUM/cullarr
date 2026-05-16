@@ -796,7 +796,7 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
                     size_gb, age_days, quality, monitored, normalized_score,
                     raw_score, factors, plex_play_count,
                     collection_name, collection_id, is_collection, cached_at,
-                    scheduled_for_deletion, scheduled_date, manual_for_deletion
+                    scheduled_for_deletion, scheduled_date, manual_for_deletion, poster_url
             FROM scored_movies_cache
             {where_clause}
         """
@@ -951,7 +951,7 @@ async def search_score_queue(
             SELECT DISTINCT movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
                    size_gb, age_days, quality, monitored, normalized_score,
                    raw_score, factors, plex_play_count,
-                   collection_name, collection_id, is_collection, manual_for_deletion, scheduled_for_deletion
+                   collection_name, collection_id, is_collection, manual_for_deletion, scheduled_for_deletion, poster_url
             FROM scored_movies_cache
             WHERE LOWER(movie_title) LIKE ? 
                OR LOWER(collection_name) LIKE ?
