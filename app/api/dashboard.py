@@ -837,6 +837,7 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
                     "plex_play_count": 0,
                     "scheduled_for_deletion": False,
                     "manual_for_deletion": False,
+                    "poster_url": None,
                 }
             
             if item["movie_year"]:
@@ -874,6 +875,9 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
         # Calculate final TMDB rating
         if collections[cname]["movie_count"] > 0:
             collections[cname]["tmdb_rating"] = collections[cname]["tmdb_rating_sum"] / collections[cname]["movie_count"]
+         # Set poster_url from first movie in collection
+        if collections[cname].get("movies") and len(collections[cname]["movies"]) > 0:
+            collections[cname]["poster_url"] = collections[cname]["movies"][0].get("poster_url")
         # Clean up temporary fields
         if "year_min" in collections[cname]:
             del collections[cname]["year_min"]
@@ -999,6 +1003,7 @@ async def search_score_queue(
                         "scheduled_for_deletion": False,
                         "manual_for_deletion": False,
                          "scheduled_date": None,
+                         "poster_url": None,
                     }
                 
                 # Track earliest year (min)
@@ -1039,6 +1044,9 @@ async def search_score_queue(
             # Calculate final TMDB rating
             if collections[cname]["movie_count"] > 0:
                 collections[cname]["tmdb_rating"] = collections[cname]["tmdb_rating_sum"] / collections[cname]["movie_count"]
+            # Set poster_url from first movie in collection
+            if collections[cname].get("movies") and len(collections[cname]["movies"]) > 0:
+                collections[cname]["poster_url"] = collections[cname]["movies"][0].get("poster_url") 
             # Clean up temporary fields
             if "year_min" in collections[cname]:
                 del collections[cname]["year_min"]
