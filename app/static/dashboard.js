@@ -178,7 +178,7 @@ async function loadScoreQueue() {
                         </div>
                     </div>
                     <div class="poster-meta-bar">
-                        <span class="score-badge ${scoreClass}">${Math.round(movie.normalized_score)}</span>
+                        <span class="score-badge ${scoreClass}">${movie.normalized_score.toFixed(1)}</span>
                         ${movie.scheduled_for_deletion ? 
                             `<button class="remove-btn" data-movie-id="${movieId}" data-title="${title}" data-is-collection="${isCollection}">✕ Remove</button>` : 
                             `<button class="queue-btn" data-movie-id="${movieId}" data-title="${title}" data-is-collection="${isCollection}" data-movie-count="${movie.movie_count || 0}">+ Queue</button>`
@@ -623,7 +623,7 @@ function renderScheduledGrid(data) {
                     ${countdownText ? `<div class="countdown-badge">${countdownText}</div>` : ''}
                 </div>
                 <div class="poster-meta-bar">
-                    <span class="score-badge ${scoreClass}">${Math.round(item.normalized_score)}</span>
+                    <span class="score-badge ${scoreClass}">${item.normalized_score.toFixed(1)}</span>
                     <button class="remove-btn" data-movie-id="${movieId}" data-title="${title}" data-is-collection="${isCollection}">✕ Remove</button>
                 </div>
             </div>
