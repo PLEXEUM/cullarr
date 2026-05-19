@@ -92,8 +92,8 @@ class RadarrClient:
             movie_file = movie.get("movieFile")
 
             if not movie_file:
-                logger.info(f"No movie file found for movie {movie_id}")
-                return {"success": False, "message": "No file to delete"}
+                logger.info(f"No movie file found for movie {movie_id} - treating as success")
+                return {"success": True, "message": "No file to delete (already removed)"}
 
             file_id = movie_file.get("id")
 
@@ -113,7 +113,7 @@ class RadarrClient:
             movie = await self.get_movie(movie_id)
             if not movie:
                 logger.warning(f"Movie {movie_id} not found in Radarr")
-                return {"success": False, "message": "Movie not found in Radarr"}
+                return {"success": True, "message": "Movie already deleted (not found in Radarr)"}
         
             movie_title = movie.get("title", "Unknown")
         
