@@ -2,11 +2,11 @@
 <html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Cullarr</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Theme Variables - Matching Resizarr */
+        /* Theme Variables - Matching Cullarr existing colors */
         [data-theme="dark"] {
             --bg-primary: #0f172a;
             --bg-secondary: #1e293b;
@@ -63,8 +63,196 @@
             background-color: var(--bg-primary);
             color: var(--text-primary);
             font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 0;
         }
         
+        /* Layout: Desktop sidebar + main content */
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        /* Sidebar - Desktop */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 260px;
+            height: 100vh;
+            background-color: var(--bg-card);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            z-index: 40;
+            transform: translateX(0);
+            transition: transform 0.2s ease;
+        }
+        
+        /* Sidebar - Mobile (hidden by default) */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            .sidebar.open {
+                transform: translateX(0);
+                box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
+            }
+        }
+        
+        /* Sidebar backdrop (mobile only) */
+        .sidebar-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 39;
+        }
+        
+        .sidebar-backdrop.open {
+            display: block;
+        }
+        
+        @media (min-width: 769px) {
+            .sidebar-backdrop {
+                display: none !important;
+            }
+        }
+        
+        /* Main content - Desktop (pushes right to accommodate sidebar) */
+        .main-content {
+            flex: 1;
+            margin-left: 260px;
+            width: calc(100% - 260px);
+        }
+        
+        /* Main content - Mobile (full width) */
+        @media (max-width: 768px) {
+            .main-content {
+                margin-left: 0;
+                width: 100%;
+            }
+        }
+        
+        /* Top bar (mobile only - contains hamburger) */
+        .mobile-top-bar {
+            display: none;
+            position: sticky;
+            top: 0;
+            background-color: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0.75rem 1rem;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 35;
+        }
+        
+        @media (max-width: 768px) {
+            .mobile-top-bar {
+                display: flex;
+            }
+        }
+        
+        /* Desktop top bar area (just a spacer) */
+        .desktop-top-spacer {
+            display: block;
+        }
+        
+        @media (max-width: 768px) {
+            .desktop-top-spacer {
+                display: none;
+            }
+        }
+        
+        /* Hamburger button */
+        .hamburger {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            line-height: 1;
+        }
+        
+        .hamburger:hover {
+            background: var(--purple-bg);
+        }
+        
+        /* Sidebar logo area */
+        .sidebar-logo {
+            padding: 1.5rem 1rem 1rem 1.5rem;
+            font-size: 1.25rem;
+            font-weight: bold;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 0.5rem;
+        }
+        
+        .sidebar-logo span {
+            color: var(--accent);
+        }
+        
+        /* Sidebar navigation */
+        .sidebar-nav {
+            flex: 1;
+            padding: 0.5rem 0.75rem;
+        }
+        
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.625rem 0.875rem;
+            border-radius: 0.5rem;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            margin-bottom: 0.25rem;
+        }
+        
+        .nav-item:hover {
+            background: var(--purple-bg);
+            color: var(--text-primary);
+        }
+        
+        .nav-item.active {
+            background: var(--purple-bg);
+            color: var(--accent);
+        }
+        
+        /* Sidebar footer (theme toggle area) */
+        .sidebar-footer {
+            padding: 1rem 0.75rem 1.5rem 0.75rem;
+            border-top: 1px solid var(--border-color);
+            margin-top: auto;
+        }
+        
+        .theme-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.625rem 0.875rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            width: 100%;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+        
+        .theme-toggle:hover {
+            background: var(--purple-bg);
+            color: var(--text-primary);
+        }
+        
+        /* Card styles (existing, kept unchanged) */
         .card {
             background-color: var(--bg-card);
             border: 1px solid var(--border-color);
@@ -97,16 +285,7 @@
             color: var(--text-secondary);
         }
         
-        .nav-link {
-            color: var(--text-secondary);
-            transition: color 0.2s;
-            text-decoration: none;
-        }
-        
-        .nav-link:hover, .nav-link.active {
-            color: var(--text-primary);
-        }
-        
+        /* Toast */
         .toast {
             position: fixed;
             bottom: 1.5rem;
@@ -120,6 +299,7 @@
             to { transform: translateX(0); opacity: 1; }
         }
         
+        /* Button styles */
         .btn-raise {
             transition: transform 0.2s ease, box-shadow 0.2s ease;
             cursor: pointer;
@@ -136,11 +316,6 @@
             border-radius: 0.5rem;
             transition: all 0.2s ease;
             cursor: pointer;
-        }
-        
-        .btn-primary {
-            background: var(--accent);
-            color: white;
         }
         
         .btn-outline {
@@ -163,17 +338,8 @@
         .btn-danger:hover {
             background: var(--danger-bg);
         }
-
-        .btn-manual {
-            border: 1px solid var(--queue);
-            color: var(--queue);
-            background: transparent;
-        }
         
-        .btn-manual:hover {
-            background: var(--queue-bg);
-        }
-        
+        /* Badge styles */
         .badge {
             display: inline-flex;
             align-items: center;
@@ -183,67 +349,11 @@
             font-weight: 500;
         }
         
-        /* Score badge colors */
-        .score-high { background: #ef4444; color: white; }
-        .score-medium { background: #eab308; color: white; }
-        .score-low { background: #22c55e; color: white; }
-
-        /* Manual badge color (blue) */
-        .badge-manual { background: #3b82f6; color: white; }
-        
-        /* Status badge colors */
         .badge-success { background: var(--success-bg); color: var(--success); }
-        .badge-warning { background: var(--warning-bg); color: var(--warning); }
-        .badge-info { background: var(--info-bg); color: var(--info); }
         .badge-danger { background: var(--danger-bg); color: var(--danger); }
+        .badge-info { background: var(--info-bg); color: var(--info); }
         
-        /* Table styling */
-        table {
-            border-collapse: collapse;
-            width: 100%;
-        }
-
-        thead tr {
-            background: var(--bg-secondary);
-            border-bottom: 2px solid var(--border-color);
-        }
-
-        th {
-            font-weight: 600;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-secondary);
-            padding: 0.625rem 0.75rem;
-            text-align: left;
-            cursor: pointer;
-            transition: background-color 0.2s ease;
-        }
-
-        th:hover {
-            background: rgba(128, 128, 128, 0.08);
-            color: var(--text-primary);
-        }
-
-        /* Active sort column */
-        th.active-sort {
-            color: var(--accent);
-        }
-
-        td {
-            padding: 0.625rem 0.75rem;
-            vertical-align: middle;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        tbody tr:hover {
-            background: rgba(128, 128, 128, 0.05);
-        }
-        
-        .star {
-            color: var(--star);
-        }
-        
+        /* Status dot */
         .status-dot {
             display: inline-block;
             width: 8px;
@@ -255,103 +365,13 @@
         .status-error { background: #ef4444; }
         .status-unknown { background: #94a3b8; }
         
-        /* Factor colors */
-        .factor-age { background: #3b82f6; }
-        .factor-size { background: #22c55e; }
-        .factor-rating { background: #f59e0b; }
-        .factor-quality { background: #a855f7; }
-        .factor-monitored { background: #ec4898; }
-        .factor-watched { background: #06b6d4; }
-        
-        /* Stat box */
-        .stat-box {
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            cursor: pointer;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 0.75rem;
-        }
-        
-        .stat-box:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.3);
-        }
-
-        /* Shared table styling for both tables */
-        .data-table {
-            table-layout: fixed;
-            width: 100%;
-        }
-
-        /* Percentage-based column widths */
-        .data-table th:nth-child(1),
-        .data-table td:nth-child(1) { width: 6%; }  /* Score */
-
-        .data-table th:nth-child(2),
-        .data-table td:nth-child(2) { width: 28%; }  /* Movie */
-
-        /* Columns 3-8 all get equal width (8% each) */
-        .data-table th:nth-child(3),
-        .data-table td:nth-child(3),
-        .data-table th:nth-child(4),
-        .data-table td:nth-child(4),
-        .data-table th:nth-child(5),
-        .data-table td:nth-child(5),
-        .data-table th:nth-child(6),
-        .data-table td:nth-child(6),
-        .data-table th:nth-child(7),
-        .data-table td:nth-child(7),
-        .data-table th:nth-child(8),
-        .data-table td:nth-child(8) { width: 8%; }  /* Equal width for columns 3-8 */
-
-        /* Column 9 (Actions) gets auto */
-        .data-table th:nth-child(9),
-        .data-table td:nth-child(9) { width: auto; }
-
-        /* Movie title truncation */
-        .data-table td:nth-child(2) {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .data-table td:nth-child(2):hover {
-            overflow: visible;
-            white-space: normal;
-            word-break: break-word;
-            background: var(--bg-primary);
-            position: relative;
-            z-index: 1;
-        }
-
-        /* Error column truncation - same as Movie column */
-        .data-table td:nth-child(9) {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .data-table td:nth-child(9):hover {
-            overflow: visible;
-            white-space: normal;
-            word-break: break-word;
-            background: var(--bg-primary);
-            position: relative;
-            z-index: 1;
-        }
-
-        /* Score queue table - additional styling (keep minimal) */
-        .score-queue-table td {
-            vertical-align: middle;
-        }
-        
-        /* Indeterminate progress bar animation */
+        /* Progress bar */
         .progress-indeterminate {
             position: relative;
             overflow: hidden;
-            background: var(--border-color) !important;  /* Force grey background */
+            background: var(--border-color) !important;
         }
-
+        
         .progress-indeterminate::after {
             content: '';
             position: absolute;
@@ -363,18 +383,13 @@
             animation: shimmer 1.2s ease-in-out infinite;
             pointer-events: none;
         }
-
-        /* Remove any solid background from Tailwind when indeterminate */
-        .progress-indeterminate.bg-indigo-500 {
-            background: var(--border-color) !important;
-        }
-
+        
         @keyframes shimmer {
             0% { transform: translateX(-100%); }
             100% { transform: translateX(300%); }
         }
-
-        /* Poster Grid Styles for Dashboard */
+        
+        /* Poster grid styles (existing, unchanged) */
         .poster-grid-container {
             padding: 1rem;
             overflow-x: auto;
@@ -384,6 +399,19 @@
             display: grid;
             grid-template-columns: repeat(6, minmax(150px, 1fr));
             gap: 1rem;
+        }
+        
+        @media (max-width: 1400px) {
+            .poster-grid { grid-template-columns: repeat(5, minmax(140px, 1fr)); }
+        }
+        @media (max-width: 1100px) {
+            .poster-grid { grid-template-columns: repeat(4, minmax(140px, 1fr)); }
+        }
+        @media (max-width: 800px) {
+            .poster-grid { grid-template-columns: repeat(3, minmax(130px, 1fr)); }
+        }
+        @media (max-width: 550px) {
+            .poster-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
         }
         
         .poster-card {
@@ -412,7 +440,6 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            transition: opacity 0.2s ease;
         }
         
         .poster-overlay {
@@ -440,13 +467,7 @@
             padding: 0.5rem 1rem;
             border-radius: 0.5rem;
             font-size: 0.75rem;
-            font-weight: 500;
             cursor: pointer;
-            transition: transform 0.1s ease;
-        }
-        
-        .details-overlay-btn:hover {
-            transform: scale(1.05);
         }
         
         .countdown-badge {
@@ -457,11 +478,9 @@
             background: rgba(0, 0, 0, 0.75);
             color: white;
             font-size: 0.7rem;
-            font-weight: 500;
             padding: 0.25rem 0.5rem;
             border-radius: 0.25rem;
             white-space: nowrap;
-            z-index: 2;
         }
         
         .poster-meta-bar {
@@ -484,13 +503,17 @@
             min-width: 40px;
         }
         
+        .score-high { background: #ef4444; color: white; }
+        .score-medium { background: #eab308; color: white; }
+        .score-low { background: #22c55e; color: white; }
+        .badge-manual { background: #3b82f6; color: white; }
+        
         .queue-btn, .remove-btn {
             padding: 0.25rem 0.5rem;
             border-radius: 0.375rem;
             font-size: 0.7rem;
             font-weight: 500;
             cursor: pointer;
-            transition: all 0.2s ease;
             border: 1px solid;
             background: transparent;
         }
@@ -515,124 +538,137 @@
             color: white;
         }
         
-        /* Responsive grid */
-        @media (max-width: 1400px) {
-            .poster-grid {
-                grid-template-columns: repeat(5, minmax(140px, 1fr));
-            }
+        /* Table wrapper for horizontal scroll on mobile */
+        .table-wrapper {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
         }
         
-        @media (max-width: 1100px) {
-            .poster-grid {
-                grid-template-columns: repeat(4, minmax(140px, 1fr));
-            }
-        }
-        
-        @media (max-width: 800px) {
-            .poster-grid {
-                grid-template-columns: repeat(3, minmax(130px, 1fr));
-            }
-        }
-        
-        @media (max-width: 550px) {
-            .poster-grid {
-                grid-template-columns: repeat(2, minmax(120px, 1fr));
-            }
-        }
-        
-        /* Mobile responsive - horizontal scroll for tables */
+        /* Hide scrollbar on mobile tables if desired */
         @media (max-width: 768px) {
-            .table-wrapper {
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-            }
             .table-wrapper table {
-                min-width: 800px;
-                width: auto;
-            }
-            .table-wrapper th,
-            .table-wrapper td {
-                min-width: 100px;
-                white-space: nowrap;
-                width: auto !important; 
-            }
-            .table-wrapper th:first-child,
-            .table-wrapper td:first-child {
-                min-width: 70px;
-            }
-            .table-wrapper th:nth-child(2),
-            .table-wrapper td:nth-child(2) {
-                min-width: 180px;
-            }
-            .table-wrapper th:last-child,
-            .table-wrapper td:last-child {
-                min-width: 120px;
+                min-width: 600px;
             }
         }
     </style>
 </head>
-<body class="min-h-screen">
+<body>
 
-    <!-- Navigation -->
-    <nav class="card border-b border-t-0 border-x-0 rounded-none px-6 py-4">
-        <div class="max-w-7xl mx-auto flex items-center justify-between">
-            <div class="flex items-center gap-8">
-                <span class="text-xl font-bold text-indigo-400">🗑 Cullarr</span>
-                <div class="flex gap-6">
-                    <a href="/" class="nav-link text-sm font-medium" id="nav-dashboard">Dashboard</a>
-                    <a href="/settings" class="nav-link text-sm font-medium" id="nav-settings">Settings</a>
-                    <a href="/logs" class="nav-link text-sm font-medium" id="nav-logs">Logs</a>
-                </div>
-            </div>
-            <button onclick="toggleTheme()" class="text-sm nav-link px-3 py-1 rounded border border-current">
+<div class="app-container">
+    <!-- Sidebar Backdrop (mobile only) -->
+    <div id="sidebar-backdrop" class="sidebar-backdrop" onclick="closeSidebar()"></div>
+    
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+        <div class="sidebar-logo">
+            <span>🗑</span> Cullarr
+        </div>
+        
+        <nav class="sidebar-nav">
+            <a href="/" class="nav-item" id="nav-dashboard">📊 Dashboard</a>
+            <a href="/settings" class="nav-item" id="nav-settings">⚙️ Settings</a>
+            <a href="/logs" class="nav-item" id="nav-logs">📜 Logs</a>
+        </nav>
+        
+        <div class="sidebar-footer">
+            <button onclick="toggleTheme()" class="theme-toggle">
                 🌙 Theme
             </button>
         </div>
-    </nav>
-
-    <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-6 py-8">
-        {% block content %}{% endblock %}
+    </aside>
+    
+    <!-- Main Content Area -->
+    <main class="main-content">
+        <!-- Mobile Top Bar (hamburger + optional logo) -->
+        <div class="mobile-top-bar">
+            <button class="hamburger" onclick="toggleSidebar()">☰</button>
+        </div>
+        
+        <!-- Desktop spacer (empty) -->
+        <div class="desktop-top-spacer"></div>
+        
+        <!-- Page Content -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+            {% block content %}{% endblock %}
+        </div>
     </main>
+</div>
 
-    <!-- Toast Container -->
-    <div id="toast-container"></div>
+<!-- Toast Container -->
+<div id="toast-container"></div>
 
-    <script>
-        function toggleTheme() {
-            const html = document.documentElement;
-            const current = html.getAttribute('data-theme');
-            const next = current === 'dark' ? 'light' : 'dark';
-            html.setAttribute('data-theme', next);
-            localStorage.setItem('theme', next);
+<script>
+    // Theme toggle
+    function toggleTheme() {
+        const html = document.documentElement;
+        const current = html.getAttribute('data-theme');
+        const next = current === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+    }
+    
+    // Load saved theme
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    
+    // Sidebar toggle functions
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const backdrop = document.getElementById('sidebar-backdrop');
+        sidebar.classList.toggle('open');
+        if (backdrop) backdrop.classList.toggle('open');
+        document.body.style.overflow = sidebar.classList.contains('open') ? 'hidden' : '';
+    }
+    
+    function closeSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const backdrop = document.getElementById('sidebar-backdrop');
+        sidebar.classList.remove('open');
+        if (backdrop) backdrop.classList.remove('open');
+        document.body.style.overflow = '';
+    }
+    
+    // Close sidebar when clicking a nav link (on mobile)
+    document.querySelectorAll('.nav-item').forEach(link => {
+        link.addEventListener('click', () => {
+            if (window.innerWidth <= 768) {
+                closeSidebar();
+            }
+        });
+    });
+    
+    // Handle window resize - close sidebar if resizing from mobile to desktop
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 768) {
+            closeSidebar();
         }
+    });
+    
+    // Set active nav item based on current path
+    function setActiveNav() {
+        const path = window.location.pathname;
+        document.getElementById('nav-dashboard')?.classList.toggle('active', path === '/');
+        document.getElementById('nav-settings')?.classList.toggle('active', path === '/settings');
+        document.getElementById('nav-logs')?.classList.toggle('active', path === '/logs');
+    }
+    setActiveNav();
+    
+    // Toast function
+    function showToast(message, type = 'success', duration = 5000) {
+        const colors = {
+            success: 'bg-green-800 border-green-600 text-green-100',
+            error: 'bg-red-800 border-red-600 text-red-100',
+            warning: 'bg-yellow-800 border-yellow-600 text-yellow-100',
+            info: 'bg-blue-800 border-blue-600 text-blue-100'
+        };
+        const toast = document.createElement('div');
+        toast.className = `toast card border rounded-lg px-4 py-3 text-sm ${colors[type] || colors.info}`;
+        toast.textContent = message;
+        document.getElementById('toast-container').appendChild(toast);
+        setTimeout(() => toast.remove(), duration);
+    }
+</script>
 
-        const savedTheme = localStorage.getItem('theme') || 'dark';
-        document.documentElement.setAttribute('data-theme', savedTheme);
-
-        function setActiveNav() {
-            const path = window.location.pathname;
-            document.getElementById('nav-dashboard')?.classList.toggle('active', path === '/');
-            document.getElementById('nav-settings')?.classList.toggle('active', path === '/settings');
-            document.getElementById('nav-logs')?.classList.toggle('active', path === '/logs');
-        }
-        setActiveNav();
-
-        function showToast(message, type = 'success', duration = 5000) {
-            const colors = {
-                success: 'bg-green-800 border-green-600 text-green-100',
-                error: 'bg-red-800 border-red-600 text-red-100',
-                warning: 'bg-yellow-800 border-yellow-600 text-yellow-100',
-                info: 'bg-blue-800 border-blue-600 text-blue-100'
-            };
-            const toast = document.createElement('div');
-            toast.className = `toast card border rounded-lg px-4 py-3 text-sm ${colors[type] || colors.info}`;
-            toast.textContent = message;
-            document.getElementById('toast-container').appendChild(toast);
-            setTimeout(() => toast.remove(), duration);
-        }
-    </script>
-
-    {% block scripts %}{% endblock %}
+{% block scripts %}{% endblock %}
 </body>
 </html>

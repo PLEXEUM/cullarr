@@ -15,7 +15,6 @@ async function loadDashboard() {
     await loadQueueStatus();
     await loadScheduledDeletions();
     await loadScoreQueue();
-    await loadFailedDeletions();
     await loadNextRunTimes();
 }
 
@@ -324,95 +323,6 @@ function updateSortIcons() {
     }
 }
 
-// Deletion History
-async function loadFailedDeletions() {
-    try {
-        const res = await fetch('/api/dashboard/failed');
-        const data = await res.json();
-        const section = document.getElementById('failed-section');
-        const tbody = document.getElementById('failed-table');
-
-        if (!data.items || data.items.length === 0) {
-            section.classList.add('hidden');
-            return;
-        }
-
-        section.classList.remove('hidden');
-        tbody.innerHTML = data.items.map(item => {
-            // Score badge color
-            let scoreClass = 'score-high';
-            if (item.score < 60) scoreClass = 'score-medium';
-            if (item.score < 30) scoreClass = 'score-low';
-            
-            // Status display
-            let statusHtml = '';
-            if (item.status === 'deleted') {
-                statusHtml = '<span class="badge badge-success"> Deleted</span>';
-            } else {
-                statusHtml = '<span class="badge badge-danger"> Failed</span>';
-            }
-
-            // Update the badge count
-            const badge = document.getElementById('failed-badge');
-            if (badge && data.items) {
-                badge.textContent = `${data.items.length} items`;
-            }
-            
-            // Rating display
-            const movieRating = item.tmdb_rating ? item.tmdb_rating.toFixed(1) : 'N/A';
-            
-            // Quality display
-            const movieQuality = item.quality || 'Unknown';
-            
-            // Age display
-            const ageDays = item.age_days || 0;
-            const ageDisplay = ageDays > 0 ? `${ageDays}d` : 'N/A';
-            
-            // Size display
-            const sizeDisplay = item.size_gb ? `${item.size_gb.toFixed(1)} GB` : 'N/A';
-            
-            // Error message (only show for failed)
-            const errorDisplay = item.status === 'failed' && item.error_message 
-                ? `<span class="text-xs" style="color: var(--danger);">${escapeHtml(item.error_message)}</span>` 
-                : '<span style="color: var(--text-secondary);">—</span>';
-            
-            return `
-                <tr style="border-bottom: 1px solid var(--border-color);">
-                    <td class="px-4 py-2"><span class="badge ${scoreClass}">${item.score.toFixed(1)}</span></td>
-                    <td class="px-4 py-2 font-medium">${escapeHtml(item.movie_title || 'Unknown')}</td>
-                    <td class="px-4 py-2" style="color: var(--text-secondary)">${item.movie_year || 'N/A'}</td>
-                    <td class="px-4 py-2" style="color: var(--text-secondary)">${ageDisplay}</td>
-                    <td class="px-4 py-2" style="color: var(--text-secondary)">${sizeDisplay}</td>
-                    <td class="px-4 py-2"><span class="star">★</span> ${movieRating}</td>
-                    <td class="px-4 py-2" style="color: var(--text-secondary)">${escapeHtml(movieQuality)}</td>
-                    <td class="px-4 py-2">${statusHtml}</td>
-                    <td class="px-4 py-2">${errorDisplay}</td>
-                 </tr>
-            `;
-        }).join('');
-    } catch (e) {
-        console.error('Failed to load deletion history:', e);
-    }
-}
-
-
-// Clear Failed Deletions
-async function clearFailedDeletions() {
-    if (!confirm('Clear all deletion history records? This cannot be undone.')) return;
-    try {
-        const res = await fetch('/api/dashboard/failed', { method: 'DELETE' });
-        if (res.ok) {
-            showToast('Deletion history cleared', 'success');
-            await loadFailedDeletions();
-        } else {
-            const err = await res.json();
-            showToast(err.detail || 'Failed to clear', 'error');
-        }
-    } catch (e) {
-        showToast('Error: ' + e.message, 'error');
-    }
-}
-
 // Clear All Scheduled Deletions
 async function clearScheduledDeletions() {
     if (!confirm('Remove ALL movies from the scheduled deletions queue? This cannot be undone.')) return;
@@ -522,40 +432,6 @@ function loadScheduledDeletionsState() {
             section.style.display = 'none';
             icon.style.transform = 'rotate(0deg)';
             scheduledDeletionsCollapsed = true;
-        }
-    }
-}
-
-let deletionHistoryCollapsed = false;
-
-function toggleDeletionHistory() {
-    const section = document.getElementById('deletion-history-section');
-    const icon = document.getElementById('deletion-history-icon');
-    
-    if (!section || !icon) return;
-    
-    if (section.style.display === 'none') {
-        section.style.display = 'block';
-        icon.style.transform = 'rotate(180deg)';
-        deletionHistoryCollapsed = false;
-        localStorage.setItem('deletionHistoryCollapsed', 'false');
-    } else {
-        section.style.display = 'none';
-        icon.style.transform = 'rotate(0deg)';
-        deletionHistoryCollapsed = true;
-        localStorage.setItem('deletionHistoryCollapsed', 'true');
-    }
-}
-
-function loadDeletionHistoryState() {
-    const savedState = localStorage.getItem('deletionHistoryCollapsed');
-    if (savedState === 'true') {
-        const section = document.getElementById('deletion-history-section');
-        const icon = document.getElementById('deletion-history-icon');
-        if (section && icon) {
-            section.style.display = 'none';
-            icon.style.transform = 'rotate(0deg)';
-            deletionHistoryCollapsed = true;
         }
     }
 }
@@ -1137,11 +1013,9 @@ function showDryRunModal(title, items, type = 'score') {
 document.addEventListener('DOMContentLoaded', () => {
     loadDashboard();
     loadSettingsSummary();
-    loadDeletionHistoryState();
 
     document.getElementById('run-score-btn').addEventListener('click', triggerScoreRun);
     document.getElementById('run-cull-btn').addEventListener('click', triggerCullRun);
-    document.getElementById('clear-failed-btn').addEventListener('click', clearFailedDeletions);
     document.getElementById('clear-scheduled-btn').addEventListener('click', clearScheduledDeletions);
     document.getElementById('per-page-select').addEventListener('change', (e) => {
         scoreQueuePerPage = parseInt(e.target.value);
@@ -1158,49 +1032,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-        const searchInput = document.getElementById('score-queue-search');
-    const clearSearchBtn = document.getElementById('clear-search-btn');
-    
+    const searchInput = document.getElementById('score-queue-search');
+
     if (searchInput) {
         let debounceTimer;
-        
-        // Function to show/hide clear button
-        const toggleClearButton = () => {
-            if (clearSearchBtn) {
-                if (searchInput.value.length > 0) {
-                    clearSearchBtn.style.display = 'block';
-                } else {
-                    clearSearchBtn.style.display = 'none';
-                }
-            }
-        };
-        
-        // Initial check
-        toggleClearButton();
-        
+    
         searchInput.addEventListener('input', (e) => {
             clearTimeout(debounceTimer);
-            toggleClearButton();
             debounceTimer = setTimeout(() => {
                 scoreQueueSearch = e.target.value;
                 scoreQueuePage = 1;
                 scoreQueueSearchActive = scoreQueueSearch.trim() !== '';
                 loadScoreQueue();
-            }, 300);  // Debounce to avoid too many API calls
+            }, 300);
         });
-        
-        // Clear button click handler
-        if (clearSearchBtn) {
-            clearSearchBtn.addEventListener('click', () => {
-                searchInput.value = '';
-                scoreQueueSearch = '';
-                scoreQueuePage = 1;
-                scoreQueueSearchActive = false;
-                toggleClearButton();
-                loadScoreQueue();
-                searchInput.focus();
-            });
-        }
     }
 
     // Load saved collapse state for Scheduled Deletions
@@ -1211,7 +1056,6 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshInterval = setInterval(() => {
         loadQueueStatus();
         loadScheduledDeletions();
-        loadFailedDeletions();
         loadNextRunTimes();
     }, 30000);
 });
