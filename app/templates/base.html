@@ -646,42 +646,6 @@
             color: var(--text-secondary);
             text-align: center;
         }
-
-        /* ===== PHASE 2: DYNAMIC SCORE QUEUE HEADER ===== */
-        /* Override card-header for Score Queue only */
-        .card-header.score-queue-header {
-            display: flex !important;
-            flex-wrap: wrap !important;
-            align-items: center !important;
-            justify-content: space-between !important;
-            gap: 1rem !important;
-            padding: 1rem 1.5rem !important;
-        }
-
-        .card-header.score-queue-header .score-queue-title {
-            flex: 0 0 auto !important;
-        }
-
-        .card-header.score-queue-header .score-queue-controls {
-            display: flex !important;
-            align-items: center !important;
-            gap: 0.75rem !important;
-            flex: 1 1 auto !important;
-            justify-content: flex-end !important;
-        }
-
-        .card-header.score-queue-header .score-queue-search-wrapper {
-            flex: 1 1 200px !important;
-            min-width: 150px !important;
-        }
-
-        .card-header.score-queue-header .score-queue-search-wrapper input {
-            width: 100% !important;
-        }
-
-        .card-header.score-queue-header .score-queue-perpage {
-            flex: 0 0 auto !important;
-        }
     
     </style>
 
@@ -883,7 +847,7 @@
         
         if (configured && status === 'connected') {
             dot.className = 'status-dot status-connected';
-            text.textContent = details ? `Plex (${details})` : 'Plex';
+            text.textContent = 'Plex';
         } else if (configured && status === 'error') {
             dot.className = 'status-dot status-error';
             text.textContent = 'Plex (error)';

@@ -32,28 +32,27 @@
 
     <!-- Scheduled Deletions Table -->
     <div class="card rounded-xl overflow-hidden mb-6">
-        <button onclick="toggleScheduledDeletions()" class="w-full flex items-center justify-between p-4 text-left hover:bg-opacity-5 transition-colors">
+        <div class="flex items-center justify-between p-4">
             <div class="flex items-center gap-3">
-                <svg class="w-5 h-5" style="color: var(--accent);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
                 <div>
                     <h2 class="font-semibold">Scheduled Deletions</h2>
                     <p class="text-xs" style="color: var(--text-secondary);" id="scheduled-queue-metrics">-- items · --% of -- cap</p>
                 </div>
             </div>
             <div class="flex items-center gap-3">
+                <button onclick="toggleScheduledDeletions()" class="p-1 rounded hover:bg-purple-bg transition-transform" id="scheduled-deletions-toggle-btn">
+                    <svg id="scheduled-deletions-icon" class="w-5 h-5 transition-transform transform rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </button>
                 <div class="relative">
                     <button id="scheduled-deletions-menu-btn" class="text-lg leading-none px-2 py-1 rounded hover:bg-purple-bg" style="color: var(--text-secondary);">⋮</button>
                     <div id="scheduled-deletions-menu" class="absolute right-0 mt-2 w-32 bg-card border border-border rounded-lg shadow-lg hidden z-10" style="background: var(--bg-card); border-color: var(--border-color);">
                         <button id="clear-scheduled-menu-btn" class="w-full text-left px-4 py-2 text-sm hover:bg-purple-bg" style="color: var(--danger);">Clear all</button>
                     </div>
                 </div>
-                <svg id="scheduled-deletions-icon" class="w-5 h-5 transition-transform transform rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                </svg>
             </div>
-        </button>
+        </div>
         <div id="scheduled-deletions-section" class="border-t" style="border-color: var(--border-color);">
             
             <!-- Scheduled Deletions Poster Grid -->
@@ -70,22 +69,23 @@
     
     <!-- Score Queue Table -->
     <div class="card rounded-xl overflow-hidden">
-        <div class="card-header score-queue-header">
-            <div class="score-queue-title">
+        <div class="card-header">
+            <svg class="card-header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+            </svg>
+            <div>
                 <h2 class="card-header-title">Score Queue</h2>
             </div>
-            <div class="score-queue-controls">
-                <div class="score-queue-search-wrapper">
-                    <input type="text" id="score-queue-search" placeholder="Search" class="text-sm rounded-lg px-3 py-1.5" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); width: 100%;">
+            <div class="ml-auto flex gap-2 items-center">
+                <div>
+                    <input type="text" id="score-queue-search" placeholder="Search" class="text-sm rounded-lg px-3 py-1.5" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); width: 180px;">
                 </div>
-                <div class="score-queue-perpage">
-                    <select id="per-page-select" class="text-sm rounded-lg px-2 py-1.5" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary);">
-                        <option value="12" selected>12 per page</option>
-                        <option value="24">24 per page</option>
-                        <option value="48">48 per page</option>
-                        <option value="96">96 per page</option>
-                    </select>
-                </div>
+                <select id="per-page-select" class="text-sm rounded-lg px-2 py-1.5" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary);">
+                    <option value="12" selected>12 per page</option>
+                    <option value="24">24 per page</option>
+                    <option value="48">48 per page</option>
+                    <option value="96">96 per page</option>
+                </select>
             </div>
         </div>
     
@@ -97,5 +97,6 @@
             <div id="score-queue-pagination" class="flex justify-between items-center text-sm mt-4 px-4 py-3"></div>
         </div>
     </div>
+
 <script src="/static/dashboard.js"></script>
 {% endblock %}
