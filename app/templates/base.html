@@ -550,6 +550,25 @@
                 min-width: 600px;
             }
         }
+    
+        /* ===== MOBILE MEDIA QUERIES ===== */
+        
+        /* Hide Score Queue subtitle and per-page dropdown on mobile */
+        @media (max-width: 768px) {
+            .score-queue-subtitle {
+                display: none;
+            }
+            
+            .per-page-selector {
+                display: none;
+            }
+            
+            /* Make search input width auto on mobile */
+            #score-queue-search {
+                width: 140px !important;
+            }
+        }
+    
     </style>
 </head>
 <body>

@@ -250,35 +250,58 @@ async function loadScoreQueue() {
         // Pagination
         const totalPages = data.pages || 1;
         const searchInfo = scoreQueueSearchActive ? ` (matching "${escapeHtml(scoreQueueSearch)}")` : '';
-        document.getElementById('score-queue-pagination').innerHTML = `
-            <div class="flex justify-between items-center w-full">
-                <span style="color: var(--text-secondary)">${data.total} total movies${searchInfo}</span>
-                <div class="flex items-center gap-3">
-                    <button onclick="changeScoreQueuePage(${scoreQueuePage - 1})" class="btn-sm btn-outline" ${scoreQueuePage <= 1 ? 'disabled' : ''}>← Prev</button>
-                    <div class="flex items-center gap-1">
-                        <span class="text-sm">Page</span>
-                        <input type="number" id="page-number-input" value="${scoreQueuePage}" min="1" max="${totalPages}" 
-                            style="width: 60px; text-align: center; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 0.375rem; padding: 0.25rem 0.5rem; font-size: 0.875rem; color: var(--text-primary);">
-                        <span class="text-sm">of ${totalPages}</span>
-                    </div>
-                    <button onclick="changeScoreQueuePage(${scoreQueuePage + 1})" class="btn-sm btn-outline" ${scoreQueuePage >= totalPages ? 'disabled' : ''}>Next →</button>
-                </div>
-            </div>
-        `;
+        const isMobile = window.innerWidth <= 768;
         
-        // Add event listener for page number input
-        const pageInput = document.getElementById('page-number-input');
-        if (pageInput) {
-            pageInput.addEventListener('change', (e) => {
-                let newPage = parseInt(e.target.value);
-                if (isNaN(newPage)) newPage = 1;
-                if (newPage < 1) newPage = 1;
-                if (newPage > totalPages) newPage = totalPages;
-                if (newPage !== scoreQueuePage) {
-                    scoreQueuePage = newPage;
-                    loadScoreQueue();
-                }
-            });
+        let paginationHtml = '';
+        
+        if (isMobile) {
+            // Mobile: simple text pagination (no input box)
+            paginationHtml = `
+                <div class="flex justify-between items-center w-full">
+                    <span style="color: var(--text-secondary); font-size: 0.75rem;">${data.total} total${searchInfo}</span>
+                    <div class="flex items-center gap-2">
+                        <button onclick="changeScoreQueuePage(${scoreQueuePage - 1})" class="btn-sm btn-outline" ${scoreQueuePage <= 1 ? 'disabled' : ''} style="font-size: 0.7rem; padding: 0.25rem 0.5rem;">← Prev</button>
+                        <span style="color: var(--text-secondary); font-size: 0.75rem;">${scoreQueuePage} / ${totalPages}</span>
+                        <button onclick="changeScoreQueuePage(${scoreQueuePage + 1})" class="btn-sm btn-outline" ${scoreQueuePage >= totalPages ? 'disabled' : ''} style="font-size: 0.7rem; padding: 0.25rem 0.5rem;">Next →</button>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Desktop: full pagination with input box
+            paginationHtml = `
+                <div class="flex justify-between items-center w-full">
+                    <span style="color: var(--text-secondary)">${data.total} total movies${searchInfo}</span>
+                    <div class="flex items-center gap-3">
+                        <button onclick="changeScoreQueuePage(${scoreQueuePage - 1})" class="btn-sm btn-outline" ${scoreQueuePage <= 1 ? 'disabled' : ''}>← Prev</button>
+                        <div class="flex items-center gap-1">
+                            <span class="text-sm">Page</span>
+                            <input type="number" id="page-number-input" value="${scoreQueuePage}" min="1" max="${totalPages}" 
+                                style="width: 60px; text-align: center; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 0.375rem; padding: 0.25rem 0.5rem; font-size: 0.875rem; color: var(--text-primary);">
+                            <span class="text-sm">of ${totalPages}</span>
+                        </div>
+                        <button onclick="changeScoreQueuePage(${scoreQueuePage + 1})" class="btn-sm btn-outline" ${scoreQueuePage >= totalPages ? 'disabled' : ''}>Next →</button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        document.getElementById('score-queue-pagination').innerHTML = paginationHtml;
+        
+        // Add event listener for page number input (desktop only)
+        if (!isMobile) {
+            const pageInput = document.getElementById('page-number-input');
+            if (pageInput) {
+                pageInput.addEventListener('change', (e) => {
+                    let newPage = parseInt(e.target.value);
+                    if (isNaN(newPage)) newPage = 1;
+                    if (newPage < 1) newPage = 1;
+                    if (newPage > totalPages) newPage = totalPages;
+                    if (newPage !== scoreQueuePage) {
+                        scoreQueuePage = newPage;
+                        loadScoreQueue();
+                    }
+                });
+            }
         }
 
         // Update sort icons
@@ -1050,6 +1073,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load saved collapse state for Scheduled Deletions
     loadScheduledDeletionsState();
+
+    // On mobile, force per-page to 12 regardless of dropdown
+    if (window.innerWidth <= 768) {
+        scoreQueuePerPage = 12;
+    }
     
     // Auto-refresh every 30 seconds — queue status and deletions only, not score queue
     if (refreshInterval) clearInterval(refreshInterval);
