@@ -649,30 +649,29 @@
 
         /* ===== PHASE 2: DYNAMIC SCORE QUEUE HEADER ===== */
         .score-queue-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 1rem;
-            flex-wrap: wrap;
-            width: 100%;
+            display: flex !important;
+            flex-wrap: wrap !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 1rem !important;
         }
         
         .score-queue-title {
-            flex-shrink: 0;
+            flex: 0 0 auto !important;
         }
         
         .score-queue-controls {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-            flex: 1;
+            display: flex !important;
+            align-items: center !important;
+            gap: 0.75rem !important;
+            flex: 1 1 auto !important;
+            justify-content: flex-end !important;
+            min-width: 200px !important;
         }
         
         .score-queue-search-wrapper {
-            flex: 1;
-            min-width: 120px;
+            flex: 1 1 200px !important;
+            min-width: 120px !important;
         }
         
         .score-queue-search-wrapper input {
@@ -680,10 +679,11 @@
         }
         
         .score-queue-perpage {
-            flex-shrink: 0;
+            flex: 0 0 auto !important;
         }
     
     </style>
+
 </head>
 <body>
 
