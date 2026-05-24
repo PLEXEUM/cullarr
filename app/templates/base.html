@@ -553,20 +553,134 @@
     
         /* ===== MOBILE MEDIA QUERIES ===== */
         
-        /* Hide Score Queue subtitle and per-page dropdown on mobile */
+        /* Hide per-page dropdown on mobile */
         @media (max-width: 768px) {
-            .score-queue-subtitle {
+            .score-queue-perpage {
                 display: none;
             }
             
-            .per-page-selector {
-                display: none;
+            /* Make search input full width on mobile */
+            .score-queue-search-wrapper {
+                width: 100%;
             }
-            
-            /* Make search input width auto on mobile */
-            #score-queue-search {
-                width: 140px !important;
-            }
+        }
+
+        /* ===== PHASE 2: SIDEBAR STATUS DOTS ===== */
+        .sidebar-status {
+            padding: 0.75rem 0.75rem;
+            border-top: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+            margin: 0.5rem 0;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.375rem 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        
+        .status-item .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0;
+        }
+        
+        .status-item .status-text {
+            font-size: 0.75rem;
+        }
+        
+        /* ===== PHASE 2: SIDEBAR PROGRESS (appears during runs) ===== */
+        .sidebar-progress {
+            padding: 0.75rem;
+            margin: 0.5rem 0;
+            background: var(--bg-secondary);
+            border-radius: 0.5rem;
+        }
+        
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+        
+        .cancel-btn-sidebar {
+            background: none;
+            border: 1px solid var(--danger);
+            color: var(--danger);
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem;
+            font-size: 0.65rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .cancel-btn-sidebar:hover {
+            background: var(--danger-bg);
+        }
+        
+        .progress-bar-container {
+            width: 100%;
+            height: 4px;
+            background: var(--border-color);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+        }
+        
+        .progress-bar-sidebar {
+            width: 100%;
+            height: 100%;
+            background: var(--accent);
+        }
+        
+        .progress-text {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        /* ===== PHASE 2: DYNAMIC SCORE QUEUE HEADER ===== */
+        .score-queue-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+        
+        .score-queue-title {
+            flex-shrink: 0;
+        }
+        
+        .score-queue-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            flex: 1;
+        }
+        
+        .score-queue-search-wrapper {
+            flex: 1;
+            min-width: 120px;
+        }
+        
+        .score-queue-search-wrapper input {
+            width: 100%;
+        }
+        
+        .score-queue-perpage {
+            flex-shrink: 0;
         }
     
     </style>
@@ -588,6 +702,30 @@
             <a href="/settings" class="nav-item" id="nav-settings">⚙️ Settings</a>
             <a href="/logs" class="nav-item" id="nav-logs">📜 Logs</a>
         </nav>
+        
+        <!-- Status Dots Container (Phase 2) -->
+        <div id="sidebar-status" class="sidebar-status">
+            <div class="status-item" id="radarr-status-sidebar">
+                <span class="status-dot" id="radarr-status-dot-sidebar"></span>
+                <span class="status-text" id="radarr-status-text-sidebar">Radarr</span>
+            </div>
+            <div class="status-item" id="plex-status-sidebar">
+                <span class="status-dot" id="plex-status-dot-sidebar"></span>
+                <span class="status-text" id="plex-status-text-sidebar">Plex</span>
+            </div>
+        </div>
+        
+        <!-- Progress Container (appears only during runs) -->
+        <div id="sidebar-progress" class="sidebar-progress" style="display: none;">
+            <div class="progress-header">
+                <span id="progress-title">Score Run</span>
+                <button id="cancel-run-sidebar" class="cancel-btn-sidebar">Cancel</button>
+            </div>
+            <div class="progress-bar-container">
+                <div id="progress-bar-sidebar" class="progress-bar-sidebar progress-indeterminate"></div>
+            </div>
+            <div class="progress-text" id="progress-text-sidebar">Starting...</div>
+        </div>
         
         <div class="sidebar-footer">
             <button onclick="toggleTheme()" class="theme-toggle">
@@ -686,6 +824,74 @@
         document.getElementById('toast-container').appendChild(toast);
         setTimeout(() => toast.remove(), duration);
     }
+
+    // ===== PHASE 2: SIDEBAR PROGRESS FUNCTIONS =====
+    function showSidebarProgress(title, text) {
+        const progressContainer = document.getElementById('sidebar-progress');
+        const progressTitle = document.getElementById('progress-title');
+        const progressText = document.getElementById('progress-text-sidebar');
+        const progressBar = document.getElementById('progress-bar-sidebar');
+        
+        if (progressContainer) {
+            progressContainer.style.display = 'block';
+            if (progressTitle) progressTitle.textContent = title;
+            if (progressText) progressText.textContent = text;
+            // Ensure indeterminate animation is applied
+            if (progressBar) {
+                progressBar.classList.add('progress-indeterminate');
+            }
+        }
+    }
+    
+    function hideSidebarProgress() {
+        const progressContainer = document.getElementById('sidebar-progress');
+        if (progressContainer) {
+            progressContainer.style.display = 'none';
+        }
+    }
+    
+    function updateSidebarProgressText(text) {
+        const progressText = document.getElementById('progress-text-sidebar');
+        if (progressText) {
+            progressText.textContent = text;
+        }
+    }
+    
+    // ===== PHASE 2: SIDEBAR STATUS DOTS UPDATES =====
+    function updateSidebarRadarrStatus(configured, status) {
+        const dot = document.getElementById('radarr-status-dot-sidebar');
+        const text = document.getElementById('radarr-status-text-sidebar');
+        if (!dot || !text) return;
+        
+        if (configured && status === 'connected') {
+            dot.className = 'status-dot status-connected';
+            text.textContent = 'Radarr';
+        } else if (configured && status === 'error') {
+            dot.className = 'status-dot status-error';
+            text.textContent = 'Radarr (error)';
+        } else {
+            dot.className = 'status-dot status-unknown';
+            text.textContent = 'Radarr (not configured)';
+        }
+    }
+    
+    function updateSidebarPlexStatus(configured, status, details = '') {
+        const dot = document.getElementById('plex-status-dot-sidebar');
+        const text = document.getElementById('plex-status-text-sidebar');
+        if (!dot || !text) return;
+        
+        if (configured && status === 'connected') {
+            dot.className = 'status-dot status-connected';
+            text.textContent = details ? `Plex (${details})` : 'Plex';
+        } else if (configured && status === 'error') {
+            dot.className = 'status-dot status-error';
+            text.textContent = 'Plex (error)';
+        } else {
+            dot.className = 'status-dot status-unknown';
+            text.textContent = 'Plex (not configured)';
+        }
+    }
+
 </script>
 
 {% block scripts %}{% endblock %}

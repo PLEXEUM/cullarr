@@ -36,41 +36,22 @@ async function loadQueueStatus() {
             document.getElementById('queue-cap').textContent = capText;
         }
 
-        // Radarr status
-        const radarrDot = document.getElementById('radarr-status-dot');
-        const radarrText = document.getElementById('radarr-status-text');
-        if (data.radarr.configured && data.radarr.status === 'connected') {
-            radarrDot.className = 'status-dot status-connected';
-            radarrText.textContent = 'Radarr: Connected';
-        } else if (data.radarr.configured && data.radarr.status === 'error') {
-            radarrDot.className = 'status-dot status-error';
-            radarrText.textContent = 'Radarr: Connection error';
-        } else {
-            radarrDot.className = 'status-dot status-unknown';
-            radarrText.textContent = 'Radarr: Not configured';
+        // Radarr status - update sidebar
+        updateSidebarRadarrStatus(data.radarr.configured, data.radarr.status);
+        
+        // Plex status - update sidebar
+        const watchedCount = data.plex.details ? data.plex.details.match(/\d+/)?.[0] || '' : '';
+        updateSidebarPlexStatus(data.plex.configured, data.plex.status, watchedCount); 
+        
+        // Update Scheduled Deletions header metrics
+        const metricsElement = document.getElementById('scheduled-queue-metrics');
+        if (metricsElement) {
+            const scheduledCount = data.scheduled_count || 0;
+            const percentUsed = data.percent_used || 0;
+            const maxQueued = data.max_queued || 20;
+            metricsElement.textContent = `${scheduledCount} items · ${percentUsed}% of ${maxQueued} cap`;
         }
-
-        // Plex status
-        const plexDot = document.getElementById('plex-status-dot');
-        const plexText = document.getElementById('plex-status-text');
-        const plexDetails = document.getElementById('plex-details');
-        if (data.plex.configured && data.plex.status === 'connected') {
-            plexDot.className = 'status-dot status-connected';
-            plexText.textContent = 'Plex: Connected';
-            plexDetails.textContent = data.plex.details || '';
-        } else if (data.plex.configured && data.plex.status === 'error') {
-            plexDot.className = 'status-dot status-error';
-            plexText.textContent = 'Plex: API error';
-            plexDetails.textContent = 'Check connection in Settings';
-        } else if (data.plex.configured) {
-            plexDot.className = 'status-dot status-unknown';
-            plexText.textContent = 'Plex: Not connected';
-            plexDetails.textContent = '';
-        } else {
-            plexDot.className = 'status-dot status-unknown';
-            plexText.textContent = 'Plex: Not configured';
-            plexDetails.textContent = '';
-        }
+        
     } catch (e) {
         console.error('Failed to load queue status:', e);
     }
@@ -700,13 +681,12 @@ async function manualQueueMovie(movieId, title, isCollection = false, movieCount
 
 // Run status polling — updates progress bar and re-loads queue when done
 function startRunStatusPolling() {
-    const cancelBtn = document.getElementById('cancel-run-btn');
-    const scoreProgressBar = document.getElementById('score-progress-bar');
-    const cullProgressBar = document.getElementById('cull-progress-bar');
-    const scoreProgressPct = document.getElementById('score-progress-pct');
-    const cullProgressPct = document.getElementById('cull-progress-pct');
-    const scoreProgressLabel = document.getElementById('score-progress-label');
-    const cullProgressLabel = document.getElementById('cull-progress-label');
+    const cancelBtn = document.getElementById('cancel-run-sidebar');
+    const scoreProgressBar = document.getElementById('progress-bar-sidebar');
+    const cullProgressBar = document.getElementById('progress-bar-sidebar');
+    const scoreProgressLabel = document.getElementById('progress-text-sidebar');
+    const cullProgressLabel = document.getElementById('progress-text-sidebar');
+    const progressTitle = document.getElementById('progress-title');
 
     cancelBtn.classList.remove('hidden');
 
@@ -718,53 +698,21 @@ function startRunStatusPolling() {
             const data = await res.json();
 
             if (data.is_running) {
-                // Show indeterminate (pulsing) animation for the active run type
-                if (data.run_type === 'score') {
-                    // Score run active
+                // Show sidebar progress container
+                showSidebarProgress(data.run_type === 'score' ? 'Score Run' : 'Cull Run', data.current_movie || 'Starting...');
+                
+                // Ensure indeterminate animation is applied
+                if (scoreProgressBar) {
                     scoreProgressBar.classList.add('progress-indeterminate');
-                    scoreProgressBar.classList.remove('bg-indigo-500');
-                    scoreProgressBar.style.width = '';
-                    scoreProgressPct.textContent = '⟳';
-                    scoreProgressLabel.textContent = data.current_movie || 'Running score cycle...';
-                    
-                    // Reset cull run display
-                    cullProgressBar.classList.remove('progress-indeterminate');
-                    cullProgressBar.style.width = '0%';
-                    cullProgressPct.textContent = '0%';
-                    cullProgressLabel.textContent = 'Idle';
-                } else if (data.run_type === 'cull') {
-                    // Cull run active
-                    cullProgressBar.classList.add('progress-indeterminate');
-                    cullProgressBar.style.width = '';
-                    cullProgressPct.textContent = '⟳';
-                    cullProgressLabel.textContent = data.current_movie || 'Running cull cycle...';
-                    
-                    // Reset score run display
-                    scoreProgressBar.classList.remove('progress-indeterminate');
-                    scoreProgressBar.style.width = '0%';
-                    scoreProgressPct.textContent = '0%';
-                    scoreProgressLabel.textContent = 'Idle';
                 }
-    
+                
                 cancelBtn.onclick = () => cancelRun(data.run_id);
+                cancelBtn.classList.remove('hidden');
             } else {
-                // Remove indeterminate animation and reset both progress bars
-                scoreProgressBar.classList.remove('progress-indeterminate');
-                cullProgressBar.classList.remove('progress-indeterminate');
-                
-                scoreProgressBar.classList.add('bg-indigo-500');
-                cullProgressBar.classList.add('bg-indigo-500');
-
-                scoreProgressBar.style.width = '0%';
-                scoreProgressPct.textContent = '0%';
-                scoreProgressLabel.textContent = 'Idle';
-                
-                cullProgressBar.style.width = '0%';
-                cullProgressPct.textContent = '0%';
-                cullProgressLabel.textContent = 'Idle';
+                // Hide sidebar progress container
+                hideSidebarProgress();
                 
                 cancelBtn.classList.add('hidden');
-    
                 // Re-enable both buttons
                 const scoreBtn = document.getElementById('run-score-btn');
                 const cullBtn = document.getElementById('run-cull-btn');
@@ -1039,7 +987,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('run-score-btn').addEventListener('click', triggerScoreRun);
     document.getElementById('run-cull-btn').addEventListener('click', triggerCullRun);
-    document.getElementById('clear-scheduled-btn').addEventListener('click', clearScheduledDeletions);
+    
+    // ⋮ menu for Scheduled Deletions
+    const menuBtn = document.getElementById('scheduled-deletions-menu-btn');
+    const menu = document.getElementById('scheduled-deletions-menu');
+    
+    if (menuBtn && menu) {
+        menuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.classList.toggle('hidden');
+        });
+        
+        // Close menu when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!menuBtn.contains(e.target) && !menu.contains(e.target)) {
+                menu.classList.add('hidden');
+            }
+        });
+        
+        // Clear all button inside menu
+        const clearMenuBtn = document.getElementById('clear-scheduled-menu-btn');
+        if (clearMenuBtn) {
+            clearMenuBtn.addEventListener('click', clearScheduledDeletions);
+        }
+    }
+
     document.getElementById('per-page-select').addEventListener('change', (e) => {
         scoreQueuePerPage = parseInt(e.target.value);
         scoreQueuePage = 1;

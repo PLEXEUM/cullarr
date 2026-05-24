@@ -11,144 +11,24 @@
         </p>
     </div>
 
-    <!-- Top Row - Two Column Layout -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-        <!-- Left: System Status Card -->
-        <div class="card rounded-xl overflow-hidden">
-            <div class="card-header">
-                <svg class="card-header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                </svg>
-                <div>
-                    <h2 class="card-header-title">System Status</h2>
-                    <p class="card-header-subtitle">Queue and connection health</p>
-                </div>
-            </div>
-            <div class="p-6" id="system-status">
-                <div class="space-y-4">
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm" style="color: var(--text-secondary)">Scheduled Deletions:</span>
-                        <div class="flex items-center gap-3">
-                            <span class="text-lg font-semibold" id="scheduled-count">--</span>
-                            <span id="deletion-rate" class="text-xs" style="color: var(--text-secondary);"></span>
-                        </div>
-                    </div>
-                    <div class="w-full bg-gray-700 rounded-full h-2">
-                        <div id="queue-bar" class="bg-indigo-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
-                    </div>
-                    <div class="flex justify-between text-xs" style="color: var(--text-secondary)">
-                        <span id="queue-percent">0%</span>
-                        <span id="queue-cap">of -- cap</span>
-                    </div>
-                    <div class="border-t pt-3 mt-2" style="border-color: var(--border-color);">
-                        <div class="flex items-center gap-2 text-sm py-1">
-                            <span class="status-dot" id="radarr-status-dot"></span>
-                            <span id="radarr-status-text">Radarr: --</span>
-                        </div>
-                        <div class="flex items-center gap-2 text-sm py-1">
-                            <span class="status-dot" id="plex-status-dot"></span>
-                            <span id="plex-status-text">Plex: --</span>
-                        </div>
-                        <div id="plex-details" class="text-xs mt-1 pl-4" style="color: var(--text-secondary)"></div>
-                    </div>
-                    <div class="border-t pt-3 mt-2" style="border-color: var(--border-color);">
-                        <div class="flex justify-between text-sm">
-                            <span style="color: var(--text-secondary)">Delete after:</span>
-                            <span id="delete-after" class="font-mono">-- days</span>
-                        </div>
-                        <div class="flex justify-between text-sm mt-1">
-                            <span style="color: var(--text-secondary)">Protect new movies:</span>
-                            <span id="protection-days" class="font-mono">-- days</span>
-                        </div>
-                        <div class="flex justify-between text-sm mt-1">
-                            <span style="color: var(--text-secondary)">Collection grouping:</span>
-                            <span id="collection-grouping">--</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Right: Run Controls Card -->
-        <div class="card rounded-xl overflow-hidden">
-            <div class="card-header">
-                <svg class="card-header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                </svg>
-                <div>
-                    <h2 class="card-header-title">Run Controls</h2>
-                    <p class="card-header-subtitle">Manual and scheduled scans</p>
-                </div>
-            </div>
-            <div class="p-6">
-                <div class="space-y-4">
-                    
-                    <!-- Score Run Progress -->
-                    <div>
-                        <div class="flex justify-between text-xs mb-1">
-                            <span style="color: var(--text-secondary)">Score Run Progress:</span>
-                            <span id="score-progress-pct" style="color: var(--text-secondary)">0%</span>
-                        </div>
-                        <div class="w-full rounded-full h-2" style="background: var(--border-color)">
-                            <div id="score-progress-bar" class="h-2 rounded-full transition-all duration-300" style="width: 0%; background: var(--accent)"></div>
-                        </div>
-                        <div class="text-xs mt-1" style="color: var(--text-secondary)">
-                            <span id="score-progress-label">Idle</span>
-                        </div>
-                        <div class="flex justify-between text-xs mt-2">
-                            <span style="color: var(--text-secondary)">Next score run:</span>
-                            <span id="next-score-run" class="font-mono">--</span>
-                        </div>
-                    </div>
-
-                    <!-- Cull Run Progress -->
-                    <div>
-                        <div class="flex justify-between text-xs mb-1">
-                            <span style="color: var(--text-secondary)">Cull Run Progress:</span>
-                            <span id="cull-progress-pct" style="color: var(--text-secondary)">0%</span>
-                        </div>
-                        <div class="w-full rounded-full h-2" style="background: var(--border-color)">
-                            <div id="cull-progress-bar" class="h-2 rounded-full transition-all duration-300" style="width: 0%; background: var(--accent)"></div>
-                        </div>
-                        <div class="text-xs mt-1" style="color: var(--text-secondary)">
-                            <span id="cull-progress-label">Idle</span>
-                        </div>
-                        <div class="flex justify-between text-xs mt-2">
-                            <span style="color: var(--text-secondary)">Next cull run:</span>
-                            <span id="next-cull-run" class="font-mono">--</span>
-                        </div>
-                    </div>
-
-                    <!-- Cancel Button (hidden by default) -->
-                    <button id="cancel-run-btn" class="hidden w-full py-2 rounded-lg text-sm font-medium btn-danger">Cancel Run</button>
-
-                    <!-- Separator line -->
-                    <div class="border-t" style="border-color: var(--border-color);"></div>
-
-                    <!-- Dry Run Toggle -->
-                    <label class="flex items-center gap-2 cursor-pointer mt-3">
-                        <input type="checkbox" id="dry-run-toggle" class="accent-indigo-500" />
-                        <span class="text-sm">Dry Run (preview only, no changes)</span>
-                    </label>
-
-                    <!-- Run Buttons -->
-                    <div class="flex gap-3">
-                        <button id="run-score-btn" class="flex-1 py-2 rounded-lg text-sm font-medium text-white btn-raise" style="background: var(--accent);">
-                            🎯 Run Score
-                        </button>
-                        <button id="run-cull-btn" class="flex-1 py-2 rounded-lg text-sm font-medium text-white btn-raise" style="background: var(--danger);">
-                            🗑️ Run Cull
-                        </button>
-                    </div>
-
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Modal Container - dynamically populated for dry run results -->
     <div id="modal-container"></div>
+
+    <!-- Dashboard Action Bar (Phase 2) -->
+    <div class="dashboard-action-bar mb-6">
+        <div class="flex flex-wrap gap-3 items-center">
+            <button id="run-score-btn" class="px-4 py-2 rounded-lg text-sm font-medium text-white btn-raise" style="background: var(--accent);">
+                🎯 Run Score
+            </button>
+            <button id="run-cull-btn" class="px-4 py-2 rounded-lg text-sm font-medium text-white btn-raise" style="background: var(--danger);">
+                🗑️ Run Cull
+            </button>
+            <label class="flex items-center gap-2 cursor-pointer ml-2">
+                <input type="checkbox" id="dry-run-toggle" class="accent-indigo-500" />
+                <span class="text-sm">Dry Run (preview only, no changes)</span>
+            </label>
+        </div>
+    </div>
 
     <!-- Scheduled Deletions Table -->
     <div class="card rounded-xl overflow-hidden mb-6">
@@ -159,11 +39,16 @@
                 </svg>
                 <div>
                     <h2 class="font-semibold">Scheduled Deletions</h2>
-                    <p class="text-xs" style="color: var(--text-secondary);">Movies pending removal</p>
+                    <p class="text-xs" style="color: var(--text-secondary);" id="scheduled-queue-metrics">-- items · --% of -- cap</p>
                 </div>
             </div>
             <div class="flex items-center gap-3">
-                <span id="scheduled-badge" class="badge" style="background: var(--info-bg); color: var(--info);">0 items</span>
+                <div class="relative">
+                    <button id="scheduled-deletions-menu-btn" class="text-lg leading-none px-2 py-1 rounded hover:bg-purple-bg" style="color: var(--text-secondary);">⋮</button>
+                    <div id="scheduled-deletions-menu" class="absolute right-0 mt-2 w-32 bg-card border border-border rounded-lg shadow-lg hidden z-10" style="background: var(--bg-card); border-color: var(--border-color);">
+                        <button id="clear-scheduled-menu-btn" class="w-full text-left px-4 py-2 text-sm hover:bg-purple-bg" style="color: var(--danger);">Clear all</button>
+                    </div>
+                </div>
                 <svg id="scheduled-deletions-icon" class="w-5 h-5 transition-transform transform rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                 </svg>
@@ -178,7 +63,6 @@
                 </div>
                 <div class="flex justify-between items-center mt-4 px-4 py-3">
                     <span class="text-xs" style="color: var(--text-secondary);">ℹ️ Blue badge indicates manually queued movie (bypasses queue cap).</span>
-                    <button id="clear-scheduled-btn" class="btn-sm btn-outline" style="border-color: var(--danger); color: var(--danger);">✕ Remove All</button>
                 </div>
             </div>
         </div>
@@ -186,24 +70,22 @@
     
     <!-- Score Queue Table -->
     <div class="card rounded-xl overflow-hidden">
-        <div class="card-header">
-            <svg class="card-header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-            </svg>
-            <div>
+        <div class="card-header score-queue-header">
+            <div class="score-queue-title">
                 <h2 class="card-header-title">Score Queue</h2>
-                <p class="card-header-subtitle score-queue-subtitle">Next in line for deletion</p>
             </div>
-            <div class="ml-auto flex gap-2 items-center">
-                <div>
-                    <input type="text" id="score-queue-search" placeholder="Search" class="text-sm rounded-lg px-3 py-1.5" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); width: 180px;">
+            <div class="score-queue-controls">
+                <div class="score-queue-search-wrapper">
+                    <input type="text" id="score-queue-search" placeholder="Search" class="text-sm rounded-lg px-3 py-1.5" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); width: 100%;">
                 </div>
-                <select id="per-page-select" class="per-page-selector text-sm rounded-lg px-2 py-1.5" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary);">
-                    <option value="12" selected>12 per page</option>
-                    <option value="24">24 per page</option>
-                    <option value="48">48 per page</option>
-                    <option value="96">96 per page</option>
-                </select>
+                <div class="score-queue-perpage">
+                    <select id="per-page-select" class="text-sm rounded-lg px-2 py-1.5" style="background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary);">
+                        <option value="12" selected>12 per page</option>
+                        <option value="24">24 per page</option>
+                        <option value="48">48 per page</option>
+                        <option value="96">96 per page</option>
+                    </select>
+                </div>
             </div>
         </div>
     
