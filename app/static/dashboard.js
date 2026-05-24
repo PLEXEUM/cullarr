@@ -15,7 +15,6 @@ async function loadDashboard() {
     await loadQueueStatus();
     await loadScheduledDeletions();
     await loadScoreQueue();
-    await loadNextRunTimes();
 }
 
 // Queue Status
@@ -355,42 +354,6 @@ async function manualQueueCollection(collectionId, collectionName, movieCount) {
         }
     } catch (e) {
         showToast('Error: ' + e.message, 'error');
-    }
-}
-
-// Next run times
-async function loadNextRunTimes() {
-    try {
-        const res = await fetch('/api/run/next');
-        const data = await res.json();
-        document.getElementById('next-score-run').textContent = data.next_score_run || 'Not scheduled';
-        document.getElementById('next-cull-run').textContent = data.next_cull_run || 'Not scheduled';
-    } catch (e) {
-        console.error('Failed to load next run times:', e);
-    }
-}
-
-// Settings summary
-async function loadSettingsSummary() {
-    try {
-        const res = await fetch('/api/dashboard/settings-summary');
-        const data = await res.json();
-        document.getElementById('delete-after').textContent = `${data.delete_after_days} days`;
-        document.getElementById('protection-days').textContent = `${data.protection_days} days`;
-        document.getElementById('collection-grouping').textContent = data.collection_grouping ? 'On' : 'Off';
-        
-        // Display deletion rate indicator
-        const rateElement = document.getElementById('deletion-rate');
-        if (rateElement && data.deletions_per_day !== undefined) {
-            const rate = data.deletions_per_day;
-            if (rate === 0) {
-                rateElement.textContent = '↻ 0/unlimited';
-            } else {
-                rateElement.textContent = `↻ ${rate}/day`;
-            }
-        }
-    } catch (e) {
-        console.error('Failed to load settings summary:', e);
     }
 }
 
@@ -971,7 +934,6 @@ function showDryRunModal(title, items, type = 'score') {
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
     loadDashboard();
-    loadSettingsSummary();
 
     document.getElementById('run-score-btn').addEventListener('click', triggerScoreRun);
     document.getElementById('run-cull-btn').addEventListener('click', triggerCullRun);
@@ -1044,6 +1006,5 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshInterval = setInterval(() => {
         loadQueueStatus();
         loadScheduledDeletions();
-        loadNextRunTimes();
     }, 30000);
 });

@@ -648,38 +648,38 @@
         }
 
         /* ===== PHASE 2: DYNAMIC SCORE QUEUE HEADER ===== */
-        .score-queue-header {
+        /* Override card-header for Score Queue only */
+        .card-header.score-queue-header {
             display: flex !important;
             flex-wrap: wrap !important;
             align-items: center !important;
             justify-content: space-between !important;
             gap: 1rem !important;
-            width: 100% !important;
+            padding: 1rem 1.5rem !important;
         }
-        
-        .score-queue-title {
+
+        .card-header.score-queue-header .score-queue-title {
             flex: 0 0 auto !important;
         }
-        
-        .score-queue-controls {
+
+        .card-header.score-queue-header .score-queue-controls {
             display: flex !important;
             align-items: center !important;
             gap: 0.75rem !important;
             flex: 1 1 auto !important;
             justify-content: flex-end !important;
-            min-width: 200px !important;
         }
-        
-        .score-queue-search-wrapper {
+
+        .card-header.score-queue-header .score-queue-search-wrapper {
             flex: 1 1 200px !important;
-            min-width: 120px !important;
+            min-width: 150px !important;
         }
-        
-        .score-queue-search-wrapper input {
+
+        .card-header.score-queue-header .score-queue-search-wrapper input {
             width: 100% !important;
         }
-        
-        .score-queue-perpage {
+
+        .card-header.score-queue-header .score-queue-perpage {
             flex: 0 0 auto !important;
         }
     
