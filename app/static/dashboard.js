@@ -24,24 +24,12 @@ async function loadQueueStatus() {
         const res = await fetch('/api/dashboard/queue-status');
         const data = await res.json();
 
-        document.getElementById('scheduled-count').textContent = data.scheduled_count;
-        const percent = data.percent_used || 0;
-        const displayPercent = Math.min(percent, 100);  // Cap at 100% for the bar
-        document.getElementById('queue-bar').style.width = `${displayPercent}%`;
-        document.getElementById('queue-percent').textContent = `${percent}%`;  // Show actual percentage
-        const capText = `of ${data.max_queued} cap`;
-        if (data.manual_count && data.manual_count > 0) {
-            document.getElementById('queue-cap').textContent = `${capText} | ${data.manual_count} manual`;
-        } else {
-            document.getElementById('queue-cap').textContent = capText;
-        }
-
         // Radarr status - update sidebar
         updateSidebarRadarrStatus(data.radarr.configured, data.radarr.status);
         
         // Plex status - update sidebar
         const watchedCount = data.plex.details ? data.plex.details.match(/\d+/)?.[0] || '' : '';
-        updateSidebarPlexStatus(data.plex.configured, data.plex.status, watchedCount); 
+        updateSidebarPlexStatus(data.plex.configured, data.plex.status, watchedCount);
         
         // Update Scheduled Deletions header metrics
         const metricsElement = document.getElementById('scheduled-queue-metrics');
