@@ -36,7 +36,7 @@ async function loadQueueStatus() {
             const scheduledCount = data.scheduled_count || 0;
             const percentUsed = data.percent_used || 0;
             const maxQueued = data.max_queued || 20;
-            metricsElement.textContent = `${scheduledCount} items · ${percentUsed}% of ${maxQueued} cap`;
+            metricsElement.textContent = `${scheduledCount}/${maxQueued} (${percentUsed}%)`;
         }
         
     } catch (e) {
