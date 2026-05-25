@@ -555,13 +555,25 @@
         
         /* Hide per-page dropdown on mobile */
         @media (max-width: 768px) {
-            .score-queue-perpage {
+            .per-page-selector {
                 display: none;
             }
             
-            /* Make search input full width on mobile */
-            .score-queue-search-wrapper {
+            /* Stack Score Queue header vertically on mobile */
+            .card .flex.items-center.justify-between {
+                flex-direction: column;
+                align-items: flex-start !important;
+                gap: 0.75rem;
+            }
+            
+            .card .flex.items-center.justify-between .flex.items-center.gap-3 {
                 width: 100%;
+                justify-content: space-between;
+            }
+            
+            /* Make search input full width on mobile */
+            #score-queue-search {
+                width: 100% !important;
             }
         }
 
