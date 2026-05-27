@@ -654,7 +654,7 @@ async def run_score_cycle():
             "SELECT COUNT(*) as count FROM scored_movies_cache WHERE scheduled_for_deletion = 1 AND manual_for_deletion = 1"
         ).fetchone()["count"]
 
-        logger.info(f"Score cycle complete: {scheduled_count} movies scheduled (auto: {scheduled_count - manual_count_final}, manual: {manual_count_final})")
+        logger.info(f"Score cycle complete: {scheduled_count} movies scheduled (auto: {scheduled_count - manual_count_final}, manual: {manual_count_final}) - Slots filled: {len(top_movies)}/{max_queued}")
           
         # ===== STEP 7: Sync with Plex collection if enabled (ONLY for newly scheduled movies) =====
         if plex_enabled and plex_client and plex_config and plex_config["collection_key"]:
