@@ -519,7 +519,9 @@ async def run_score_cycle():
         all_movies = conn.execute("""
             SELECT movie_id, normalized_score, scheduled_date
             FROM scored_movies_cache
-            WHERE normalized_score > ? AND manual_for_deletion = 0
+            WHERE normalized_score > ? 
+              AND manual_for_deletion = 0
+              AND (is_collection = 1 OR collection_id IS NULL)
             ORDER BY normalized_score DESC
         """, (threshold,)).fetchall()
 
