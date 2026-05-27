@@ -516,13 +516,16 @@ async def run_score_cycle():
         logger.info(f"Found {manual_count} manually queued movies (preserved, not counted in slots)")
 
         # Get all movies sorted by normalized_score (highest first) - exclude manual
+        # For collections, use collection_id as the unique identifier (one slot per collection)
         all_movies = conn.execute("""
-            SELECT movie_id, normalized_score, scheduled_date
+            SELECT 
+                COALESCE(collection_id, movie_id) as movie_id,
+                MAX(normalized_score) as normalized_score,
+                MIN(scheduled_date) as scheduled_date
             FROM scored_movies_cache
-            WHERE normalized_score > ? 
-              AND manual_for_deletion = 0
-              AND (is_collection = 1 OR collection_id IS NULL)
-            ORDER BY normalized_score DESC
+            WHERE normalized_score > ? AND manual_for_deletion = 0
+            GROUP BY COALESCE(collection_id, movie_id)
+            ORDER BY MAX(normalized_score) DESC
         """, (threshold,)).fetchall()
 
         # Auto slots = max_queued (manual doesn't reduce slots)
@@ -540,40 +543,61 @@ async def run_score_cycle():
         current_time = datetime.now()
         
         for idx, movie in enumerate(top_movies):
-            movie_id = movie["movie_id"]
-            
-            # Check if this movie was already scheduled
-            if movie_id in existing_scheduled:
-                # Keep existing scheduled date (but ensure manual_for_deletion is preserved)
-                original_date = existing_scheduled[movie_id]
-                conn.execute(
-                    "UPDATE scored_movies_cache SET scheduled_for_deletion = 1, scheduled_date = ? WHERE movie_id = ?",
-                    (original_date, movie_id)
-                )
-            # Note: manual_for_deletion already set and preserved since we didn't clear it
-                logger.debug(f"Keeping scheduled date {original_date} for movie_id {movie_id} (stays in top {max_queued})")
+            group_id = movie["movie_id"]
+    
+            # Check if this group (movie or collection) was already scheduled
+            if group_id in existing_scheduled:
+                # Keep existing scheduled date
+                original_date = existing_scheduled[group_id]
+        
+                # Check if this is a collection (has rows with this collection_id)
+                is_collection = conn.execute(
+                    "SELECT COUNT(*) as count FROM scored_movies_cache WHERE collection_id = ?",
+                    (group_id,)
+                ).fetchone()["count"] > 0
+        
+                if is_collection:
+                    conn.execute(
+                        "UPDATE scored_movies_cache SET scheduled_for_deletion = 1, scheduled_date = ? WHERE collection_id = ?",
+                        (original_date, group_id)
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE scored_movies_cache SET scheduled_for_deletion = 1, scheduled_date = ? WHERE movie_id = ?",
+                        (original_date, group_id)
+                    )
+                logger.debug(f"Keeping scheduled date {original_date} for {group_id} (stays in top {max_queued})")
             else:
                 # New movie entering top N - calculate scheduled date based on rank position
-                # Formula: deletion date = today + (base_delay_days * (batch_number + 1))
-                # where batch_number = rank_position // deletions_per_day
                 if deletions_per_day > 0:
-                    # Calculate which batch this movie falls into (0-indexed batches)
                     batch_number = idx // deletions_per_day
-                    # Total delay = base_delay_days * (batch_number + 1)
                     total_delay_days = base_delay_days * (batch_number + 1)
                 else:
-                    # No staggering - all new movies get base delay
                     total_delay_days = base_delay_days
-                
+        
                 scheduled_date = current_time + timedelta(days=total_delay_days)
-                
-                conn.execute("""
-                    UPDATE scored_movies_cache 
-                    SET scheduled_for_deletion = 1, scheduled_date = ?
-                    WHERE movie_id = ?
-                """, (scheduled_date.isoformat(), movie_id))
-                
-                logger.info(f"Scheduled new movie (rank #{idx+1}) for {scheduled_date.isoformat()} (+{total_delay_days} days)")
+                scheduled_date_str = scheduled_date.isoformat()
+        
+                # Check if this is a collection
+                is_collection = conn.execute(
+                    "SELECT COUNT(*) as count FROM scored_movies_cache WHERE collection_id = ?",
+                    (group_id,)
+                ).fetchone()["count"] > 0
+        
+                if is_collection:
+                    conn.execute("""
+                        UPDATE scored_movies_cache 
+                        SET scheduled_for_deletion = 1, scheduled_date = ?
+                        WHERE collection_id = ?
+                    """, (scheduled_date_str, group_id))
+                    logger.info(f"Scheduled new collection (ID: {group_id}) (rank #{idx+1}) for {scheduled_date_str} (+{total_delay_days} days)")
+                else:
+                    conn.execute("""
+                        UPDATE scored_movies_cache 
+                        SET scheduled_for_deletion = 1, scheduled_date = ?
+                        WHERE movie_id = ?
+                    """, (scheduled_date_str, group_id))
+                    logger.info(f"Scheduled new movie (rank #{idx+1}) for {scheduled_date_str} (+{total_delay_days} days)")
         
         # ===== STEP 6: Ensure all other movies are marked as not scheduled =====
         conn.execute("""
