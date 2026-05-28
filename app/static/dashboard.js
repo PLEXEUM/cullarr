@@ -767,6 +767,13 @@ function showScoreDetails(title, score, factors, isCollection = false, movies = 
     let contentHtml = '';
     
     if (isCollection && movies && movies.length > 0) {
+        // Sort movies by year (oldest first)
+        const sortedMovies = [...movies].sort((a, b) => {
+            const yearA = a.movie_year || a.year || 0;
+            const yearB = b.movie_year || b.year || 0;
+            return yearA - yearB;
+        });
+
         // Display collection members
         contentHtml = `
             <div class="border-t pt-4" style="border-color: var(--border-color);">
@@ -774,7 +781,7 @@ function showScoreDetails(title, score, factors, isCollection = false, movies = 
                     📁 Collection contains ${movieCount} movie${movieCount !== 1 ? 's' : ''}:
                 </div>
                 <div class="space-y-2 max-h-96 overflow-y-auto">
-                    ${movies.map(movie => {
+                   ${sortedMovies.map(movie => {
                         const movieTitle = escapeHtml(movie.movie_title || movie.title || 'Unknown');
                         const movieYear = movie.movie_year || movie.year || 'N/A';
                         const movieScore = movie.score || movie.normalized_score || 'N/A';
