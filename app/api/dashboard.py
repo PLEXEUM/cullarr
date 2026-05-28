@@ -888,8 +888,12 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
     
     # For scheduled view (scheduled=1), sort by scheduled_date (soonest first)
     if scheduled == 1:
-        # Sort by scheduled_date (None values go to bottom)
-        available.sort(key=lambda x: (x.get("scheduled_date") is None, x.get("scheduled_date") or "9999-12-31"))
+        # Sort by scheduled_date (soonest first), then by raw_score (highest first)
+        available.sort(key=lambda x: (
+            x.get("scheduled_date") is None,
+            x.get("scheduled_date") or "9999-12-31",
+            -x.get("raw_score", 0)  # Negative for descending order
+        ))
     else:
         # Apply sorting — using raw_score instead of normalized_score
         sort_mapping = {
