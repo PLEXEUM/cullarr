@@ -68,9 +68,19 @@ async function loadScheduledDeletions() {
 }
 
 // Remove a movie from the scheduled deletions queue
-async function removeFromQueue(movieId, title, isCollection = false) {
+async function removeFromQueue(movieId, title, isCollection = false, event = null) {
     let confirmMessage = isCollection ? `Remove entire collection "${title}" from the deletion queue?` : `Remove "${title}" from the deletion queue?`;
     if (!confirm(confirmMessage)) return;
+    
+    // Get and disable the button if event provided
+    let btn = null;
+    let originalText = '';
+    if (event && event.currentTarget) {
+        btn = event.currentTarget;
+        originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '⟳ Removing...';
+    }
     
     try {
         // For collections, use collection_id; for individuals, use movie_id
@@ -93,6 +103,11 @@ async function removeFromQueue(movieId, title, isCollection = false) {
         }
     } catch (e) {
         showToast('Error: ' + e.message, 'error');
+    } finally {
+        // Button will be replaced on re-render, no need to restore
+        if (btn) {
+            btn.disabled = false;
+        }
     }
 }
 
@@ -201,7 +216,7 @@ async function loadScoreQueue() {
                 const title = btn.dataset.title;
                 const isCollection = btn.dataset.isCollection === 'true';
                 const movieCount = parseInt(btn.dataset.movieCount || '1');
-                manualQueueMovie(movieId, title, isCollection, movieCount);
+                manualQueueMovie(movieId, title, isCollection, movieCount, e);
             });
         });
         
@@ -211,7 +226,7 @@ async function loadScoreQueue() {
                 const movieId = parseInt(btn.dataset.movieId);
                 const title = btn.dataset.title;
                 const isCollection = btn.dataset.isCollection === 'true';
-                removeFromQueue(movieId, title, isCollection);
+                removeFromQueue(movieId, title, isCollection, e);
             });
         });
 
@@ -506,7 +521,7 @@ function renderScheduledGrid(data) {
             const movieId = parseInt(btn.dataset.movieId);
             const title = btn.dataset.title;
             const isCollection = btn.dataset.isCollection === 'true';
-            removeFromQueue(movieId, title, isCollection);
+            removeFromQueue(movieId, title, isCollection, e);
         });
     });
 }
@@ -601,7 +616,7 @@ async function triggerCullRun() {
 }
 
 // Manual Queue Movie
-async function manualQueueMovie(movieId, title, isCollection = false, movieCount = 1) {
+async function manualQueueMovie(movieId, title, isCollection = false, movieCount = 1, event = null) {
     // Confirmation dialog
     let confirmMessage = '';
     if (isCollection) {
@@ -611,6 +626,16 @@ async function manualQueueMovie(movieId, title, isCollection = false, movieCount
     }
     
     if (!confirm(confirmMessage)) return;
+    
+    // Get and disable the button if event provided
+    let btn = null;
+    let originalText = '';
+    if (event && event.currentTarget) {
+        btn = event.currentTarget;
+        originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '⟳ Queuing...';
+    }
     
     try {
         const res = await fetch(`/api/dashboard/scheduled/${movieId}`, { method: 'POST' });
@@ -627,6 +652,11 @@ async function manualQueueMovie(movieId, title, isCollection = false, movieCount
         }
     } catch (e) {
         showToast('Error: ' + e.message, 'error');
+    } finally {
+        // Button will be replaced on re-render, no need to restore
+        if (btn) {
+            btn.disabled = false;
+        }
     }
 }
 
