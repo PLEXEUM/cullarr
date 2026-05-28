@@ -142,10 +142,23 @@ async function loadScoreQueue() {
             if (movie.normalized_score < 60) scoreClass = 'score-medium';
             if (movie.normalized_score < 30) scoreClass = 'score-low';
             
-            const posterUrl = movie.poster_url || '/static/no-poster.png';
+            let posterUrl = '/static/no-poster.png';
             const title = escapeHtml(movie.movie_title || 'Unknown');
             const movieId = movie.collection_id || movie.movie_id;
             const isCollection = movie.is_collection || false;
+
+            // For collections, find the oldest movie's poster
+            if (isCollection && movie.movies && movie.movies.length > 0) {
+                // Find the movie with the smallest year (oldest)
+                const oldestMovie = [...movie.movies].sort((a, b) => {
+                    const yearA = a.movie_year || a.year || 9999;
+                    const yearB = b.movie_year || b.year || 9999;
+                    return yearA - yearB;
+                })[0];
+                posterUrl = oldestMovie.poster_url || '/static/no-poster.png';
+            } else if (!isCollection && movie.poster_url) {
+                posterUrl = movie.poster_url;
+            }
             
             // Store data for modal
             const factorsJson = JSON.stringify(movie.factors || []).replace(/'/g, "&#39;");
@@ -450,10 +463,23 @@ function renderScheduledGrid(data) {
         }
         
         // Get poster URL or fallback
-        const posterUrl = item.poster_url || '/static/no-poster.png';
+        let posterUrl = '/static/no-poster.png';
         const title = escapeHtml(item.movie_title || 'Unknown');
         const movieId = item.collection_id || item.movie_id;
         const isCollection = !!item.collection_id;
+
+        // For collections, find the oldest movie's poster
+        if (isCollection && item.movies && item.movies.length > 0) {
+            // Find the movie with the smallest year (oldest)
+            const oldestMovie = [...item.movies].sort((a, b) => {
+                const yearA = a.movie_year || a.year || 9999;
+                const yearB = b.movie_year || b.year || 9999;
+                return yearA - yearB;
+            })[0];
+            posterUrl = oldestMovie.poster_url || '/static/no-poster.png';
+        } else if (!isCollection && item.poster_url) {
+            posterUrl = item.poster_url;
+        }
         
         // Store data for modal
         const factorsJson = JSON.stringify(item.factors || []).replace(/'/g, "&#39;");
