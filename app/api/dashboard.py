@@ -959,7 +959,7 @@ async def search_score_queue(
             SELECT DISTINCT movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
                    size_gb, age_days, quality, monitored, normalized_score,
                    raw_score, factors, plex_play_count,
-                   collection_name, collection_id, is_collection, manual_for_deletion, scheduled_for_deletion, poster_url
+                   collection_name, collection_id, is_collection, manual_for_deletion, scheduled_for_deletion, poster_url, individual_normalized_score, individual_raw_score
             FROM scored_movies_cache
             WHERE LOWER(movie_title) LIKE ? 
                OR LOWER(collection_name) LIKE ?
