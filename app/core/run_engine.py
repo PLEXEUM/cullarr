@@ -314,7 +314,8 @@ async def run_score_cycle():
             existing_scheduled_movies.append(dict(row))
 
         unique_collections = len(set(r["collection_id"] for r in existing if r["collection_id"]))
-        logger.info(f"Found {len(existing_scheduled)} currently scheduled items with existing dates (including {unique_collections} unique collections)")
+        unique_movies = len(set(r["movie_id"] for r in existing))
+        logger.info(f"Found {unique_movies} currently scheduled movies (including {unique_collections} unique collections) - {len(existing_scheduled)} total keys in lookup dictionary")
 
         # ===== STEP 2: Clear existing scheduled flags and dates (keep manual entries) =====
         conn.execute("""
