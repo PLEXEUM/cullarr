@@ -413,7 +413,7 @@ async def run_score_cycle():
                             scheduled_date_value,
                             poster_url,
                             manual_value,
-                            member.get("normalized_score", member.get("score", 0)),
+                            member.get("score", 0),
                             member.get("raw_score", 0),
                         ))
 
