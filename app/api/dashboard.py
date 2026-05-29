@@ -796,7 +796,7 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
                     size_gb, age_days, quality, monitored, normalized_score,
                     raw_score, factors, plex_play_count,
                     collection_name, collection_id, is_collection, cached_at,
-                    scheduled_for_deletion, scheduled_date, manual_for_deletion, poster_url
+                    scheduled_for_deletion, scheduled_date, manual_for_deletion, poster_url, individual_normalized_score, individual_raw_score
             FROM scored_movies_cache
             {where_clause}
         """
