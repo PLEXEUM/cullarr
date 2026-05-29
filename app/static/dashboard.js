@@ -488,6 +488,8 @@ function renderScheduledGrid(data) {
         // Store data for modal
         const factorsJson = JSON.stringify(item.factors || []).replace(/'/g, "&#39;");
         const moviesData = isCollection ? JSON.stringify(item.movies || []).replace(/'/g, "&#39;") : '[]';
+
+        const collectionBadge = isCollection ? `<span class="collection-badge">📁 Collection</span>` : '';
         
         return `
             <div class="poster-card" data-movie-id="${movieId}" data-title="${title}" data-score="${item.normalized_score}" data-factors='${factorsJson}' data-is-collection="${isCollection}" data-movies='${moviesData}' data-movie-count="${item.movie_count || 0}">
@@ -497,7 +499,8 @@ function renderScheduledGrid(data) {
                         <button class="details-overlay-btn">🔍 Details</button>
                     </div>
                     ${countdownText ? `<div class="countdown-badge">${countdownText}</div>` : ''}
-                </div>
+                    ${collectionBadge}
+                    </div>
                 <div class="poster-meta-bar">
                     <span class="score-badge ${scoreClass}">${item.normalized_score.toFixed(1)}</span>
                     <button class="remove-btn" data-movie-id="${movieId}" data-title="${title}" data-is-collection="${isCollection}">✕ Remove</button>
