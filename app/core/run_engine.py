@@ -300,16 +300,20 @@ async def run_score_cycle():
         logger.info(f"Scored {len(scored_movies)} entries ({len(movies)} total movies)")
 
         # ===== STEP 1: Get existing scheduled movies (for Plex cleanup later) =====
-        existing_scheduled = {}
-        existing_scheduled_movies = []  # ← ADD THIS
+        existing_scheduled = {}  # Keyed by movie_id OR collection_id
+        existing_scheduled_movies = []
         existing = conn.execute(
-            "SELECT movie_id, movie_title, movie_year, scheduled_date FROM scored_movies_cache WHERE scheduled_for_deletion = 1 AND scheduled_date IS NOT NULL"
+            "SELECT movie_id, movie_title, movie_year, collection_id, scheduled_date FROM scored_movies_cache WHERE scheduled_for_deletion = 1 AND scheduled_date IS NOT NULL"
         ).fetchall()
         for row in existing:
+            # Store by movie_id
             existing_scheduled[row["movie_id"]] = row["scheduled_date"]
-            existing_scheduled_movies.append(dict(row))  # ← ADD THIS
-        
-        logger.info(f"Found {len(existing_scheduled)} currently scheduled movies with existing dates")
+            # Also store by collection_id if this is a collection member
+            if row["collection_id"]:
+                existing_scheduled[row["collection_id"]] = row["scheduled_date"]
+            existing_scheduled_movies.append(dict(row))
+
+        logger.info(f"Found {len(existing_scheduled)} currently scheduled items with existing dates (including {len([r for r in existing if r['collection_id']])} collections)")
 
         # ===== STEP 2: Clear existing scheduled flags and dates (keep manual entries) =====
         conn.execute("""
@@ -544,7 +548,7 @@ async def run_score_cycle():
         
         for idx, movie in enumerate(top_movies):
             group_id = movie["movie_id"]
-    
+
             # Check if this group (movie or collection) was already scheduled
             if group_id in existing_scheduled:
                 # Keep existing scheduled date
@@ -561,12 +565,13 @@ async def run_score_cycle():
                         "UPDATE scored_movies_cache SET scheduled_for_deletion = 1, scheduled_date = ? WHERE collection_id = ?",
                         (original_date, group_id)
                     )
+                    logger.info(f"PRESERVED: Collection (ID: {group_id}) keeps existing scheduled date {original_date} (rank #{idx+1})")
                 else:
                     conn.execute(
                         "UPDATE scored_movies_cache SET scheduled_for_deletion = 1, scheduled_date = ? WHERE movie_id = ?",
                         (original_date, group_id)
                     )
-                logger.debug(f"Keeping scheduled date {original_date} for {group_id} (stays in top {max_queued})")
+                    logger.info(f"PRESERVED: Movie (ID: {group_id}) keeps existing scheduled date {original_date} (rank #{idx+1})")
             else:
                 # New movie entering top N - calculate scheduled date based on rank position
                 if deletions_per_day > 0:
@@ -590,14 +595,14 @@ async def run_score_cycle():
                         SET scheduled_for_deletion = 1, scheduled_date = ?
                         WHERE collection_id = ?
                     """, (scheduled_date_str, group_id))
-                    logger.info(f"Scheduled new collection (ID: {group_id}) (rank #{idx+1}) for {scheduled_date_str} (+{total_delay_days} days)")
+                    logger.info(f"SCHEDULED: New collection (ID: {group_id}) (rank #{idx+1}) for {scheduled_date_str} (+{total_delay_days} days)")
                 else:
                     conn.execute("""
                         UPDATE scored_movies_cache 
                         SET scheduled_for_deletion = 1, scheduled_date = ?
                         WHERE movie_id = ?
                     """, (scheduled_date_str, group_id))
-                    logger.info(f"Scheduled new movie (rank #{idx+1}) for {scheduled_date_str} (+{total_delay_days} days)")
+                    logger.info(f"SCHEDULED: New movie (rank #{idx+1}) for {scheduled_date_str} (+{total_delay_days} days)")
         
         # ===== STEP 6: Ensure all other movies are marked as not scheduled =====
         conn.execute("""
