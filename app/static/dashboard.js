@@ -163,6 +163,9 @@ async function loadScoreQueue() {
             // Store data for modal
             const factorsJson = JSON.stringify(movie.factors || []).replace(/'/g, "&#39;");
             const moviesData = isCollection ? JSON.stringify(movie.movies || []).replace(/'/g, "&#39;") : '[]';
+
+            // Add collection badge if this is a collection  ← THIS LINE
+            const collectionBadge = isCollection ? `<span class="collection-badge">📁 Collection</span>` : ''; 
             
             return `
                 <div class="poster-card" data-movie-id="${movieId}" data-title="${title}" data-score="${movie.normalized_score}" data-factors='${factorsJson}' data-is-collection="${isCollection}" data-movies='${moviesData}' data-movie-count="${movie.movie_count || 0}">
@@ -171,6 +174,7 @@ async function loadScoreQueue() {
                         <div class="poster-overlay">
                             <button class="details-overlay-btn">🔍 Details</button>
                         </div>
+                        ${collectionBadge}
                     </div>
                     <div class="poster-meta-bar">
                         <span class="score-badge ${scoreClass}">${movie.normalized_score.toFixed(1)}</span>
