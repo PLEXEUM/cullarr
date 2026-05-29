@@ -486,4 +486,10 @@ class ScoringEngine:
             # Keep normalized_score for backward compatibility (set to same value)
             movie["normalized_score"] = movie["raw_score"] * 100
 
+            # For collections, ensure individual movies keep their original scores
+            if movie.get("is_collection") and movie.get("movies"):
+                for member in movie["movies"]:
+                    member["score"] = member["raw_score"] * 100
+                    member["normalized_score"] = member["raw_score"] * 100
+
         return scored
