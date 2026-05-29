@@ -409,6 +409,14 @@ def migrate_db():
     except Exception:
         pass  # Column already exists, safe to ignore
 
+    # Migration: Add individual score columns
+    try:
+        cursor.execute("ALTER TABLE scored_movies_cache ADD COLUMN individual_normalized_score REAL")
+        cursor.execute("ALTER TABLE scored_movies_cache ADD COLUMN individual_raw_score REAL")
+        print("Migration applied: added individual score columns")
+    except Exception:
+        pass
+
 
     conn.commit()
     conn.close()

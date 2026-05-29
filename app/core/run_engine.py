@@ -391,7 +391,7 @@ async def run_score_cycle():
                              raw_score, factors, plex_play_count,
                              collection_name, collection_id, is_collection,
                              scheduled_for_deletion, scheduled_date, poster_url, cached_at, manual_for_deletion)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)
                         """, (
                             member["movie_id"],
                             member["movie_title"],
@@ -413,6 +413,8 @@ async def run_score_cycle():
                             scheduled_date_value,
                             poster_url,
                             manual_value,
+                            member["normalized_score"],
+                            member["raw_score"],
                         ))
 
             else:

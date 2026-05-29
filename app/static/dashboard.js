@@ -817,7 +817,7 @@ function showScoreDetails(title, score, factors, isCollection = false, movies = 
                    ${sortedMovies.map(movie => {
                         const movieTitle = escapeHtml(movie.movie_title || movie.title || 'Unknown');
                         const movieYear = movie.movie_year || movie.year || 'N/A';
-                        const movieScore = movie.score || movie.normalized_score || 'N/A';
+                        const movieScore = movie.individual_normalized_score || movie.normalized_score || 'N/A';
                         const movieSize = movie.size_gb ? `${movie.size_gb.toFixed(1)} GB` : '';
                         return `
                             <div class="border rounded-lg p-2" style="border-color: var(--border-color); background: var(--bg-primary);">
