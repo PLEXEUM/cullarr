@@ -808,7 +808,8 @@ function formatWatchedDetailsMobile(details) {
         const playCount = playMatch[1];
         if (lastMatch) {
             const days = lastMatch[1];
-            return `${playCount} · ${days}d`;
+            const playText = playCount === '1' ? '1 time' : `${playCount} times`;
+            return `${playText} * ${days}d ago`;
         }
         return `${playCount} · Never`;
     }
