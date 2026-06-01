@@ -417,6 +417,12 @@ def migrate_db():
     except Exception:
         pass
 
+    # Fix incorrect watched_weight (should be 20, not 25)
+    try:
+        cursor.execute("UPDATE scoring_weights SET watched_weight = 20 WHERE watched_weight = 25")
+        print("Migration applied: fixed watched_weight from 25 to 20")
+    except Exception:
+        pass  # Column may not exist or already fixed
 
     conn.commit()
     conn.close()
