@@ -83,24 +83,17 @@ def get_watched_score(play_count: int, last_viewed_timestamp: int = 0) -> float:
     else:
         play_score = 0.0
     
-    # Calculate recency score (if we have last_viewed data)
+    # Calculate recency score (continuous linear scale)
     recency_score = 1.0  # Default to deletable if no data
     days_since_last_watch = None
-    
+    watched_max_days = 730  # 2 years (configurable)
+
     if last_viewed_timestamp and last_viewed_timestamp > 0:
         current_time = int(time.time())
-        days_since_last_watch = (current_time - last_viewed_timestamp) / 86400  # 86400 seconds in a day
-        
-        if days_since_last_watch <= 7:
-            recency_score = 0.0      # Watched in last week - fully protected
-        elif days_since_last_watch <= 30:
-            recency_score = 0.3      # Watched in last month
-        elif days_since_last_watch <= 90:
-            recency_score = 0.6      # Watched in last 3 months
-        elif days_since_last_watch <= 365:
-            recency_score = 0.8      # Watched in last year
-        else:
-            recency_score = 1.0      # Over a year or never - deletable
+        days_since_last_watch = (current_time - last_viewed_timestamp) / 86400
+    
+        # Linear from 0 at 0 days to 1.0 at watched_max_days
+        recency_score = min(days_since_last_watch / watched_max_days, 1.0)
     else:
         days_since_last_watch = None  # No watch history
     
