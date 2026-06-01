@@ -857,7 +857,7 @@ function showScoreDetails(title, score, factors, isCollection = false, movies = 
                             factorsHtml = '<div class="mt-2 pt-2 border-t" style="border-color: var(--border-color);">';
                             for (const f of movieFactors) {
                                 const pct = (f.contribution * 100).toFixed(1);
-                                const barWidth = Math.min(Math.round(f.contribution * 100), 100);
+                                const barWidth = Math.min(Math.round(f.raw_score * 100), 100);
         
                                 // Get details text (same as main modal)
                                 let detailsText = f.details || '';
@@ -913,7 +913,7 @@ function showScoreDetails(title, score, factors, isCollection = false, movies = 
         for (let i = 0; i < factors.length; i++) {
             const f = factors[i];
             const pct = (f.contribution * 100).toFixed(1);
-            const barWidth = Math.min(Math.round(f.contribution * 100), 100);
+            const barWidth = Math.min(Math.round(f.raw_score * 100), 100);
             let skippedNote = '';
             if (f.skipped) {
                 skippedNote = '<span class="text-xs ml-2" style="color: var(--text-secondary)">(' + (f.skip_reason || 'skipped') + ')</span>';
