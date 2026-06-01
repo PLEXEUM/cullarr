@@ -810,7 +810,7 @@ function formatWatchedDetailsMobile(details) {
             const days = lastMatch[1];
             const playText = playCount === '1' ? '1 time' : `${playCount} times`;
             const dayText = days === '1' ? 'day' : 'days';
-            return `${playText} · ${days} ${dayText} ago`;
+            return `Play count: ${playCount} | ${days} ${dayText} ago`;
         }
         return `${playCount} · Never`;
     }
