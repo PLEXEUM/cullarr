@@ -841,21 +841,56 @@ function showScoreDetails(title, score, factors, isCollection = false, movies = 
                     📁 Collection contains ${movieCount} movie${movieCount !== 1 ? 's' : ''}:
                 </div>
                 <div class="space-y-2 max-h-96 overflow-y-auto">
-                   ${sortedMovies.map(movie => {
+                   ${sortedMovies.map((movie, idx) => {
                         const movieTitle = escapeHtml(movie.movie_title || movie.title || 'Unknown');
                         const movieYear = movie.movie_year || movie.year || 'N/A';
                         const movieScore = movie.individual_normalized_score || movie.normalized_score || 'N/A';
                         const movieSize = movie.size_gb ? `${movie.size_gb.toFixed(1)} GB` : '';
-                        return `
-                            <div class="border rounded-lg p-2" style="border-color: var(--border-color); background: var(--bg-primary);">
-                                <div class="flex justify-between items-start">
-                                    <div>
-                                        <span class="font-medium">${movieTitle}</span>
-                                        <span class="text-xs ml-1" style="color: var(--text-secondary);">(${movieYear})</span>
+                        const movieFactors = movie.factors || [];
+                        const expandId = `movie-expand-${Date.now()}-${idx}`;
+                        
+                        // Build factor breakdown HTML (same format as main modal)
+                        let factorsHtml = '';
+                        if (movieFactors.length > 0) {
+                            factorsHtml = '<div class="mt-2 pt-2 border-t" style="border-color: var(--border-color);">';
+                            for (const f of movieFactors) {
+                                const pct = (f.contribution * 100).toFixed(1);
+                                const barWidth = Math.min(Math.round(f.raw_score * 100), 100);
+                                factorsHtml += `
+                                    <div class="mb-2">
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span style="color: var(--text-secondary);">${f.name}</span>
+                                            <span style="color: var(--text-secondary);">${pct}%</span>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <div class="flex-1 rounded-full h-1.5" style="background: var(--border-color)">
+                                                <div class="h-1.5 rounded-full" style="width: ${barWidth}%; background: var(--accent);"></div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <span class="badge" style="background: var(--info-bg); color: var(--info); font-size: 10px;">Score: ${typeof movieScore === 'number' ? movieScore.toFixed(1) : movieScore}</span>
+                                `;
+                            }
+                            factorsHtml += '</div>';
+                        }
+                        
+                        return `
+                            <div class="border rounded-lg" style="border-color: var(--border-color); background: var(--bg-primary);">
+                                <div class="p-2 cursor-pointer hover:bg-purple-bg movie-row-header" data-expand-id="${expandId}">
+                                    <div class="flex justify-between items-center">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs expand-icon" id="icon-${expandId}" style="color: var(--accent);">▶</span>
+                                            <div>
+                                                <span class="font-medium">${movieTitle}</span>
+                                                <span class="text-xs ml-1" style="color: var(--text-secondary);">(${movieYear})</span>
+                                            </div>
+                                        </div>
+                                        <span class="badge" style="background: var(--info-bg); color: var(--info); font-size: 10px;">Score: ${typeof movieScore === 'number' ? movieScore.toFixed(1) : movieScore}</span>
+                                    </div>
+                                    ${movieSize ? `<div class="text-xs mt-1 ml-5" style="color: var(--text-secondary);">${movieSize}</div>` : ''}
                                 </div>
-                                ${movieSize ? `<div class="text-xs mt-1" style="color: var(--text-secondary);">${movieSize}</div>` : ''}
+                                <div id="${expandId}" class="expandable-content px-3 pb-2" style="display: none;">
+                                    ${factorsHtml}
+                                </div>
                             </div>
                         `;
                     }).join('')}
@@ -934,6 +969,27 @@ function showScoreDetails(title, score, factors, isCollection = false, movies = 
     });
 
     document.body.appendChild(modal);
+
+    // Add expand/collapse handlers for collection movie rows
+    modal.querySelectorAll('.movie-row-header').forEach(header => {
+        header.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const expandId = header.dataset.expandId;
+            const content = document.getElementById(expandId);
+            const icon = document.getElementById(`icon-${expandId}`);
+        
+            if (content) {
+                if (content.style.display === 'none') {
+                    content.style.display = 'block';
+                    if (icon) icon.textContent = '▼';
+                } else {
+                    content.style.display = 'none';
+                    if (icon) icon.textContent = '▶';
+                }
+            }
+        });
+    });
+
 }
 
 function escapeHtml(str) {
