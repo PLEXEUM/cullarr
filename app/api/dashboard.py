@@ -955,26 +955,63 @@ async def search_score_queue(
         
         # First, get all matching movies (for count and pagination)
         # We need to handle collections properly - a collection matches if any member matches
-        matching_movies = conn.execute("""
-            SELECT DISTINCT movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
-                   size_gb, age_days, quality, monitored, normalized_score,
-                   raw_score, factors, plex_play_count,
-                   collection_name, collection_id, is_collection, manual_for_deletion, scheduled_for_deletion, poster_url, individual_normalized_score, individual_raw_score
-            FROM scored_movies_cache
-            WHERE LOWER(movie_title) LIKE ? 
-               OR LOWER(collection_name) LIKE ?
-            ORDER BY 
-                CASE WHEN ? = 'score' THEN normalized_score END {sort_order},
-                CASE WHEN ? = 'title' THEN movie_title END {sort_order},
-                CASE WHEN ? = 'year' THEN movie_year END {sort_order},
-                CASE WHEN ? = 'age' THEN age_days END {sort_order},
-                CASE WHEN ? = 'size' THEN size_gb END {sort_order},
-                CASE WHEN ? = 'rating' THEN tmdb_rating END {sort_order},
-                CASE WHEN ? = 'quality' THEN quality END {sort_order},
-                CASE WHEN ? = 'watched' THEN plex_play_count END {sort_order}
-        """.format(sort_order="ASC" if sort_order.lower() == "asc" else "DESC"),
-            (search_term, search_term, sort_by, sort_by, sort_by, sort_by, sort_by, sort_by, sort_by, sort_by)
-        ).fetchall()
+        # Check if collection grouping is enabled
+        settings = conn.execute("SELECT collection_grouping FROM settings WHERE id = 1").fetchone()
+        collection_grouping = bool(settings["collection_grouping"]) if settings else False
+
+        search_term = f"%{q.lower()}%"
+
+        if collection_grouping:
+            # Enhanced: Return collection card if ANY movie in collection matches
+            matching_movies = conn.execute("""
+                SELECT DISTINCT movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
+                    size_gb, age_days, quality, monitored, normalized_score,
+                    raw_score, factors, plex_play_count,
+                    collection_name, collection_id, is_collection, manual_for_deletion, 
+                    scheduled_for_deletion, poster_url, individual_normalized_score, individual_raw_score
+                FROM scored_movies_cache
+                WHERE LOWER(movie_title) LIKE ? 
+                OR LOWER(collection_name) LIKE ?
+                OR collection_id IN (
+                    SELECT DISTINCT collection_id 
+                    FROM scored_movies_cache 
+                    WHERE LOWER(movie_title) LIKE ? AND collection_id IS NOT NULL
+                )
+                ORDER BY 
+                    CASE WHEN ? = 'score' THEN normalized_score END {sort_order},
+                    CASE WHEN ? = 'title' THEN movie_title END {sort_order},
+                    CASE WHEN ? = 'year' THEN movie_year END {sort_order},
+                    CASE WHEN ? = 'age' THEN age_days END {sort_order},
+                    CASE WHEN ? = 'size' THEN size_gb END {sort_order},
+                    CASE WHEN ? = 'rating' THEN tmdb_rating END {sort_order},
+                    CASE WHEN ? = 'quality' THEN quality END {sort_order},
+                    CASE WHEN ? = 'watched' THEN plex_play_count END {sort_order}
+            """.format(sort_order="ASC" if sort_order.lower() == "asc" else "DESC"),
+                (search_term, search_term, search_term, sort_by, sort_by, sort_by, sort_by, sort_by, sort_by, sort_by, sort_by)
+            ).fetchall()
+        else:
+            # Simple: Return individual matches only (original behavior)
+            matching_movies = conn.execute("""
+                SELECT DISTINCT movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
+                    size_gb, age_days, quality, monitored, normalized_score,
+                    raw_score, factors, plex_play_count,
+                    collection_name, collection_id, is_collection, manual_for_deletion, 
+                    scheduled_for_deletion, poster_url, individual_normalized_score, individual_raw_score
+                FROM scored_movies_cache
+                WHERE LOWER(movie_title) LIKE ? 
+                OR LOWER(collection_name) LIKE ?
+                ORDER BY 
+                    CASE WHEN ? = 'score' THEN normalized_score END {sort_order},
+                    CASE WHEN ? = 'title' THEN movie_title END {sort_order},
+                    CASE WHEN ? = 'year' THEN movie_year END {sort_order},
+                    CASE WHEN ? = 'age' THEN age_days END {sort_order},
+                    CASE WHEN ? = 'size' THEN size_gb END {sort_order},
+                    CASE WHEN ? = 'rating' THEN tmdb_rating END {sort_order},
+                    CASE WHEN ? = 'quality' THEN quality END {sort_order},
+                    CASE WHEN ? = 'watched' THEN plex_play_count END {sort_order}
+            """.format(sort_order="ASC" if sort_order.lower() == "asc" else "DESC"),
+                (search_term, search_term, sort_by, sort_by, sort_by, sort_by, sort_by, sort_by, sort_by, sort_by)
+            ).fetchall()
         
         # Filter out already-scheduled movies and group collections
         collections: dict = {}
