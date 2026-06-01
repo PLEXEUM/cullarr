@@ -856,16 +856,24 @@ function showScoreDetails(title, score, factors, isCollection = false, movies = 
                             for (const f of movieFactors) {
                                 const pct = (f.contribution * 100).toFixed(1);
                                 const barWidth = Math.min(Math.round(f.raw_score * 100), 100);
+        
+                                // Get details text (same as main modal)
+                                let detailsText = f.details || '';
+                                if (f.name === 'Watched' && window.innerWidth <= 768) {
+                                    detailsText = formatWatchedDetailsMobile(detailsText);
+                                }
+        
                                 factorsHtml += `
                                     <div class="mb-2">
                                         <div class="flex justify-between text-xs mb-1">
                                             <span style="color: var(--text-secondary);">${f.name}</span>
-                                            <span style="color: var(--text-secondary);">${pct}%</span>
+                                            <span style="color: var(--text-secondary);">${detailsText}</span>
                                         </div>
                                         <div class="flex items-center gap-2">
                                             <div class="flex-1 rounded-full h-1.5" style="background: var(--border-color)">
                                                 <div class="h-1.5 rounded-full" style="width: ${barWidth}%; background: var(--accent);"></div>
                                             </div>
+                                            <span class="text-xs font-mono w-10 text-right" style="color: var(--text-secondary);">${pct}%</span>
                                         </div>
                                     </div>
                                 `;
