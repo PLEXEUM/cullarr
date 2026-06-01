@@ -791,6 +791,33 @@ async function cancelRun(runId) {
     }
 }
 
+// ========== ADD THIS HELPER FUNCTION HERE (BEFORE showScoreDetails) ==========
+function formatWatchedDetailsMobile(details) {
+    if (!details) return '';
+    
+    // Handle "Never watched" case
+    if (details.includes('Never watched')) {
+        return 'Never watched';
+    }
+    
+    // Parse: "Play count: 1 | Last watched: 2518 days ago"
+    const playMatch = details.match(/Play count:\s*(\d+)/);
+    const lastMatch = details.match(/Last watched:\s*(\d+)\s*days? ago/);
+    
+    if (playMatch) {
+        const playCount = playMatch[1];
+        if (lastMatch) {
+            const days = lastMatch[1];
+            return `${playCount} · ${days}d`;
+        }
+        return `${playCount} · Never`;
+    }
+    
+    // Fallback to original if parsing fails
+    return details;
+}
+// ========== END HELPER FUNCTION ==========
+
 // Score details modal - handles both individual movies and collections
 function showScoreDetails(title, score, factors, isCollection = false, movies = [], movieCount = 0) {
     // Remove any existing modal
@@ -850,7 +877,9 @@ function showScoreDetails(title, score, factors, isCollection = false, movies = 
                 <div class="mb-3">
                     <div class="flex justify-between text-sm mb-1">
                         <span class="font-medium">${f.name}${skippedNote}</span>
-                        <span style="color: var(--text-secondary)">${f.details || ''}</span>
+                        <span style="color: var(--text-secondary)">
+                            ${f.name === 'Watched' && window.innerWidth <= 768 ? formatWatchedDetailsMobile(f.details) : (f.details || '')}
+                        </span>
                     </div>
                     <div class="flex items-center gap-3">
                         <div class="flex-1 rounded-full h-2" style="background: var(--border-color)">
