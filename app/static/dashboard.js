@@ -802,15 +802,26 @@ function formatWatchedDetailsMobile(details) {
     
     // Parse: "Play count: 1 | Last watched: 2518 days ago"
     const playMatch = details.match(/Play count:\s*(\d+)/);
-    const lastMatch = details.match(/Last watched:\s*(\d+)\s*days? ago/);
+    let daysValue = null;
+    
+    // Check for "Today" or "Yesterday" first
+    if (details.includes('Last watched: Today')) {
+        daysValue = 'Today';
+    } else if (details.includes('Last watched: Yesterday')) {
+        daysValue = 'Yesterday';
+    } else {
+        // Try to match "X days ago" format
+        const lastMatch = details.match(/Last watched:\s*(\d+)\s*days? ago/);
+        if (lastMatch) {
+            const days = lastMatch[1];
+            daysValue = `${days}d`;
+        }
+    }
     
     if (playMatch) {
         const playCount = playMatch[1];
-        if (lastMatch) {
-            const days = lastMatch[1];
-            const playText = playCount === '1' ? '1 time' : `${playCount} times`;
-            const dayText = days === '1' ? 'day' : 'days';
-            return `Play count: ${playCount} | ${days} ${dayText} ago`;
+        if (daysValue) {
+            return `${playCount} · ${daysValue}`;
         }
         return `${playCount} · Never`;
     }
