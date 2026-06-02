@@ -894,7 +894,7 @@ function showScoreDetails(title, score, factors, isCollection = false, movies = 
                                                 <span class="text-xs ml-1" style="color: var(--text-secondary);">(${movieYear})</span>
                                             </div>
                                         </div>
-                                        <span class="badge" style="background: var(--info-bg); color: var(--info); font-size: 10px;">Score: ${typeof movieScore === 'number' ? movieScore.toFixed(1) : movieScore}</span>
+                                        <span class="badge" style="background: var(--info-bg); color: var(--info); font-size: 10px; flex-shrink: 0; margin-left: auto;">Score: ${typeof movieScore === 'number' ? movieScore.toFixed(1) : movieScore}</span>
                                     </div>
                                     ${movieSize ? `<div class="text-xs mt-1 ml-5" style="color: var(--text-secondary);">${movieSize}</div>` : ''}
                                 </div>
