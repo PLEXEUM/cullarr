@@ -886,7 +886,7 @@ function showScoreDetails(title, score, factors, isCollection = false, movies = 
                         return `
                             <div class="border rounded-lg" style="border-color: var(--border-color); background: var(--bg-primary);">
                                 <div class="p-2 cursor-pointer hover:bg-purple-bg movie-row-header" data-expand-id="${expandId}">
-                                    <div class="flex justify-between items-center">
+                                    <div class="flex justify-between items-start">
                                         <div class="flex items-center gap-2">
                                             <span class="text-xs expand-icon" id="icon-${expandId}" style="color: var(--accent);">▶</span>
                                             <div>
