@@ -579,8 +579,10 @@ async def run_score_cycle():
             else:
                 # New movie entering top N - calculate scheduled date based on rank position
                 if deletions_per_day > 0:
+                    # Each batch of movies gets pushed back by an additional day
                     batch_number = idx // deletions_per_day
-                    total_delay_days = base_delay_days * (batch_number + 1)
+                    # Add 1 day per batch, starting from base_delay_days
+                    total_delay_days = base_delay_days + batch_number  # ✅ CORRECT - adds!
                 else:
                     total_delay_days = base_delay_days
         
