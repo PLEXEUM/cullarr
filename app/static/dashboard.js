@@ -47,7 +47,7 @@ async function loadQueueStatus() {
 // Scheduled Deletions - Load and render as poster grid
 async function loadScheduledDeletions() {
     try {
-        const res = await fetch('/api/dashboard/score-queue?page=1&per_page=100&scheduled=1&sort_by=score&sort_order=desc');
+        const res = await fetch('/api/dashboard/score-queue?page=1&per_page=500&scheduled=1&sort_by=score&sort_order=desc');
         
         if (!res.ok) {
             throw new Error(`HTTP ${res.status}: ${res.statusText}`);
