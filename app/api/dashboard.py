@@ -764,7 +764,7 @@ async def remove_collection_by_id(collection_id: int):
 @router.get("/dashboard/score-queue")
 async def get_score_queue(
     page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
+    per_page: int = Query(20, ge=1, le=500),
     sort_by: str = Query("score"),
     sort_order: str = Query("desc"),
     scheduled: Optional[int] = Query(None, ge=0, le=1, description="0=unscheduled, 1=scheduled, omit=all")
