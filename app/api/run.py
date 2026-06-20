@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from pydantic import BaseModel
 from typing import Optional
 import asyncio
@@ -216,10 +216,39 @@ async def trigger_cull_run(dry_run: bool = False, background_tasks: BackgroundTa
         "dry_run": dry_run,
     }
 
+from datetime import datetime, timedelta
+
+# Add this at the top of run.py with other imports
+_last_status_request = {}
 
 @router.get("/run/status")
-async def get_run_status():
+async def get_run_status(request: Request):
     """Get current run status including dry run results if available."""
+    # Get client IP for rate limiting
+    client_ip = request.client.host if request.client else "unknown"
+    now = datetime.now()
+    
+    # Rate limit: 1 request per 2 seconds per client
+    if client_ip in _last_status_request:
+        time_since_last = (now - _last_status_request[client_ip]).total_seconds()
+        if time_since_last < 2.0:
+            return {
+                "is_running": _active_run["is_running"],
+                "run_id": _active_run["run_id"],
+                "run_type": _active_run["run_type"],
+                "current": _active_run["current"],
+                "total": _active_run["total"],
+                "current_movie": _active_run["current_movie"],
+                "cancelled": _active_run["cancelled"],
+                "dry_run": _active_run["dry_run"],
+                "dry_run_results": _active_run["dry_run_results"],
+                "run_sequence": _active_run["run_sequence"],
+                "last_updated": _active_run["last_updated"],
+                "throttled": True
+            }
+    
+    _last_status_request[client_ip] = now
+    
     return {
         "is_running": _active_run["is_running"],
         "run_id": _active_run["run_id"],
