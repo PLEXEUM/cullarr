@@ -705,7 +705,7 @@ async def run_score_cycle():
             if newly_scheduled_ids:
                 placeholders = ",".join("?" * len(newly_scheduled_ids))
                 newly_scheduled_movies = conn.execute(
-                    f"SELECT movie_id, movie_title, movie_year FROM scored_movies_cache WHERE movie_id IN ({placeholders})",
+                    f"SELECT movie_id, movie_title, movie_year, tmdb_id FROM scored_movies_cache WHERE movie_id IN ({placeholders})",
                     tuple(newly_scheduled_ids)
                 ).fetchall()
         
