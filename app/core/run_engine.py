@@ -98,36 +98,25 @@ async def _apply_plex_collections(
     for movie in flat_movies:
         title = movie.get("movie_title")
         year = movie.get("movie_year")
-        movie_id = movie.get("movie_id")
-        tmdb_id = movie.get("tmdb_id")
-    
-        if not title or not year or not movie_id:
-            logger.warning(f"Skipping movie - missing data: {title}|{year}|{movie_id}")
+        movie_id = movie.get("movie_id")  # ← ADDED: get movie_id
+        
+        if not title or not year or not movie_id:  # ← CHANGED: check movie_id
+            logger.warning(f"Skipping movie - missing data: {title}|{year}|{movie_id}")  # <--- ADD THIS DEBUG
             continue
-    
-        # Primary: Try TMDb ID first
-        rating_key = None
-        if tmdb_id:
-            rating_key = library_map.get(f"tmdb:{tmdb_id}")
-            if rating_key:
-                logger.info(f"Found rating_key={rating_key} for '{title} ({year})' via TMDb ID: {tmdb_id}")
-    
-        # Fallback: Title|Year (unchanged)
-        if not rating_key:
-            key = f"{title.lower()}|{year}"
-            rating_key = library_map.get(key)
-            if rating_key:
-                logger.info(f"Found rating_key={rating_key} for '{title} ({year})' via title|year fallback")
-    
+        
+        key = f"{title.lower()}|{year}"
+        rating_key = library_map.get(key)
+        
         if not rating_key:
             logger.debug(f"No Plex rating key for '{title} ({year})'")
-            logger.error(f"❌ No Plex rating key for '{title} ({year})' - TMDb: {tmdb_id}, lookup key: '{key if 'key' in locals() else 'unknown'}'")
-            similar = [k for k in list(library_map.keys())[:20] if title.lower() in k]
+            logger.error(f"❌ No Plex rating key for '{title} ({year})' - lookup key: '{key}'")  # <--- ADD THIS DEBUG
+            # Show similar keys for debugging
+            similar = [k for k in list(library_map.keys())[:20] if title.lower() in k]  # <--- ADD THIS DEBUG
             if similar:
-                logger.debug(f"   Similar keys found: {similar}")
+                logger.debug(f"   Similar keys found: {similar}")  # <--- ADD THIS DEBUG
             continue
 
-        logger.info(f"Found rating_key={rating_key} for '{title} ({year})'")
+        logger.info(f"Found rating_key={rating_key} for '{title} ({year})'")  # <--- ADD THIS DEBUG
         
         # Use the new sync method with collection NAME (string tag)
         success = await plex_client.sync_collection(
@@ -178,24 +167,16 @@ async def _remove_plex_collections(
     for movie in flat_movies:
         title = movie.get("movie_title")
         year = movie.get("movie_year")
-        tmdb_id = movie.get("tmdb_id")
-    
+        
         if not title or not year:
             continue
-    
-        # Primary: Try TMDb ID first
-        rating_key = None
-        if tmdb_id:
-            rating_key = library_map.get(f"tmdb:{tmdb_id}")
-    
-        # Fallback: Title|Year (unchanged)
-        if not rating_key:
-            key = f"{title.lower()}|{year}"
-            rating_key = library_map.get(key)
-    
+        
+        key = f"{title.lower()}|{year}"
+        rating_key = library_map.get(key)
+        
         if not rating_key:
             continue
-    
+        
         success = await plex_client.sync_collection(
             item_rating_key=rating_key,
             collection_name=collection_name,
@@ -210,23 +191,13 @@ async def _build_plex_library_map(plex_client: PlexClient) -> dict:
     library_items = await plex_client.get_library_items()
     library_map = {}
     for item in library_items:
-        rating_key = item.get("rating_key")
-        if not rating_key:
-            continue
-            
-        # Primary key: TMDb ID
-        tmdb_id = item.get("tmdb_id")
-        if tmdb_id:
-            library_map[f"tmdb:{tmdb_id}"] = rating_key
-        
-        # Fallback key: Title|Year (unchanged)
         title = item.get("title")
         year = item.get("year")
-        if title and year:
+        rating_key = item.get("rating_key")
+        if title and year and rating_key:
             key = f"{title.lower()}|{year}"
             library_map[key] = rating_key
-    
-    logger.info(f"Built Plex library map with {len(library_map)} entries ({len([k for k in library_map if k.startswith('tmdb:')])} TMDb keys, {len([k for k in library_map if '|' in k])} title|year keys)")
+    logger.info(f"Built Plex library map with {len(library_map)} items (by title|year)")
     return library_map
 
 

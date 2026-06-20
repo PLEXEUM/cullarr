@@ -777,7 +777,7 @@ function startRunStatusPolling() {
         } catch (e) {
             console.error('Failed to poll run status:', e);
         }
-    }, 5000);
+    }, 2000);
 }
 
 async function cancelRun(runId) {
