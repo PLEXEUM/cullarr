@@ -730,6 +730,23 @@ async def run_score_cycle():
                     logger.info(f"Added {len(rating_key_map)} newly scheduled movies to Plex collection")
             else:
                 logger.debug("No newly scheduled movies to add to Plex collection")
+
+        # ===== STEP 8: Repair any scheduled movies missing from Plex collection =====
+        if plex_enabled and plex_client and plex_config and plex_config["collection_key"]:
+            all_scheduled = conn.execute(
+                "SELECT movie_id, movie_title, movie_year, tmdb_id FROM scored_movies_cache WHERE scheduled_for_deletion = 1"
+            ).fetchall()
+    
+            if all_scheduled and len(all_scheduled) > 0:
+                if not plex_library_map:
+                    plex_library_map = await _build_plex_library_map(plex_client)
+        
+                logger.info(f"REPAIR: Verifying {len(all_scheduled)} scheduled movies are in Plex collection...")
+                await _apply_plex_collections(
+                    plex_client,
+                    [dict(m) for m in all_scheduled],
+                    plex_library_map
+                )
         
         _active_run["current_movie"] = f"Score cycle complete: {scheduled_count} movies scheduled"
         _active_run["current"] = 100
