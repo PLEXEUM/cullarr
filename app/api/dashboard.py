@@ -333,6 +333,18 @@ async def manually_queue_movie(movie_id: int):
         movie_title = movie.get("title", "Unknown")
         movie_year = movie.get("year")
         tmdb_id = movie.get("tmdbId") or movie.get("tmdb_id")
+
+        # If still None, try to get from cache
+        if not tmdb_id:
+            existing = conn.execute(
+                "SELECT tmdb_id FROM scored_movies_cache WHERE movie_id = ?",
+                (movie_id,)
+            ).fetchone()
+            if existing and existing["tmdb_id"]:
+                tmdb_id = existing["tmdb_id"]
+                logger.info(f"MANUAL: Retrieved tmdb_id {tmdb_id} from cache for '{movie_title}'")
+
+        logger.info(f"MANUAL: Using tmdb_id '{tmdb_id}' for '{movie_title}'")
         
         # Check if this is a collection
         is_collection = False
@@ -590,6 +602,13 @@ async def manually_queue_collection(collection_id: int):
                             current_quality = file_quality_obj.get("name", "Unknown")
                 
                 tmdb_id = movie.get("tmdbId") or movie.get("tmdb_id")
+                if not tmdb_id:
+                    existing = conn.execute(
+                        "SELECT tmdb_id FROM scored_movies_cache WHERE movie_id = ?",
+                        (m_id,)
+                    ).fetchone()
+                    if existing and existing["tmdb_id"]:
+                     tmdb_id = existing["tmdb_id"]
                 
                 # Insert into cache
                 conn.execute("""
