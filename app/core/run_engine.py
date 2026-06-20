@@ -108,6 +108,11 @@ async def _apply_plex_collections(
         # Primary: Try TMDb ID first
         rating_key = None
         if tmdb_id:
+            logger.info(f"🔍 LOOKUP: Searching for TMDb key 'tmdb:{tmdb_id}' in library_map (type: {type(tmdb_id)})")
+            logger.info(f"🔍 LOOKUP: library_map has {len(library_map)} keys")
+            # Check if key exists (without actually getting it)
+            key_exists = f"tmdb:{tmdb_id}" in library_map
+            logger.info(f"🔍 LOOKUP: Key 'tmdb:{tmdb_id}' exists in map: {key_exists}")
             rating_key = library_map.get(f"tmdb:{tmdb_id}")
             if rating_key:
                 logger.info(f"Found rating_key={rating_key} for '{title} ({year})' via TMDb ID: {tmdb_id}")
@@ -218,6 +223,9 @@ async def _build_plex_library_map(plex_client: PlexClient) -> dict:
         tmdb_id = item.get("tmdb_id")
         if tmdb_id:
             library_map[f"tmdb:{tmdb_id}"] = rating_key
+            # Only log first 10 to avoid spam
+            if len(library_map) < 10:
+                logger.info(f"🔍 MAP: Added 'tmdb:{tmdb_id}' -> {rating_key}")
         
         # Fallback key: Title|Year (unchanged)
         title = item.get("title")
