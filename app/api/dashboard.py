@@ -483,7 +483,8 @@ async def manually_queue_movie(movie_id: int):
                         movies_for_plex.append({
                             "movie_id": m.get("id"),
                             "movie_title": m.get("title"),
-                            "movie_year": m.get("year")
+                            "movie_year": m.get("year"),
+                            "tmdb_id": m.get("tmdbId") or m.get("tmdb_id")  # ← ADD THIS
                         })
                     
                     await _apply_plex_collections(plex_client, movies_for_plex, library_map)
@@ -670,7 +671,8 @@ async def manually_queue_collection(collection_id: int):
                         movies_for_plex.append({
                             "movie_id": m.get("id"),
                             "movie_title": m.get("title"),
-                            "movie_year": m.get("year")
+                            "movie_year": m.get("year"),
+                            "tmdb_id": m.get("tmdbId") or m.get("tmdb_id")  # ← ADD THIS
                         })
                     
                     await _apply_plex_collections(plex_client, movies_for_plex, library_map)
