@@ -134,6 +134,11 @@ async def clear_all_scheduled_deletions():
                     if title and year and rating_key:
                         key = f"{title.lower()}|{year}"
                         library_map[key] = rating_key
+
+                    # ADD TMDb key
+                    tmdb_id = item.get("tmdb_id")
+                    if tmdb_id and rating_key:
+                        library_map[f"tmdb:{tmdb_id}"] = rating_key
                 
                 for movie in scheduled_movies:
                     lookup_key = f"{movie['movie_title'].lower()}|{movie['movie_year']}"
@@ -213,6 +218,11 @@ async def remove_from_queue(movie_id: int):
                         if title and year and rating_key:
                             key = f"{title.lower()}|{year}"
                             library_map[key] = rating_key
+
+                        # ADD TMDb key
+                        tmdb_id = item.get("tmdb_id")
+                        if tmdb_id and rating_key:
+                            library_map[f"tmdb:{tmdb_id}"] = rating_key
                     
                     for member in collection_members:
                         lookup_key = f"{member['movie_title'].lower()}|{member['movie_year']}"
@@ -262,6 +272,11 @@ async def remove_from_queue(movie_id: int):
                             if title and year and rating_key:
                                 key = f"{title.lower()}|{year}"
                                 library_map[key] = rating_key
+
+                            # ADD TMDb key
+                            tmdb_id = item.get("tmdb_id")
+                            if tmdb_id and rating_key:
+                                library_map[f"tmdb:{tmdb_id}"] = rating_key
                         
                         lookup_key = f"{movie_data['movie_title'].lower()}|{movie_data['movie_year']}"
                         rating_key = library_map.get(lookup_key)
@@ -476,6 +491,11 @@ async def manually_queue_movie(movie_id: int):
                         if title and year and rating_key:
                             key = f"{title.lower()}|{year}"
                             library_map[key] = rating_key
+
+                        # ADD TMDb key
+                        tmdb_id = item.get("tmdb_id")
+                        if tmdb_id and rating_key:
+                            library_map[f"tmdb:{tmdb_id}"] = rating_key
                     
                     # Prepare movie list for Plex collection function
                     movies_for_plex = []
@@ -665,6 +685,11 @@ async def manually_queue_collection(collection_id: int):
                         if title and year and rating_key:
                             key = f"{title.lower()}|{year}"
                             library_map[key] = rating_key
+
+                        # ADD TMDb key
+                        tmdb_id = item.get("tmdb_id")
+                        if tmdb_id and rating_key:
+                            library_map[f"tmdb:{tmdb_id}"] = rating_key
                     
                     movies_for_plex = []
                     for m in collection_movies:
@@ -748,6 +773,11 @@ async def remove_collection_by_id(collection_id: int):
                     if title and year and rating_key:
                         key = f"{title.lower()}|{year}"
                         library_map[key] = rating_key
+
+                    # ADD TMDb key
+                    tmdb_id = item.get("tmdb_id")
+                    if tmdb_id and rating_key:
+                        library_map[f"tmdb:{tmdb_id}"] = rating_key
                 
                 for member in collection_members:
                     lookup_key = f"{member['movie_title'].lower()}|{member['movie_year']}"
