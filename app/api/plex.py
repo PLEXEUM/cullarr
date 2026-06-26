@@ -147,3 +147,98 @@ async def get_plex_collections():
     except Exception as e:
         logger.error(f"Failed to fetch Plex collections: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch collections: {str(e)}")
+
+
+@router.post("/plex/collection/repair")
+async def repair_collection_key():
+    """
+    Verify the stored collection key is valid. If not, attempt to find the collection
+    by name and update the database with the correct key.
+    """
+    conn = get_connection()
+    try:
+        # Get current Plex config
+        config = conn.execute("SELECT url, api_key, collection_key FROM plex_config WHERE id = 1").fetchone()
+        
+        if not config or not config["url"] or not config["api_key"]:
+            raise HTTPException(status_code=400, detail="Plex not configured. Please authenticate first.")
+        
+        if not config["collection_key"]:
+            return {
+                "success": True,
+                "message": "No collection key stored. Please select a collection in Settings.",
+                "repaired": False,
+                "collection_key": None,
+                "collection_name": None
+            }
+        
+        from plexapi.server import PlexServer
+        from plexapi.exceptions import NotFound
+        
+        server = PlexServer(config["url"], config["api_key"])
+        stored_key = config["collection_key"]
+        collection_name = None
+        
+        # Try to fetch the collection by stored key
+        try:
+            collection_obj = server.fetchItem(int(stored_key))
+            collection_name = collection_obj.title
+            logger.info(f"Collection key {stored_key} is valid: '{collection_name}'")
+            return {
+                "success": True,
+                "message": f"Collection key is valid: '{collection_name}'",
+                "repaired": False,
+                "collection_key": stored_key,
+                "collection_name": collection_name
+            }
+        except NotFound:
+            logger.warning(f"Collection key {stored_key} not found in Plex. Attempting repair...")
+            
+            # Try to find the collection by name
+            # Use fallback name "Movies Leaving Soon"
+            fallback_name = "Movies Leaving Soon"
+            found_collection = None
+            
+            for section in server.library.sections():
+                if section.type == "movie":
+                    for collection in section.collections():
+                        if collection.title == fallback_name:
+                            found_collection = {
+                                "key": str(collection.ratingKey),
+                                "title": collection.title
+                            }
+                            break
+                    if found_collection:
+                        break
+            
+            if found_collection:
+                # Update the database with the new key
+                new_key = found_collection["key"]
+                conn.execute(
+                    "UPDATE plex_config SET collection_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
+                    (new_key,)
+                )
+                conn.commit()
+                logger.info(f"✅ Repaired collection key: Updated to '{new_key}' for collection '{found_collection['title']}'")
+                return {
+                    "success": True,
+                    "message": f"Repaired collection key: Found '{found_collection['title']}' with key {new_key}",
+                    "repaired": True,
+                    "collection_key": new_key,
+                    "collection_name": found_collection["title"]
+                }
+            else:
+                logger.warning(f"Collection '{fallback_name}' not found in Plex")
+                return {
+                    "success": True,
+                    "message": f"Collection '{fallback_name}' not found in Plex. Please select a collection in Settings.",
+                    "repaired": False,
+                    "collection_key": None,
+                    "collection_name": None
+                }
+                
+    except Exception as e:
+        logger.error(f"Failed to repair collection key: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to repair collection key: {str(e)}")
+    finally:
+        conn.close()

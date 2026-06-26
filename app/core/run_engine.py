@@ -62,6 +62,8 @@ async def _apply_plex_collections(
     """Add movies to Plex collection using Maintainerr-style tag writing."""
     
     rating_key_map = {}  # ← ADDED: store rating keys by movie_id
+    collection_name = None
+    collection_key = None
     
     conn = get_connection()
     try:
@@ -73,17 +75,50 @@ async def _apply_plex_collections(
         
         # Get collection name ONCE, outside the loop
         from plexapi.server import PlexServer
-        server = PlexServer(plex_config["url"], plex_client.api_key)
-        collection_obj = server.fetchItem(int(collection_key))
-        collection_name = collection_obj.title
-        logger.info(f"Using Plex collection: '{collection_name}'")
-        logger.info(f"Collection key: {collection_key}")
+        from plexapi.exceptions import NotFound
 
-        # Add this debug line (optional, helps troubleshooting)
-        logger.debug(f"Will add {len(movies)} movie entries to collection '{collection_name}'")
-        
+        server = PlexServer(plex_config["url"], plex_client.api_key)
+
+        # Try to fetch the collection by stored key
+        try:
+            collection_obj = server.fetchItem(int(collection_key))
+            collection_name = collection_obj.title
+            logger.info(f"Using Plex collection: '{collection_name}'")
+            logger.info(f"Collection key: {collection_key}")
+                except NotFound:
+            logger.warning(f"Collection key {collection_key} not found in Plex. Attempting repair...")
+            
+            # Use the new find_collection_by_name method from PlexClient
+            fallback_name = "Movies Leaving Soon"
+            found = await plex_client.find_collection_by_name(fallback_name)
+            
+            if found:
+                new_key = found["key"]
+                collection_name = found["title"]
+                logger.info(f"✅ Repaired collection key: Found '{collection_name}' with key {new_key}")
+                
+                # Update the database with the new key
+                conn.execute(
+                    "UPDATE plex_config SET collection_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
+                    (new_key,)
+                )
+                conn.commit()
+                collection_key = new_key
+                logger.info(f"✅ Database updated with new collection key: {new_key}")
+            else:
+                # No collection found - log warning and skip
+                logger.warning(f"❌ Collection '{fallback_name}' not found in Plex. Skipping collection operations.")
+                return rating_key_map
+        except Exception as e:
+            logger.error(f"❌ Failed to fetch collection: {e}")
+            return rating_key_map
+   
     finally:
         conn.close()
+
+    if not collection_key or not collection_name:
+        logger.warning("No valid Plex collection available")
+        return rating_key_map
     
     # Flatten collections into individual movies
     flat_movies = []
@@ -148,8 +183,8 @@ async def _apply_plex_collections(
             logger.warning(f"Failed to add '{title}' to Plex collection")
             logger.error(f"❌ Failed to add '{title}' to Plex collection")  # <--- Already there but ensure it's there
     
-    logger.info(f"Added {len(rating_key_map)} movies to Plex collection (out of {len(flat_movies)})")  # <--- ADD THIS DEBUG
-    return rating_key_map  # ← ADDED: return the map
+    logger.info(f"Added {len(rating_key_map)} movies to Plex collection (out of {len(flat_movies)})")
+    return rating_key_map
 
 
 async def _remove_plex_collections(
@@ -159,19 +194,47 @@ async def _remove_plex_collections(
 ) -> None:
     """Remove movies from Plex collection using Maintainerr-style tag removal."""
     
-    conn = get_connection()
-    try:
-        plex_config = conn.execute("SELECT collection_key, url FROM plex_config WHERE id = 1").fetchone()
-        collection_key = plex_config["collection_key"] if plex_config else None
-        if not collection_key:
-            return
+        conn = get_connection()
+        try:
+            plex_config = conn.execute("SELECT collection_key, url FROM plex_config WHERE id = 1").fetchone()
+            collection_key = plex_config["collection_key"] if plex_config else None
+            if not collection_key:
+                return
         
-        from plexapi.server import PlexServer
-        server = PlexServer(plex_config["url"], plex_client.api_key)
-        collection_obj = server.fetchItem(int(collection_key))
-        collection_name = collection_obj.title
-    finally:
-        conn.close()
+            from plexapi.server import PlexServer
+            from plexapi.exceptions import NotFound
+        
+            server = PlexServer(plex_config["url"], plex_client.api_key)
+        
+            # Try to fetch the collection by stored key
+            try:
+                collection_obj = server.fetchItem(int(collection_key))
+                collection_name = collection_obj.title
+            except NotFound:
+                logger.warning(f"Collection key {collection_key} not found in Plex. Attempting repair...")
+            
+                # Use the new find_collection_by_name method from PlexClient
+                fallback_name = "Movies Leaving Soon"
+                found = await plex_client.find_collection_by_name(fallback_name)
+            
+                if found:
+                    new_key = found["key"]
+                    collection_name = found["title"]
+                    logger.info(f"✅ Repaired collection key: Found '{collection_name}' with key {new_key}")
+                
+                    # Update the database with the new key
+                    conn.execute(
+                        "UPDATE plex_config SET collection_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
+                        (new_key,)
+                    )
+                    conn.commit()
+                    collection_key = new_key
+                    logger.info(f"✅ Database updated with new collection key: {new_key}")
+                else:
+                    logger.warning(f"❌ Collection '{fallback_name}' not found in Plex. Skipping removal.")
+                    return
+        finally:
+            conn.close()
     
     flat_movies = []
     for movie in movies:

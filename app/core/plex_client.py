@@ -59,6 +59,12 @@ class PlexClient:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
                 return response.text
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                logger.debug(f"Plex XML request returned 404: {endpoint}")
+            else:
+                logger.error(f"Plex XML request failed: {redact(str(e))}")
+            return None
         except Exception as e:
             logger.error(f"Plex XML request failed: {redact(str(e))}")
             return None
@@ -182,6 +188,22 @@ class PlexClient:
         for collection in collections:
             if collection["title"].lower() == name.lower():
                 return collection["ratingKey"]
+        return None
+
+    async def find_collection_by_name(self, name: str) -> Optional[Dict[str, str]]:
+        """
+        Find a collection by name and return its key and title.
+        Returns dict with 'key' and 'title' or None if not found.
+        """
+        collections = await self.get_collections()
+        for collection in collections:
+            if collection["title"].lower() == name.lower():
+                logger.info(f"Found collection '{collection['title']}' with key {collection['ratingKey']}")
+                return {
+                    "key": collection["ratingKey"],
+                    "title": collection["title"]
+                }
+        logger.warning(f"Collection '{name}' not found in Plex")
         return None
 
     async def get_library_items(self) -> List[Dict]:
