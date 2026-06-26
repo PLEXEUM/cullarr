@@ -389,6 +389,7 @@ async def run_score_cycle():
         # Score movies
         engine = ScoringEngine(conn)
         engine.reload_config()  # <-- ADD THIS LINE
+        logger.info(f"DEBUG: size_max_gb = {engine.size_max_gb}, age_max_days = {engine.age_max_days}")  # <-- ADD THIS LINE
         
         _active_run["current_movie"] = f"Scoring {len(movies)} movies..."
         _active_run["current"] = 30
