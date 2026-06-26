@@ -46,12 +46,12 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS scoring_weights (
             id INTEGER PRIMARY KEY CHECK (id = 1),
-            age_weight INTEGER DEFAULT 25,
-            size_weight INTEGER DEFAULT 25,
-            rating_weight INTEGER DEFAULT 15,
-            quality_weight INTEGER DEFAULT 15,
-            monitored_weight INTEGER DEFAULT 10,
-            watched_weight INTEGER DEFAULT 10,
+            age_weight INTEGER DEFAULT 20,
+            size_weight INTEGER DEFAULT 20,
+            rating_weight INTEGER DEFAULT 20,
+            quality_weight INTEGER DEFAULT 20,
+            monitored_weight INTEGER DEFAULT 0,
+            watched_weight INTEGER DEFAULT 20,
             age_max_days INTEGER DEFAULT 365,
             size_max_gb INTEGER DEFAULT 100,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -423,6 +423,22 @@ def migrate_db():
         print("Migration applied: fixed watched_weight from 25 to 20")
     except Exception:
         pass  # Column may not exist or already fixed
+
+    # Migration: Reset all weights to 20% each (balanced)
+    try:
+        cursor.execute("""
+            UPDATE scoring_weights 
+            SET age_weight = 20, 
+                size_weight = 20, 
+                rating_weight = 20, 
+                quality_weight = 20, 
+                watched_weight = 20,
+                monitored_weight = 0
+            WHERE id = 1
+        """)
+        print("Migration applied: reset weights to balanced (20% each)")
+    except Exception as e:
+        print(f"Migration note: could not reset weights: {e}")
 
     conn.commit()
     conn.close()
