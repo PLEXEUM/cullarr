@@ -310,12 +310,16 @@ class PlexClient:
             if item["tmdb_id"]:
                 rating_to_tmdb[item["rating_key"]] = str(item["tmdb_id"])
 
+        # Initialize with ALL movies from library (play_count = 0)
         result = {}
+        for rating_key, tmdb_id in rating_to_tmdb.items():
+            if tmdb_id:
+                result[tmdb_id] = {"play_count": 0, "last_viewed": 0}
+
+        # Update with actual play history
         for rating_key, data in history.items():
             tmdb_id = rating_to_tmdb.get(rating_key)
             if tmdb_id:
-                if tmdb_id not in result:
-                    result[tmdb_id] = {"play_count": 0, "last_viewed": 0}
                 result[tmdb_id]["play_count"] += data["play_count"]
                 if data["last_viewed"] > result[tmdb_id]["last_viewed"]:
                     result[tmdb_id]["last_viewed"] = data["last_viewed"]
