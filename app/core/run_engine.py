@@ -85,7 +85,7 @@ async def _apply_plex_collections(
             collection_name = collection_obj.title
             logger.info(f"Using Plex collection: '{collection_name}'")
             logger.info(f"Collection key: {collection_key}")
-                except NotFound:
+        except NotFound:
             logger.warning(f"Collection key {collection_key} not found in Plex. Attempting repair...")
             
             # Use the new find_collection_by_name method from PlexClient
