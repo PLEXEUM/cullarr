@@ -263,7 +263,18 @@ class ScoringEngine:
         watched_raw = 0.0
         play_count = 0
         watched_details = None
-        if plex_enabled and plex_play_counts:
+
+        # ← ADD THIS: Apply protection_days to Watched
+        if age_days < self.protection_days:
+            # Movie was added recently — Watched score = 0 (protected)
+            watched_raw = 0.0
+            watched_details = {
+                "score": 0.0,
+                "play_count": 0,
+                "protected": True,
+                "protection_days": self.protection_days
+            }
+        elif plex_enabled and plex_play_counts:
             tmdb_id = movie.get("tmdbId") or movie.get("tmdb_id")
             if tmdb_id and str(tmdb_id) in plex_play_counts:
                 play_count = plex_play_counts[str(tmdb_id)].get("play_count", 0)
@@ -312,7 +323,7 @@ class ScoringEngine:
             {
                 "name": "Watched", "key": "watched", "raw_score": watched_raw,
                 "weight": self.raw_weights["watched"], "contribution": watched_contrib,
-                "details": self._get_watched_details(play_count, watched_details, plex_enabled),
+                "details": self._get_watched_details(play_count, watched_details, plex_enabled, age_days, self.protection_days),
                 "skipped": not plex_enabled,
                 "skip_reason": "Plex not configured" if not plex_enabled else None,
             },
@@ -332,25 +343,29 @@ class ScoringEngine:
             "plex_play_count": play_count,
         }
     
-    def _get_watched_details(self, play_count: int, watched_details: dict, plex_enabled: bool) -> str:
+    def _get_watched_details(self, play_count: int, watched_details: dict, plex_enabled: bool, age_days: int, protection_days: int) -> str:
         """Generate human-readable watched factor details."""
         if not plex_enabled:
             return "Play count: N/A (Plex disabled)"
-        
+    
+        # Build the base details
         if play_count == 0:
-            return "Never watched"
-        
-        details = f"Play count: {play_count}"
-        
-        if watched_details and watched_details.get("days_since_last_watch") is not None:
-            days = watched_details["days_since_last_watch"]
-            if days < 1:
-                details += " | Last watched: Today"
-            elif days == 1:
-                details += " | Last watched: Yesterday"
-            else:
-                details += f" | Last watched: {int(days)} days ago"
-        
+            details = "Never watched"
+        else:
+            details = f"Play count: {play_count}"
+            if watched_details and watched_details.get("days_since_last_watch") is not None:
+                days = watched_details["days_since_last_watch"]
+                if days < 1:
+                    details += " | Last watched: Today"
+                elif days == 1:
+                    details += " | Last watched: Yesterday"
+                else:
+                    details += f" | Last watched: {int(days)} days ago"
+    
+        # Add protection info if within protection window
+        if age_days < protection_days:
+            details += f" (protected: {protection_days} days)"
+    
         return details
 
     def normalize_scores(self, scored_movies: List[Dict]) -> List[Dict]:
