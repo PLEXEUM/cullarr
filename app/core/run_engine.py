@@ -194,7 +194,7 @@ async def _remove_plex_collections(
 ) -> None:
     """Remove movies from Plex collection using Maintainerr-style tag removal."""
     
-        conn = get_connection()
+    conn = get_connection()
         try:
             plex_config = conn.execute("SELECT collection_key, url FROM plex_config WHERE id = 1").fetchone()
             collection_key = plex_config["collection_key"] if plex_config else None
