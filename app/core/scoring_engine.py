@@ -259,22 +259,14 @@ class ScoringEngine:
         # monitored = movie.get("monitored", True)
         # monitored_raw = 0.0
 
+        # ===== FIX: Check Plex watch history FIRST, then apply protection =====
         # Watched status (from Plex) — includes play count AND recency
         watched_raw = 0.0
         play_count = 0
         watched_details = None
 
-        # ← ADD THIS: Apply protection_days to Watched
-        if age_days < self.protection_days:
-            # Movie was added recently — Watched score = 0 (protected)
-            watched_raw = 0.0
-            watched_details = {
-                "score": 0.0,
-                "play_count": 0,
-                "protected": True,
-                "protection_days": self.protection_days
-            }
-        elif plex_enabled and plex_play_counts:
+        # Step 1: Get Plex watch history if available (regardless of protection status)
+        if plex_enabled and plex_play_counts:
             tmdb_id = movie.get("tmdbId") or movie.get("tmdb_id")
             if tmdb_id and str(tmdb_id) in plex_play_counts:
                 play_count = plex_play_counts[str(tmdb_id)].get("play_count", 0)
@@ -282,6 +274,27 @@ class ScoringEngine:
                 watched_result = get_watched_score(play_count, last_viewed)
                 watched_raw = watched_result["score"]
                 watched_details = watched_result
+                # Store the actual play count for display
+                watched_details["play_count"] = play_count
+
+        # Step 2: Apply protection (overrides watched_raw but preserves details for display)
+        if age_days < self.protection_days:
+            # Movie was added recently — Watched score = 0 (protected)
+            watched_raw = 0.0
+            if watched_details is None:
+                # No Plex history, create basic protected details
+                watched_details = {
+                    "score": 0.0,
+                    "play_count": 0,
+                    "protected": True,
+                    "protection_days": self.protection_days
+                }
+            else:
+                # Add protection info to existing details
+                watched_details["protected"] = True
+                watched_details["protection_days"] = self.protection_days
+                watched_details["score"] = 0.0  # Override score to 0 for protection
+        # ===== END FIX =====
 
         # Calculate contributions (monitored removed)
         age_contrib = age_raw * self.age_weight
@@ -350,7 +363,11 @@ class ScoringEngine:
     
         # Build the base details
         if play_count == 0:
-            details = "Never watched"
+            # Check if we have protected status but no play count
+            if watched_details and watched_details.get("protected"):
+                details = "Never watched"
+            else:
+                details = "Never watched"
         else:
             details = f"Play count: {play_count}"
             if watched_details and watched_details.get("days_since_last_watch") is not None:
