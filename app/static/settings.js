@@ -349,12 +349,7 @@ function renderPreview(movie) {
     
     const factors = movie.factors || [];
     const factorHtml = factors.map(f => {
-        let displayPct;
-        if (f.name === 'Size') {
-            displayPct = (f.raw_score * 100).toFixed(1);
-        } else {
-            displayPct = (f.contribution * 100).toFixed(1);
-        }
+        const displayPct = (f.contribution * 100).toFixed(1);
         const barWidth = Math.min(Math.round(f.raw_score * 100), 100);
         return `
             <div class="mb-2">
