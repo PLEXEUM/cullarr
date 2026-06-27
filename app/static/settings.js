@@ -349,7 +349,12 @@ function renderPreview(movie) {
     
     const factors = movie.factors || [];
     const factorHtml = factors.map(f => {
-        const pct = (f.contribution * 100).toFixed(1);
+        let displayPct;
+        if (f.name === 'Size') {
+            displayPct = (f.raw_score * 100).toFixed(1);
+        } else {
+            displayPct = (f.contribution * 100).toFixed(1);
+        }
         const barWidth = Math.min(Math.round(f.raw_score * 100), 100);
         return `
             <div class="mb-2">
@@ -361,7 +366,7 @@ function renderPreview(movie) {
                     <div class="flex-1 rounded-full h-1.5" style="background: var(--border-color)">
                         <div class="h-1.5 rounded-full" style="width: ${barWidth}%; background: var(--accent);"></div>
                     </div>
-                    <span class="text-xs font-mono w-10 text-right" style="color: var(--text-secondary);">${pct}%</span>
+                    <span class="text-xs font-mono w-10 text-right" style="color: var(--text-secondary);">${displayPct}%</span>
                 </div>
             </div>
         `;
