@@ -62,26 +62,20 @@ def get_watched_score(play_count: int, last_viewed_timestamp: int = 0) -> float:
     Combined watch score based on play count AND recency.
     Returns score from 0.0 (protected) to 1.0 (deletable).
     
-    Play count scoring: 0 plays=1.0, 1=0.8, 2=0.6, 3=0.4, 4=0.2, 5+=0.0
+    Play count scoring: 0 plays=1.0, 1=0.9, 2=0.8, 3=0.7, 4=0.6, 5=0.5, 6=0.4, 7=0.3, 8=0.2, 9=0.1, 10+=0.0
     Recency scoring: days since last watch determines score
     Final score = min(play_count_score, recency_score) [lower is better/protected]
     """
     import time
     from datetime import datetime
     
-    # Calculate play count score
+    # Calculate play count score (10+ plays = fully protected)
     if play_count <= 0:
         play_score = 1.0
-    elif play_count == 1:
-        play_score = 0.8
-    elif play_count == 2:
-        play_score = 0.6
-    elif play_count == 3:
-        play_score = 0.4
-    elif play_count == 4:
-        play_score = 0.2
-    else:
+    elif play_count >= 10:
         play_score = 0.0
+    else:
+        play_score = 1.0 - (play_count / 10)
     
     # Calculate recency score (continuous linear scale)
     recency_score = 1.0  # Default to deletable if no data
