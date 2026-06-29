@@ -418,11 +418,21 @@ async def get_score_preview(weights_data: dict):
         }
         
         try:
-            engine.age_weight = weights_data.get("age_weight", 25) / 100.0
-            engine.size_weight = weights_data.get("size_weight", 25) / 100.0
-            engine.rating_weight = weights_data.get("rating_weight", 15) / 100.0
-            engine.quality_weight = weights_data.get("quality_weight", 15) / 100.0
-            engine.watched_weight = weights_data.get("watched_weight", 10) / 100.0
+            # Get raw slider values from request
+            age_raw = weights_data.get("age_raw", 5)
+            size_raw = weights_data.get("size_raw", 5)
+            rating_raw = weights_data.get("rating_raw", 5)
+            quality_raw = weights_data.get("quality_raw", 5)
+            watched_raw = weights_data.get("watched_raw", 5)
+
+            # Calculate weights using competing logic (same as Score Run)
+            total_raw = age_raw + size_raw + rating_raw + quality_raw + watched_raw
+
+            engine.age_weight = (age_raw / total_raw)
+            engine.size_weight = (size_raw / total_raw)
+            engine.rating_weight = (rating_raw / total_raw)
+            engine.quality_weight = (quality_raw / total_raw)
+            engine.watched_weight = (watched_raw / total_raw)
             
             # Load advanced settings from database (same as Score Run)
             advanced = conn.execute("SELECT age_max_days, size_max_gb FROM scoring_weights WHERE id = 1").fetchone()
