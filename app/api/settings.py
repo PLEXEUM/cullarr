@@ -423,8 +423,16 @@ async def get_score_preview(weights_data: dict):
             engine.rating_weight = weights_data.get("rating_weight", 15) / 100.0
             engine.quality_weight = weights_data.get("quality_weight", 15) / 100.0
             engine.watched_weight = weights_data.get("watched_weight", 10) / 100.0
-            engine.age_max_days = weights_data.get("age_max_days", 365)
-            engine.size_max_gb = weights_data.get("size_max_gb", 100)
+            
+            # Load advanced settings from database (same as Score Run)
+            advanced = conn.execute("SELECT age_max_days, size_max_gb FROM scoring_weights WHERE id = 1").fetchone()
+            if advanced:
+                engine.age_max_days = advanced["age_max_days"]
+                engine.size_max_gb = advanced["size_max_gb"]
+            else:
+                engine.age_max_days = weights_data.get("age_max_days", 365)
+                engine.size_max_gb = weights_data.get("size_max_gb", 100)
+
             engine.monitored_weight = 0.0
             
             result = engine.calculate_movie_score(preview_movie, plex_play_counts, plex_enabled)
