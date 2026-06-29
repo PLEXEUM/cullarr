@@ -129,6 +129,13 @@ async def save_scoring_weights(data: ScoringWeightsInput):
         else:
             watched_weight += diff
 
+    # Enforce 20% cap on all weights (no single factor can exceed 20%)
+    age_weight = min(20, age_weight)
+    size_weight = min(20, size_weight)
+    rating_weight = min(20, rating_weight)
+    quality_weight = min(20, quality_weight)
+    watched_weight = min(20, watched_weight)
+
     conn = get_connection()
     try:
         conn.execute(
@@ -428,11 +435,11 @@ async def get_score_preview(weights_data: dict):
             # Calculate weights using competing logic (same as Score Run)
             total_raw = age_raw + size_raw + rating_raw + quality_raw + watched_raw
 
-            engine.age_weight = (age_raw / total_raw)
-            engine.size_weight = (size_raw / total_raw)
-            engine.rating_weight = (rating_raw / total_raw)
-            engine.quality_weight = (quality_raw / total_raw)
-            engine.watched_weight = (watched_raw / total_raw)
+            engine.age_weight = min(0.20, (age_raw / total_raw))
+            engine.size_weight = min(0.20, (size_raw / total_raw))
+            engine.rating_weight = min(0.20, (rating_raw / total_raw))
+            engine.quality_weight = min(0.20, (quality_raw / total_raw))
+            engine.watched_weight = min(0.20, (watched_raw / total_raw))
             
             # Load advanced settings from database (same as Score Run)
             advanced = conn.execute("SELECT age_max_days, size_max_gb FROM scoring_weights WHERE id = 1").fetchone()
