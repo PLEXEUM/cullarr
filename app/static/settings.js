@@ -287,29 +287,14 @@ async function updateLivePreview() {
         
         // Calculate percentages for preview API
         const weights = {
-            age_weight: Math.round((ageRaw / totalRaw) * 100),
-            size_weight: Math.round((sizeRaw / totalRaw) * 100),
-            rating_weight: Math.round((ratingRaw / totalRaw) * 100),
-            quality_weight: Math.round((qualityRaw / totalRaw) * 100),
-            watched_weight: Math.round((watchedRaw / totalRaw) * 100),
+            age_raw: parseInt(ageSlider.value),
+            size_raw: parseInt(sizeSlider.value),
+            rating_raw: parseInt(ratingSlider.value),
+            quality_raw: parseInt(qualitySlider.value),
+            watched_raw: parseInt(watchedSlider.value),
             age_max_days: parseInt(ageMaxDays.value),
             size_max_gb: parseFloat(sizeMaxGb.value)
         };
-        
-        // Fix rounding to ensure total = 100
-        let total = weights.age_weight + weights.size_weight + weights.rating_weight + weights.quality_weight + weights.watched_weight;
-        if (total !== 100) {
-            let diff = 100 - total;
-            const weightsList = [
-                { key: 'age_weight', val: weights.age_weight },
-                { key: 'size_weight', val: weights.size_weight },
-                { key: 'rating_weight', val: weights.rating_weight },
-                { key: 'quality_weight', val: weights.quality_weight },
-                { key: 'watched_weight', val: weights.watched_weight }
-            ];
-            const largest = weightsList.reduce((a, b) => a.val > b.val ? a : b);
-            weights[largest.key] += diff;
-        }
         
         const res = await fetch('/api/settings/preview', {
             method: 'POST',
