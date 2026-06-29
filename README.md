@@ -223,4 +223,4 @@ MIT License
 
 ---
 
-**Cullarr** – Keep your library fresh, automatically. 🗑️
+**Cullarr** – Keep your library fresh, automatically! 🗑️

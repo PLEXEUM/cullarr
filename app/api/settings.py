@@ -52,7 +52,7 @@ async def get_scoring_weights() -> dict:
             "size_max_gb": 100,
         }
 
-    # Return only the fields the frontend actually uses
+    # Return only the fields the frontend actually uses - Updated
     return {
         "age_raw": weights["age_raw"] if weights["age_raw"] is not None else 5,
         "size_raw": weights["size_raw"] if weights["size_raw"] is not None else 5,

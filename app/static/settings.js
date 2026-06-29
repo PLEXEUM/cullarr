@@ -1,4 +1,4 @@
-// Settings page JavaScript for Cullarr
+// Settings page JavaScript for Cullarr - Updated
 
 // DOM Elements
 let ageSlider, sizeSlider, ratingSlider, qualitySlider, watchedSlider;
