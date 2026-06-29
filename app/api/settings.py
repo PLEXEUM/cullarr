@@ -52,7 +52,7 @@ async def get_scoring_weights() -> dict:
             "size_max_gb": 100,
         }
 
-    # Return only the fields the frontend actually uses - Updated
+    # Return only the fields the frontend actually uses
     return {
         "age_raw": weights["age_raw"] if weights["age_raw"] is not None else 5,
         "size_raw": weights["size_raw"] if weights["size_raw"] is not None else 5,
@@ -89,20 +89,45 @@ async def save_scoring_weights(data: ScoringWeightsInput):
     if data.size_max_gb < 1 or data.size_max_gb > 10000:
         raise HTTPException(status_code=400, detail="Size max GB must be between 1 and 10000")
 
-    # Calculate weights independently (slider 1-10 maps to 2-20%)
-    # Slider 10 = 20%, Slider 1 = 2%
-    age_weight = int(round((data.age_raw / 10) * 20))
-    size_weight = int(round((data.size_raw / 10) * 20))
-    rating_weight = int(round((data.rating_raw / 10) * 20))
-    quality_weight = int(round((data.quality_raw / 10) * 20))
-    watched_weight = int(round((data.watched_raw / 10) * 20))
-
-    # Ensure minimum 1% and maximum 20%
-    age_weight = max(1, min(20, age_weight))
-    size_weight = max(1, min(20, size_weight))
-    rating_weight = max(1, min(20, rating_weight))
-    quality_weight = max(1, min(20, quality_weight))
-    watched_weight = max(1, min(20, watched_weight))
+    # Calculate percentages from raw values (sum = 100)
+    total_raw = data.age_raw + data.size_raw + data.rating_raw + data.quality_raw + data.watched_raw
+    
+    age_percent = (data.age_raw / total_raw) * 100
+    size_percent = (data.size_raw / total_raw) * 100
+    rating_percent = (data.rating_raw / total_raw) * 100
+    quality_percent = (data.quality_raw / total_raw) * 100
+    watched_percent = (data.watched_raw / total_raw) * 100
+    
+    # Round to nearest integer and fix any rounding errors
+    age_weight = round(age_percent)
+    size_weight = round(size_percent)
+    rating_weight = round(rating_percent)
+    quality_weight = round(quality_percent)
+    watched_weight = round(watched_percent)
+    
+    # Ensure sum is exactly 100
+    weight_sum = age_weight + size_weight + rating_weight + quality_weight + watched_weight
+    if weight_sum != 100:
+        # Find the largest weight and adjust
+        weights = [
+            ("age_weight", age_weight),
+            ("size_weight", size_weight),
+            ("rating_weight", rating_weight),
+            ("quality_weight", quality_weight),
+            ("watched_weight", watched_weight),
+        ]
+        largest = max(weights, key=lambda x: x[1])
+        diff = 100 - weight_sum
+        if largest[0] == "age_weight":
+            age_weight += diff
+        elif largest[0] == "size_weight":
+            size_weight += diff
+        elif largest[0] == "rating_weight":
+            rating_weight += diff
+        elif largest[0] == "quality_weight":
+            quality_weight += diff
+        else:
+            watched_weight += diff
 
     conn = get_connection()
     try:
@@ -393,28 +418,13 @@ async def get_score_preview(weights_data: dict):
         }
         
         try:
-            # Map slider values (1-10) to weights (2-20%)
-            age_raw = weights_data.get("age_raw", 5)
-            size_raw = weights_data.get("size_raw", 5)
-            rating_raw = weights_data.get("rating_raw", 5)
-            quality_raw = weights_data.get("quality_raw", 5)
-            watched_raw = weights_data.get("watched_raw", 5)
-
-            engine.age_weight = (age_raw / 10) * 0.20
-            engine.size_weight = (size_raw / 10) * 0.20
-            engine.rating_weight = (rating_raw / 10) * 0.20
-            engine.quality_weight = (quality_raw / 10) * 0.20
-            engine.watched_weight = (watched_raw / 10) * 0.20
-
-            # Load advanced settings from database (same as Score Run)
-            advanced = conn.execute("SELECT age_max_days, size_max_gb FROM scoring_weights WHERE id = 1").fetchone()
-            if advanced:
-                engine.age_max_days = advanced["age_max_days"]
-                engine.size_max_gb = advanced["size_max_gb"]
-            else:
-                engine.age_max_days = weights_data.get("age_max_days", 365)
-                engine.size_max_gb = weights_data.get("size_max_gb", 100)
-
+            engine.age_weight = weights_data.get("age_weight", 25) / 100.0
+            engine.size_weight = weights_data.get("size_weight", 25) / 100.0
+            engine.rating_weight = weights_data.get("rating_weight", 15) / 100.0
+            engine.quality_weight = weights_data.get("quality_weight", 15) / 100.0
+            engine.watched_weight = weights_data.get("watched_weight", 10) / 100.0
+            engine.age_max_days = weights_data.get("age_max_days", 365)
+            engine.size_max_gb = weights_data.get("size_max_gb", 100)
             engine.monitored_weight = 0.0
             
             result = engine.calculate_movie_score(preview_movie, plex_play_counts, plex_enabled)

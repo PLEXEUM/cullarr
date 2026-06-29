@@ -98,15 +98,15 @@ Access the web interface at `http://localhost:7447`
 
 ### Scoring Factors
 
-| Factor | Slider Range | Default | Max Contribution | Description |
-|--------|-------------|---------|------------------|-------------|
-| **Age** | 1-10 | 5 | 2-20% | Movies added longer ago score higher |
-| **Size** | 1-10 | 5 | 2-20% | Larger files score higher |
-| **Rating** | 1-10 | 5 | 2-20% | Lower TMDB ratings score higher |
-| **Quality** | 1-10 | 5 | 2-20% | SD/DVD before 1080p before 4K |
-| **Watched** | 1-10 | 5 | 2-20% | Unwatched movies score highest |
+| Factor | Higher Weight = | Default | Description |
+|--------|----------------|---------|-------------|
+| **Age** | Delete older movies | 17% | Movies added longer ago score higher |
+| **Size** | Delete larger files | 17% | Larger file sizes score higher |
+| **Rating** | Delete lower-rated movies | 17% | Lower TMDB ratings score higher |
+| **Quality** | Delete lower quality | 17% | SD/DVD before 1080p before 4K |
+| **Watched** | Delete unwatched movies | 32% | Unwatched movies score highest |
 
-> **Note:** Each slider is independent. Slider 10 = 20% weight, Slider 1 = 2% weight. The total weight is the sum of all sliders, which can be less than 100% if not all sliders are at maximum.
+> **Note:** Monitored status no longer affects scoring
 
 ### Cron Examples
 
@@ -223,4 +223,4 @@ MIT License
 
 ---
 
-**Cullarr** – Keep your library fresh, automatically! 🗑️
+**Cullarr** – Keep your library fresh, automatically. 🗑️
