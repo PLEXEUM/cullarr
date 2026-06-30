@@ -45,8 +45,10 @@ class RadarrClient:
             "Content-Type": "application/json"
         }
         # Instance-level retry config with environment override support
-        self.retry_attempts = _get_retry_attempts()
-        self.retry_delay_base = _get_retry_delay_base()
+        from app.config import settings
+
+        self.retry_attempts = settings.radarr_retry_attempts
+        self.retry_delay_base = settings.radarr_retry_delay_base
 
     async def _request(self, method: str, endpoint: str, timeout: int = 60, **kwargs) -> dict:
         """Make an HTTP request with retry logic."""

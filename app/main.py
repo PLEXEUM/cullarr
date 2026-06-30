@@ -2,7 +2,6 @@ from fastapi import FastAPI, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-import os
 import asyncio 
 import uuid 
 from datetime import datetime
@@ -14,10 +13,14 @@ from app.core.scheduler import start_scheduler, shutdown_scheduler
 from app.utils.logger import setup_logger, get_logger
 
 # Setup logging
-log_level = os.getenv("LOG_LEVEL", "INFO")
-log_max_size_mb = int(os.getenv("LOG_MAX_SIZE_MB", "10"))
-log_max_files = int(os.getenv("MAX_LOG_FILES", "5"))
-setup_logger(log_level=log_level, log_max_size_mb=log_max_size_mb, log_max_files=log_max_files)
+from app.config import settings
+
+# Setup logging
+setup_logger(
+    log_level=settings.log_level,
+    log_max_size_mb=settings.log_max_size_mb,
+    log_max_files=settings.max_log_files
+)
 
 logger = get_logger()
 

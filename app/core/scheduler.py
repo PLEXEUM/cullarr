@@ -41,19 +41,9 @@ def job_listener(event):
 scheduler.add_listener(job_listener, EVENT_JOB_ERROR | EVENT_JOB_MISSED)
 
 # Timeout for runs (configurable via environment variable, default 2 hours)
-def _get_run_timeout() -> int:
-    """Get run timeout from environment with fallback."""
-    try:
-        value = int(os.getenv("RUN_TIMEOUT_SECONDS", "7200"))
-        if value < 60:
-            logger.warning(f"RUN_TIMEOUT_SECONDS must be at least 60 seconds, got {value}, using default 7200")
-            return 7200
-        return value
-    except ValueError:
-        logger.warning("Invalid RUN_TIMEOUT_SECONDS value, using default 7200")
-        return 7200
+from app.config import settings
 
-RUN_TIMEOUT_SECONDS = _get_run_timeout()
+RUN_TIMEOUT_SECONDS = settings.run_timeout_seconds
 logger.info(f"Run timeout set to {RUN_TIMEOUT_SECONDS} seconds ({RUN_TIMEOUT_SECONDS/3600:.1f} hours)")
 
 
