@@ -277,7 +277,15 @@ async function updateLivePreview() {
     
     try {
         // Get raw 1-10 values
-        // Get raw 1-10 values and send directly to backend
+        const ageRaw = parseInt(ageSlider.value);
+        const sizeRaw = parseInt(sizeSlider.value);
+        const ratingRaw = parseInt(ratingSlider.value);
+        const qualityRaw = parseInt(qualitySlider.value);
+        const watchedRaw = parseInt(watchedSlider.value);
+        
+        const totalRaw = ageRaw + sizeRaw + ratingRaw + qualityRaw + watchedRaw;
+        
+        // Calculate percentages for preview API
         const weights = {
             age_raw: parseInt(ageSlider.value),
             size_raw: parseInt(sizeSlider.value),
