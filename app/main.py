@@ -13,13 +13,13 @@ from app.core.scheduler import start_scheduler, shutdown_scheduler
 from app.utils.logger import setup_logger, get_logger
 
 # Setup logging
-from app.config import settings
+from app.config import settings as app_settings
 
-# Setup logging
+# Then use app_settings for logging config
 setup_logger(
-    log_level=settings.log_level,
-    log_max_size_mb=settings.log_max_size_mb,
-    log_max_files=settings.max_log_files
+    log_level=app_settings.log_level,
+    log_max_size_mb=app_settings.log_max_size_mb,
+    log_max_files=app_settings.max_log_files
 )
 
 logger = get_logger()
