@@ -1,4 +1,5 @@
 import asyncio
+import os
 from datetime import datetime
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -18,7 +19,6 @@ def get_local_timezone():
     except Exception:
         pass
     
-    import os
     tz_name = os.environ.get('TZ', 'UTC')
     try:
         return pytz.timezone(tz_name)
@@ -40,8 +40,21 @@ def job_listener(event):
 
 scheduler.add_listener(job_listener, EVENT_JOB_ERROR | EVENT_JOB_MISSED)
 
-# Timeout for runs (2 hours)
-RUN_TIMEOUT_SECONDS = 7200
+# Timeout for runs (configurable via environment variable, default 2 hours)
+def _get_run_timeout() -> int:
+    """Get run timeout from environment with fallback."""
+    try:
+        value = int(os.getenv("RUN_TIMEOUT_SECONDS", "7200"))
+        if value < 60:
+            logger.warning(f"RUN_TIMEOUT_SECONDS must be at least 60 seconds, got {value}, using default 7200")
+            return 7200
+        return value
+    except ValueError:
+        logger.warning("Invalid RUN_TIMEOUT_SECONDS value, using default 7200")
+        return 7200
+
+RUN_TIMEOUT_SECONDS = _get_run_timeout()
+logger.info(f"Run timeout set to {RUN_TIMEOUT_SECONDS} seconds ({RUN_TIMEOUT_SECONDS/3600:.1f} hours)")
 
 
 async def execute_score_run():
@@ -56,12 +69,12 @@ async def execute_score_run():
         logger.info("Cullarr disabled, skipping scheduled score run")
         return
 
-    logger.info("Starting scheduled score run")
+    logger.info(f"Starting scheduled score run (timeout: {RUN_TIMEOUT_SECONDS}s)")
     try:
         await asyncio.wait_for(run_score_cycle(), timeout=RUN_TIMEOUT_SECONDS)
         logger.info("Scheduled score run completed")
     except asyncio.TimeoutError:
-        logger.error("Score run timed out after 2 hours")
+        logger.error(f"Score run timed out after {RUN_TIMEOUT_SECONDS} seconds")
     except Exception as e:
         logger.error(f"Scheduled score run failed: {e}")
 
@@ -78,12 +91,12 @@ async def execute_cull_run():
         logger.info("Cullarr disabled, skipping scheduled cull run")
         return
 
-    logger.info("Starting scheduled cull run")
+    logger.info(f"Starting scheduled cull run (timeout: {RUN_TIMEOUT_SECONDS}s)")
     try:
         await asyncio.wait_for(run_cull_cycle(), timeout=RUN_TIMEOUT_SECONDS)
         logger.info("Scheduled cull run completed")
     except asyncio.TimeoutError:
-        logger.error("Cull run timed out after 2 hours")
+        logger.error(f"Cull run timed out after {RUN_TIMEOUT_SECONDS} seconds")
     except Exception as e:
         logger.error(f"Scheduled cull run failed: {e}")
 

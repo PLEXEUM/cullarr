@@ -1,5 +1,6 @@
 import httpx
 import asyncio
+import os
 from typing import Optional
 from datetime import datetime
 from app.utils.logger import get_logger
@@ -8,8 +9,32 @@ from app.utils.redactor import redact
 logger = get_logger()
 
 # Retry configuration (can be adjusted via environment variables in the future)
-DEFAULT_RETRY_ATTEMPTS = 3
-DEFAULT_RETRY_DELAY_BASE = 2  # seconds, exponential backoff: 2, 4, 8...
+def _get_retry_attempts() -> int:
+    """Get retry attempts from environment with fallback."""
+    try:
+        value = int(os.getenv("RADARR_RETRY_ATTEMPTS", "3"))
+        if value < 1:
+            logger.warning(f"RADARR_RETRY_ATTEMPTS must be >= 1, got {value}, using default 3")
+            return 3
+        return value
+    except ValueError:
+        logger.warning("Invalid RADARR_RETRY_ATTEMPTS value, using default 3")
+        return 3
+
+def _get_retry_delay_base() -> int:
+    """Get retry delay base from environment with fallback."""
+    try:
+        value = int(os.getenv("RADARR_RETRY_DELAY_BASE", "2"))
+        if value < 1:
+            logger.warning(f"RADARR_RETRY_DELAY_BASE must be >= 1, got {value}, using default 2")
+            return 2
+        return value
+    except ValueError:
+        logger.warning("Invalid RADARR_RETRY_DELAY_BASE value, using default 2")
+        return 2
+
+DEFAULT_RETRY_ATTEMPTS = _get_retry_attempts()
+DEFAULT_RETRY_DELAY_BASE = _get_retry_delay_base()
 
 class RadarrClient:
     def __init__(self, base_url: str, api_key: str):
@@ -19,41 +44,45 @@ class RadarrClient:
             "X-Api-Key": api_key,
             "Content-Type": "application/json"
         }
+        # Instance-level retry config with environment override support
+        self.retry_attempts = _get_retry_attempts()
+        self.retry_delay_base = _get_retry_delay_base()
 
     async def _request(self, method: str, endpoint: str, timeout: int = 60, **kwargs) -> dict:
         """Make an HTTP request with retry logic."""
         url = f"{self.base_url}/api/v3/{endpoint}"
         last_error = None
 
-        for attempt in range(1, DEFAULT_RETRY_ATTEMPTS + 1):
+        for attempt in range(1, self.retry_attempts + 1):
             try:
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     response = await client.request(method, url, headers=self.headers, **kwargs)
-                
+            
                     # For DELETE operations, 404 means the resource is already gone = success
                     if method == "DELETE" and response.status_code == 404:
                         logger.info(f"Radarr DELETE: Resource already gone (404) - treating as success")
                         return {"success": True, "already_deleted": True}
-                
+            
                     # For GET operations, 404 means resource not found = return empty dict
                     if method == "GET" and response.status_code == 404:
                         logger.debug(f"Radarr GET: Resource not found (404) - returning empty dict")
                         return {}
-                
+            
                     response.raise_for_status()
                     return response.json() if response.text else {}
             except httpx.HTTPStatusError as e:
                 last_error = e
-                logger.warning(f"Radarr API error (attempt {attempt}/{DEFAULT_RETRY_ATTEMPTS}): {e.response.status_code}")
+                logger.warning(f"Radarr API error (attempt {attempt}/{self.retry_attempts}): {e.response.status_code}")
             except httpx.RequestError as e:
                 last_error = e
-                logger.warning(f"Radarr connection error (attempt {attempt}/{DEFAULT_RETRY_ATTEMPTS}): {redact(str(e))}")
+                logger.warning(f"Radarr connection error (attempt {attempt}/{self.retry_attempts}): {redact(str(e))}")
 
-            if attempt < DEFAULT_RETRY_ATTEMPTS:
-                wait = DEFAULT_RETRY_DELAY_BASE ** attempt
+            if attempt < self.retry_attempts:
+                wait = self.retry_delay_base ** attempt
+                logger.debug(f"Radarr request retry {attempt}/{self.retry_attempts} waiting {wait}s")
                 await asyncio.sleep(wait)
 
-        raise ConnectionError(f"Radarr API unreachable after 3 attempts")
+        raise ConnectionError(f"Radarr API unreachable after {self.retry_attempts} attempts")
 
     async def test_connection(self) -> tuple[bool, str]:
         """Test connection to Radarr."""

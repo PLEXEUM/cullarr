@@ -3,9 +3,10 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import os
-import asyncio  # Add this for shutdown
-import uuid  # Add this for request ID middleware
-from starlette.middleware.base import BaseHTTPMiddleware  # Add this
+import asyncio 
+import uuid 
+from datetime import datetime
+from starlette.middleware.base import BaseHTTPMiddleware  
 
 from app.api import radarr, plex, plex_oauth, settings, run, dashboard, logs
 from app.db.database import init_db, migrate_db
@@ -75,11 +76,83 @@ async def logs_page(request: Request):
     """Logs page"""
     return templates.TemplateResponse("logs.html", {"request": request})
 
-# ===== ADD HEALTH CHECK ENDPOINT HERE (after frontend routes) =====
+# ===== HEALTH CHECK ENDPOINT =====
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for Docker/Kubernetes."""
-    return {"status": "healthy", "service": "cullarr"}
+    """Health check endpoint for Docker/Kubernetes with dependency status."""
+    from app.core.scheduler import scheduler
+    from app.core.radarr_client import RadarrClient
+    from app.core.plex_client import PlexClient
+    from app.db.database import get_connection
+    
+    status = {
+        "status": "healthy",
+        "service": "cullarr",
+        "timestamp": datetime.now().isoformat(),
+        "dependencies": {
+            "database": "unknown",
+            "radarr": "unknown",
+            "plex": "unknown",
+            "scheduler": "unknown"
+        }
+    }
+    
+    # Check database
+    try:
+        conn = get_connection()
+        conn.execute("SELECT 1").fetchone()
+        conn.close()
+        status["dependencies"]["database"] = "connected"
+    except Exception as e:
+        status["dependencies"]["database"] = f"error: {str(e)}"
+        status["status"] = "degraded"
+    
+    # Check Radarr
+    conn = get_connection()
+    try:
+        radarr_config = conn.execute("SELECT url, api_key FROM radarr_config WHERE id = 1").fetchone()
+        if radarr_config and radarr_config["url"] and radarr_config["api_key"]:
+            client = RadarrClient(radarr_config["url"], radarr_config["api_key"])
+            ok, _ = await client.test_connection()
+            status["dependencies"]["radarr"] = "connected" if ok else "error"
+            if not ok:
+                status["status"] = "degraded"
+        else:
+            status["dependencies"]["radarr"] = "not configured"
+    except Exception as e:
+        status["dependencies"]["radarr"] = f"error: {str(e)}"
+        status["status"] = "degraded"
+    finally:
+        conn.close()
+    
+    # Check Plex
+    conn = get_connection()
+    try:
+        plex_config = conn.execute("SELECT url, api_key, enabled FROM plex_config WHERE id = 1").fetchone()
+        if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"]:
+            client = PlexClient(plex_config["url"], plex_config["api_key"])
+            ok, _ = await client.test_connection()
+            status["dependencies"]["plex"] = "connected" if ok else "error"
+            if not ok:
+                status["status"] = "degraded"
+        else:
+            status["dependencies"]["plex"] = "not configured"
+    except Exception as e:
+        status["dependencies"]["plex"] = f"error: {str(e)}"
+        status["status"] = "degraded"
+    finally:
+        conn.close()
+    
+    # Check scheduler
+    try:
+        status["dependencies"]["scheduler"] = "running" if scheduler.running else "stopped"
+        if not scheduler.running:
+            status["status"] = "degraded"
+    except Exception as e:
+        status["dependencies"]["scheduler"] = f"error: {str(e)}"
+        status["status"] = "degraded"
+    
+    return status
 # ===== END HEALTH CHECK =====
 
 # Startup and shutdown events

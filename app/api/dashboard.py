@@ -7,15 +7,61 @@ from app.utils.logger import get_logger
 from plexapi.server import PlexServer
 import json
 import asyncio
-from typing import Optional
+import httpx
+from typing import Optional, List, Dict, Any
 from app.core.run_engine import _apply_plex_collections
 
 router = APIRouter()
 logger = get_logger()
 
+# ===== ADD THIS HELPER FUNCTION HERE =====
+async def _remove_movies_from_plex_collection(movies: List[Dict], plex_config: Dict) -> None:
+    """
+    Remove a list of movies from the Plex collection.
+    
+    Args:
+        movies: List of dicts with 'movie_title', 'movie_year' keys
+        plex_config: Plex configuration from database
+    """
+    if not (plex_config and plex_config.get("enabled") and plex_config.get("url") and 
+            plex_config.get("api_key") and plex_config.get("collection_key")):
+        return
+    
+    try:
+        plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
+        collection_key = plex_config["collection_key"]
+        
+        # Build library map
+        library_items = await plex_client.get_library_items()
+        library_map = {}
+        for item in library_items:
+            rating_key = item.get("rating_key")
+            if not rating_key:
+                continue
+            
+            title = item.get("title")
+            year = item.get("year")
+            if title and year:
+                library_map[f"{title.lower()}|{year}"] = rating_key
+            
+            tmdb_id = item.get("tmdb_id")
+            if tmdb_id:
+                library_map[f"tmdb:{tmdb_id}"] = rating_key
+        
+        # Remove each movie
+        for movie in movies:
+            lookup_key = f"{movie['movie_title'].lower()}|{movie['movie_year']}"
+            rating_key = library_map.get(lookup_key)
+            if rating_key:
+                await plex_client.remove_from_collection(collection_key, rating_key)
+                logger.debug(f"Removed '{movie['movie_title']}' from Plex collection")
+                
+    except Exception as e:
+        logger.warning(f"Failed to remove movies from Plex collection: {e}")
+# ===== END HELPER FUNCTION =====
 
 @router.get("/dashboard/queue-status")
-async def get_queue_status():
+async def get_queue_status() -> Dict[str, Any]:
     """Get queue status and system health."""
     conn = get_connection()
     try:
@@ -57,8 +103,15 @@ async def get_queue_status():
                 client = RadarrClient(radarr_config["url"], radarr_config["api_key"])
                 ok, _ = await client.test_connection()
                 radarr_status = "connected" if ok else "error"
-            except Exception:
+            except httpx.TimeoutException:
                 radarr_status = "error"
+                logger.warning("Radarr connection timeout")
+            except httpx.HTTPStatusError as e:
+                radarr_status = "error"
+                logger.warning(f"Radarr HTTP error: {e.response.status_code}")
+            except Exception as e:
+                radarr_status = "error"
+                logger.error(f"Unexpected Radarr error: {e}")
 
         # Plex status
         plex_config = conn.execute("SELECT url, api_key, enabled FROM plex_config WHERE id = 1").fetchone()
@@ -100,7 +153,7 @@ async def get_queue_status():
 
 
 @router.delete("/dashboard/scheduled/clear")
-async def clear_all_scheduled_deletions():
+async def clear_all_scheduled_deletions() -> Dict[str, Any]:
     """
     Clear all scheduled deletions (remove all movies from the queue).
     """
@@ -121,33 +174,7 @@ async def clear_all_scheduled_deletions():
         
         # Remove from Plex collection if configured
         if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_key"] and scheduled_movies:
-            try:
-                plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
-                collection_key = plex_config["collection_key"]
-                
-                library_items = await plex_client.get_library_items()
-                library_map = {}
-                for item in library_items:
-                    title = item.get("title")
-                    year = item.get("year")
-                    rating_key = item.get("rating_key")
-                    if title and year and rating_key:
-                        key = f"{title.lower()}|{year}"
-                        library_map[key] = rating_key
-
-                    # ADD TMDb key
-                    tmdb_id = item.get("tmdb_id")
-                    if tmdb_id and rating_key:
-                        library_map[f"tmdb:{tmdb_id}"] = rating_key
-                
-                for movie in scheduled_movies:
-                    lookup_key = f"{movie['movie_title'].lower()}|{movie['movie_year']}"
-                    rating_key = library_map.get(lookup_key)
-                    if rating_key:
-                        await plex_client.remove_from_collection(collection_key, rating_key)
-                        logger.info(f"Removed '{movie['movie_title']}' from Plex collection")
-            except Exception as plex_error:
-                logger.warning(f"Failed to remove from Plex collection during clear all: {plex_error}")
+            await _remove_movies_from_plex_collection(scheduled_movies, dict(plex_config))
         
         # Clear all scheduled flags
         logger.info("Executing database clear...")  # ← ADD THIS
@@ -169,7 +196,7 @@ async def clear_all_scheduled_deletions():
 
 
 @router.delete("/dashboard/scheduled/{movie_id}")
-async def remove_from_queue(movie_id: int):
+async def remove_from_queue(movie_id: int) -> Dict[str, Any]:
     """
     Remove a movie from the scheduled deletions queue by clearing its scheduled flag.
     If the movie is part of a collection, removes all members of that collection.
@@ -204,34 +231,7 @@ async def remove_from_queue(movie_id: int):
             
             # Remove from Plex collection if configured
             if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_key"]:
-                try:
-                    plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
-                    collection_key = plex_config["collection_key"]
-                    
-                    # Get library map for title|year lookups
-                    library_items = await plex_client.get_library_items()
-                    library_map = {}
-                    for item in library_items:
-                        title = item.get("title")
-                        year = item.get("year")
-                        rating_key = item.get("rating_key")
-                        if title and year and rating_key:
-                            key = f"{title.lower()}|{year}"
-                            library_map[key] = rating_key
-
-                        # ADD TMDb key
-                        tmdb_id = item.get("tmdb_id")
-                        if tmdb_id and rating_key:
-                            library_map[f"tmdb:{tmdb_id}"] = rating_key
-                    
-                    for member in collection_members:
-                        lookup_key = f"{member['movie_title'].lower()}|{member['movie_year']}"
-                        rating_key = library_map.get(lookup_key)
-                        if rating_key:
-                            await plex_client.remove_from_collection(collection_key, rating_key)
-                            logger.info(f"Removed '{member['movie_title']}' from Plex collection")
-                except Exception as plex_error:
-                    logger.warning(f"Failed to remove from Plex collection: {plex_error}")
+                await _remove_movies_from_plex_collection([dict(m) for m in collection_members], dict(plex_config))
             
             # Clear scheduled flags for all collection members
             conn.execute(
@@ -251,40 +251,12 @@ async def remove_from_queue(movie_id: int):
             # Remove single movie
             # Remove from Plex collection if configured
             if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_key"]:
-                try:
-                    # Get movie details
-                    movie_data = conn.execute(
-                        "SELECT movie_title, movie_year FROM scored_movies_cache WHERE movie_id = ?",
-                        (movie_id,)
-                    ).fetchone()
-                    
-                    if movie_data:
-                        plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
-                        collection_key = plex_config["collection_key"]
-                        
-                        # Get library map
-                        library_items = await plex_client.get_library_items()
-                        library_map = {}
-                        for item in library_items:
-                            title = item.get("title")
-                            year = item.get("year")
-                            rating_key = item.get("rating_key")
-                            if title and year and rating_key:
-                                key = f"{title.lower()}|{year}"
-                                library_map[key] = rating_key
-
-                            # ADD TMDb key
-                            tmdb_id = item.get("tmdb_id")
-                            if tmdb_id and rating_key:
-                                library_map[f"tmdb:{tmdb_id}"] = rating_key
-                        
-                        lookup_key = f"{movie_data['movie_title'].lower()}|{movie_data['movie_year']}"
-                        rating_key = library_map.get(lookup_key)
-                        if rating_key:
-                            await plex_client.remove_from_collection(collection_key, rating_key)
-                            logger.info(f"Removed '{movie_data['movie_title']}' from Plex collection")
-                except Exception as plex_error:
-                    logger.warning(f"Failed to remove from Plex collection: {plex_error}")
+                movie_data = conn.execute(
+                    "SELECT movie_title, movie_year FROM scored_movies_cache WHERE movie_id = ?",
+                    (movie_id,)
+                ).fetchone()
+                if movie_data:
+                    await _remove_movies_from_plex_collection([dict(movie_data)], dict(plex_config))
             
             # Clear scheduled flag and manual flag
             conn.execute(
@@ -308,7 +280,7 @@ async def remove_from_queue(movie_id: int):
 
 
 @router.post("/dashboard/scheduled/{movie_id}")
-async def manually_queue_movie(movie_id: int):
+async def manually_queue_movie(movie_id: int) -> Dict[str, Any]:
     """
     Manually add a movie to scheduled deletions queue.
     Bypasses all protection rules - user override.
@@ -536,7 +508,7 @@ async def manually_queue_movie(movie_id: int):
             
 
 @router.post("/dashboard/scheduled/collection/{collection_id}")
-async def manually_queue_collection(collection_id: int):
+async def manually_queue_collection(collection_id: int) -> Dict[str, Any]:
     """
     Manually add an entire collection to scheduled deletions queue.
     Bypasses all protection rules - user override.
@@ -725,7 +697,7 @@ async def manually_queue_collection(collection_id: int):
 
 
 @router.delete("/dashboard/scheduled/collection/{collection_id}")
-async def remove_collection_by_id(collection_id: int):
+async def remove_collection_by_id(collection_id: int) -> Dict[str, Any]:
     """
     Remove an entire collection from scheduled deletions by collection ID.
     """
@@ -760,33 +732,7 @@ async def remove_collection_by_id(collection_id: int):
         
         # Remove from Plex collection if configured
         if plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"] and plex_config["collection_key"]:
-            try:
-                plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
-                collection_key = plex_config["collection_key"]
-                
-                library_items = await plex_client.get_library_items()
-                library_map = {}
-                for item in library_items:
-                    title = item.get("title")
-                    year = item.get("year")
-                    rating_key = item.get("rating_key")
-                    if title and year and rating_key:
-                        key = f"{title.lower()}|{year}"
-                        library_map[key] = rating_key
-
-                    # ADD TMDb key
-                    tmdb_id = item.get("tmdb_id")
-                    if tmdb_id and rating_key:
-                        library_map[f"tmdb:{tmdb_id}"] = rating_key
-                
-                for member in collection_members:
-                    lookup_key = f"{member['movie_title'].lower()}|{member['movie_year']}"
-                    rating_key = library_map.get(lookup_key)
-                    if rating_key:
-                        await plex_client.remove_from_collection(collection_key, rating_key)
-                        logger.info(f"Removed '{member['movie_title']}' from Plex collection")
-            except Exception as plex_error:
-                logger.warning(f"Failed to remove from Plex collection: {plex_error}")
+            await _remove_movies_from_plex_collection([dict(m) for m in collection_members], dict(plex_config))
         
         # Clear scheduled flags for all collection members
         conn.execute(
@@ -819,11 +765,11 @@ async def get_score_queue(
     sort_by: str = Query("score"),
     sort_order: str = Query("desc"),
     scheduled: Optional[int] = Query(None, ge=0, le=1, description="0=unscheduled, 1=scheduled, omit=all")
-) -> dict:
+) -> Dict[str, Any]:
     return await _get_score_queue_from_cache(page, per_page, sort_by, sort_order, scheduled)
 
 
-async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "score", sort_order: str = "desc", scheduled: Optional[int] = None) -> dict:
+async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "score", sort_order: str = "desc", scheduled: Optional[int] = None) -> Dict[str, Any]:
     """
     Read paginated score queue from cache, excluding already-scheduled movies.
     Collections are grouped into single entries for display.
@@ -863,7 +809,9 @@ async def _get_score_queue_from_cache(page: int, per_page: int, sort_by: str = "
         item = dict(row)
         try:
             item["factors"] = json.loads(item["factors"]) if item["factors"] else []
-        except Exception:
+        except json.JSONDecodeError:
+            item["factors"] = []
+        except TypeError:
             item["factors"] = []
 
         if item["is_collection"] and item["collection_name"]:
@@ -990,7 +938,7 @@ async def search_score_queue(
     per_page: int = Query(20, ge=1, le=100),
     sort_by: str = Query("score", description="Sort column: score, title, year, age, size, rating, quality, watched"),
     sort_order: str = Query("desc", description="Sort order: asc or desc"),
-):
+) -> Dict[str, Any]:
     """
     Search scored movies cache by title or collection name.
     Returns paginated results matching the search query.
@@ -1179,15 +1127,19 @@ async def search_score_queue(
             "search_query": q,
         }
         
+    except httpx.TimeoutException as e:
+        logger.error(f"Search timeout: {e}")
+        raise HTTPException(status_code=504, detail="Search timed out")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Search HTTP error: {e}")
+        raise HTTPException(status_code=e.response.status_code, detail="Search failed")
     except Exception as e:
         logger.error(f"Search score queue failed: {e}")
         raise HTTPException(status_code=500, detail="Search failed")
-    finally:
-        conn.close()
 
 
 @router.get("/dashboard/failed")
-async def get_failed_deletions():
+async def get_failed_deletions() -> Dict[str, Any]:
     """Get deletion history (both successful and failed deletions)."""
     conn = get_connection()
     try:
@@ -1204,7 +1156,7 @@ async def get_failed_deletions():
 
 
 @router.delete("/dashboard/failed")
-async def clear_failed_deletions():
+async def clear_failed_deletions() -> Dict[str, Any]:
     """Clear all deletion history records (both successful and failed)."""
     conn = get_connection()
     try:
@@ -1220,7 +1172,7 @@ async def clear_failed_deletions():
 
 
 @router.get("/dashboard/settings-summary")
-async def get_settings_summary():
+async def get_settings_summary() -> Dict[str, Any]:
     """Get summary of current settings for dashboard display."""
     conn = get_connection()
     try:

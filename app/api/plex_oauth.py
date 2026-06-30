@@ -81,6 +81,7 @@ async def create_pin():
             auth_url = f"https://app.plex.tv/auth#?clientID={CLIENT_ID}&code={data['code']}"
 
             logger.info(f"Created Plex PIN: {data['code']} (ID: {data['id']})")
+            logger.debug(f"Active pins after creation: {len(active_pins)}")
             return {"id": data["id"], "code": data["code"], "auth_url": auth_url}
     except Exception as e:
         logger.error(f"Failed to create Plex PIN: {e}")
@@ -117,7 +118,8 @@ async def check_pin(pin_id: int):
 
             if data.get("authToken"):
                 auth_token = data["authToken"]
-                
+                logger.info(f"Plex OAuth: Auth token received for PIN {pin_id}")
+    
                 # Save token to database immediately
                 conn = get_connection()
                 try:
@@ -127,9 +129,10 @@ async def check_pin(pin_id: int):
                         WHERE id = 1
                     """, (auth_token,))
                     conn.commit()
-                    logger.info("Plex OAuth token saved to database")
+                    logger.info(f"Plex OAuth token saved to database for PIN {pin_id}")
+                    logger.debug(f"Active pins before cleanup: {len(active_pins)}")
                 except Exception as db_error:
-                    logger.error(f"Failed to save Plex token to database: {db_error}")
+                    logger.error(f"Failed to save Plex token to database for PIN {pin_id}: {db_error}")
                     # Don't clear pin if DB save fails - let user retry
                     return {"authenticated": False, "error": "Failed to save token to database"}
                 finally:
@@ -137,7 +140,8 @@ async def check_pin(pin_id: int):
 
                 # Clear sensitive data from memory BEFORE marking as authenticated
                 pin_data["auth_token"] = auth_token  # Store for immediate return but will be cleared
-                
+                logger.debug(f"PIN {pin_id} authenticated, token stored in memory temporarily")
+    
                 # Return success with redacted token (client doesn't need the actual token)
                 return {"authenticated": True, "auth_token": "[REDACTED]"}
             else:
@@ -145,10 +149,13 @@ async def check_pin(pin_id: int):
                 created_at = pin_data.get("created_at")
                 if created_at and (datetime.now() - created_at) > timedelta(minutes=PIN_TIMEOUT_MINUTES):
                     # Clean up expired pin
+                    logger.info(f"Plex PIN {pin_id} expired (created {created_at})")
                     pin_data["auth_token"] = None
                     del active_pins[pin_id]
+                    logger.debug(f"Active pins after expiry cleanup: {len(active_pins)}")
                     return {"authenticated": False, "error": "PIN expired"}
-                
+    
+                logger.debug(f"Plex PIN {pin_id} still pending (check #{pin_data.get('check_count', 0)})")
                 return {"authenticated": False}
 
     except Exception as e:
@@ -164,12 +171,18 @@ async def clear_pin(pin_id: int):
         if "auth_token" in active_pins[pin_id]:
             active_pins[pin_id]["auth_token"] = None
         del active_pins[pin_id]
-        logger.debug(f"PIN {pin_id} cleared from memory")
+        logger.info(f"Plex PIN {pin_id} cleared from memory")
+        logger.debug(f"Active pins after clearance: {len(active_pins)}")
+    else:
+        logger.debug(f"Plex PIN {pin_id} not found in memory (already cleared)")
     return {"success": True}
 
 
 @router.post("/plex/oauth/cleanup")
 async def force_cleanup_pins():
     """Force cleanup of all expired pins (admin endpoint, optional)."""
+    before = len(active_pins)
     _cleanup_stale_pins()
-    return {"success": True, "active_pins_count": len(active_pins)}
+    after = len(active_pins)
+    logger.info(f"Force cleanup: removed {before - after} pins, {after} active remain")
+    return {"success": True, "active_pins_count": after}

@@ -46,7 +46,7 @@ docker run -d \
   -e LOG_LEVEL=INFO \
   -e LOG_MAX_SIZE_MB=10 \
   -e MAX_LOG_FILES=5 \
-  yourusername/cullarr:latest
+  plexeum/cullarr:latest
 ```
 
 ### Docker Compose
@@ -56,7 +56,7 @@ version: '3.8'
 
 services:
   cullarr:
-    image: yourusername/cullarr:latest
+    image: plexeum/cullarr:latest
     container_name: cullarr
     restart: unless-stopped
     ports:
@@ -73,7 +73,7 @@ services:
 ### Manual Installation
 
 ```bash
-git clone https://github.com/yourusername/cullarr.git
+git clone https://github.com/PLEXEUM/cullarr.git
 cd cullarr
 python -m venv venv
 source venv/bin/activate
@@ -163,7 +163,7 @@ Set **"Deletions per day"** to spread deletions across multiple days.
 ## 🛠️ Development
 
 ```bash
-git clone https://github.com/yourusername/cullarr.git
+git clone https://github.com/PLEXEUM/cullarr.git
 cd cullarr
 python -m venv venv
 source venv/bin/activate
@@ -195,6 +195,9 @@ cullarr/
 | `LOG_LEVEL` | `INFO` | DEBUG, INFO, WARNING, ERROR |
 | `LOG_MAX_SIZE_MB` | `10` | Max log file size in MB |
 | `MAX_LOG_FILES` | `5` | Number of rotated logs to keep |
+| `RADARR_RETRY_ATTEMPTS` | `3` | Number of retry attempts for Radarr API calls |
+| `RADARR_RETRY_DELAY_BASE` | `2` | Base delay in seconds (exponential backoff) |
+| `RUN_TIMEOUT_SECONDS` | `7200` | Max runtime for score/cull jobs (seconds) |
 
 ---
 

@@ -376,6 +376,36 @@ def migrate_db():
     except Exception:
         pass  # Index may already exist
 
+    # ===== NEW INDEXES START HERE =====
+    # Migration: Add index on collection_id + scheduled_for_deletion for faster queue status
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_scored_movies_cache_collection_scheduled ON scored_movies_cache(collection_id, scheduled_for_deletion)")
+        print("Migration applied: added index on scored_movies_cache(collection_id, scheduled_for_deletion)")
+    except Exception:
+        pass  # Index may already exist
+
+    # Migration: Add index on scheduled_date for faster scheduled queries
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_scored_movies_cache_scheduled_date ON scored_movies_cache(scheduled_date)")
+        print("Migration applied: added index on scored_movies_cache(scheduled_date)")
+    except Exception:
+        pass  # Index may already exist
+
+    # Migration: Add index on deletion_history deleted_at for faster history queries
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_deletion_history_deleted_at ON deletion_history(deleted_at DESC)")
+        print("Migration applied: added index on deletion_history(deleted_at)")
+    except Exception:
+        pass  # Index may already exist
+
+    # Migration: Add index on settings enabled for faster lookups
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_settings_enabled ON settings(enabled)")
+        print("Migration applied: added index on settings(enabled)")
+    except Exception:
+        pass  # Index may already exist
+    # ===== NEW INDEXES END HERE =====
+
     # Migration: Drop old scheduled_deletions table (cleanup)
     try:
         cursor.execute("DROP TABLE IF EXISTS scheduled_deletions")
