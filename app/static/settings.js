@@ -335,7 +335,7 @@ function renderPreview(movie) {
     const factors = movie.factors || [];
     const factorHtml = factors.map(f => {
         const displayPct = (f.contribution * 100).toFixed(1);
-        const barWidth = Math.min(Math.round(f.raw_score * 100), 100);
+        const barWidth = Math.min(Math.round((f.contribution / 0.20) * 100), 100);
         return `
             <div class="mb-2">
                 <div class="flex justify-between text-xs mb-1">
