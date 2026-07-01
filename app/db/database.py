@@ -42,7 +42,7 @@ def init_db():
         )
     """)
 
-    # Scoring weights (6 factors, sum to 100%)
+    # Scoring weights (5 factors, sum to 100%)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS scoring_weights (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -85,7 +85,6 @@ def init_db():
             tmdb_rating REAL,
             size_gb REAL,
             quality TEXT,
-            monitored BOOLEAN,
             score REAL,
             score_factors TEXT,
             scheduled_date DATETIME,
@@ -137,7 +136,6 @@ def init_db():
             size_gb REAL,
             age_days INTEGER,
             quality TEXT,
-            monitored BOOLEAN,
             normalized_score REAL,
             raw_score REAL,
             factors TEXT,
@@ -188,7 +186,6 @@ def migrate_db():
             size_gb REAL,
             age_days INTEGER,
             quality TEXT,
-            monitored BOOLEAN,
             normalized_score REAL,
             raw_score REAL,
             factors TEXT,
@@ -256,13 +253,6 @@ def migrate_db():
             print(f"Migration applied: added {column} to scoring_weights")
         except Exception:
             pass  # Column already exists, safe to ignore
-    
-    # Migration: Set monitored_weight = 0 (Issue #2)
-    try:
-        cursor.execute("UPDATE scoring_weights SET monitored_weight = 0 WHERE id = 1")
-        print("Migration applied: set monitored_weight = 0")
-    except Exception:
-        pass  # Table may not exist yet
 
     # Migration: Backfill any NULL raw values from existing percentages (Issue #1)
     try:
@@ -404,13 +394,6 @@ def migrate_db():
     except Exception:
         pass  # Index may already exist
     # ===== NEW INDEXES END HERE =====
-
-    # Migration: Drop old scheduled_deletions table (cleanup)
-    try:
-        cursor.execute("DROP TABLE IF EXISTS scheduled_deletions")
-        print("Migration applied: dropped old scheduled_deletions table")
-    except Exception as e:
-        print(f"Migration note: could not drop scheduled_deletions: {e}") 
 
     # Migration: Add missing columns to deletion_history
     for column, column_type in [
