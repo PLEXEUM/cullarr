@@ -50,7 +50,6 @@ def init_db():
             size_weight INTEGER DEFAULT 20,
             rating_weight INTEGER DEFAULT 20,
             quality_weight INTEGER DEFAULT 20,
-            monitored_weight INTEGER DEFAULT 0,
             watched_weight INTEGER DEFAULT 20,
             age_max_days INTEGER DEFAULT 365,
             size_max_gb INTEGER DEFAULT 100,
@@ -446,29 +445,6 @@ def migrate_db():
         print("Migration applied: added individual score columns")
     except Exception:
         pass
-
-    # Fix incorrect watched_weight (should be 20, not 25)
-    try:
-        cursor.execute("UPDATE scoring_weights SET watched_weight = 20 WHERE watched_weight = 25")
-        print("Migration applied: fixed watched_weight from 25 to 20")
-    except Exception:
-        pass  # Column may not exist or already fixed
-
-    # Migration: Reset all weights to 20% each (balanced)
-    try:
-        cursor.execute("""
-            UPDATE scoring_weights 
-            SET age_weight = 20, 
-                size_weight = 20, 
-                rating_weight = 20, 
-                quality_weight = 20, 
-                watched_weight = 20,
-                monitored_weight = 0
-            WHERE id = 1
-        """)
-        print("Migration applied: reset weights to balanced (20% each)")
-    except Exception as e:
-        print(f"Migration note: could not reset weights: {e}")
 
     conn.commit()
     conn.close()
