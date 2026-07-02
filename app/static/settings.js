@@ -49,9 +49,9 @@ async function populateCollectionDropdown() {
     const collections = await loadPlexCollections();
     
     if (collections.length === 0) {
-        select.innerHTML = '<option value="">No collections found in Plex</option>';
-        select.disabled = true;
-        return;
+    select.innerHTML = '<option value="">-- Default: "Movies Leaving Soon" --</option>';
+    select.disabled = false;  // ← Also enable it so user can still select default
+    return;
     }
     
     // Get currently saved collection key
@@ -64,42 +64,7 @@ async function populateCollectionDropdown() {
         console.error('Failed to load saved collection key:', e);
     }
     
-    let html = '<option value="">-- Select a collection --</option>';
-    for (const collection of collections) {
-        const selected = savedKey === collection.key ? 'selected' : '';
-        html += `<option value="${collection.key}" ${selected}>${escapeHtml(collection.title)}</option>`;
-    }
-    select.innerHTML = html;
-    select.disabled = false;
-}
-
-// Called when user clicks dropdown
-async function onCollectionDropdownClick() {
-    if (collectionsLoaded) return;
-    const select = document.getElementById('plex-collection-select');
-    if (!select) return;
-    
-    select.innerHTML = '<option value="">Loading collections...</option>';
-    select.disabled = true;
-    
-    const collections = await loadPlexCollections();
-    
-    if (collections.length === 0) {
-        select.innerHTML = '<option value="">No collections found in Plex</option>';
-        select.disabled = true;
-        return;
-    }
-    
-    let savedKey = null;
-    try {
-        const configRes = await fetch('/api/plex/config');
-        const config = await configRes.json();
-        savedKey = config.collection_key;
-    } catch (e) {
-        console.error('Failed to load saved collection key:', e);
-    }
-    
-    let html = '<option value="">-- Select a collection --</option>';
+    let html = '<option value="">-- Default: "Movies Leaving Soon" --</option>';
     for (const collection of collections) {
         const selected = savedKey === collection.key ? 'selected' : '';
         html += `<option value="${collection.key}" ${selected}>${escapeHtml(collection.title)}</option>`;
@@ -131,7 +96,11 @@ async function saveCollectionSelection() {
         });
         
         if (res.ok) {
-            showToast(selectedKey ? 'Collection selection saved' : 'Collection cleared (Cullarr will not add to any collection)', 'success');
+            if (selectedKey) {
+                showToast('Collection selection saved! Cullarr will use this collection.', 'success');
+            } else {
+                showToast('Using default collection "Movies Leaving Soon" - Cullarr will auto-create it if needed.', 'success');
+            }
         } else {
             const err = await res.json();
             showToast(err.detail || 'Failed to save collection', 'error');
@@ -502,7 +471,22 @@ async function loadPlexConfig() {
         
         const select = document.getElementById('plex-collection-select');
         if (select && data.collection_key) {
+            // Try to select the saved collection
             select.value = data.collection_key;
+            
+            // If the saved collection isn't in the dropdown, show default
+            if (!select.value) {
+                select.value = '';
+                // Show a note that default will be used
+                const statusDiv = document.getElementById('plex-status');
+                if (data.collection_key) {
+                    // Collection exists but not in dropdown? This shouldn't happen, but handle it
+                    statusDiv.innerHTML += ' <span style="color: var(--warning);">(Collection will be auto-created)</span>';
+                }
+            }
+        } else {
+            // No collection saved - default will be used
+            select.value = '';
         }
         
     } catch (e) {

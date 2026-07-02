@@ -69,48 +69,51 @@ async def _apply_plex_collections(
     try:
         plex_config = conn.execute("SELECT collection_key, url FROM plex_config WHERE id = 1").fetchone()
         collection_key = plex_config["collection_key"] if plex_config else None
+        collection_name = None
+    
+        # If no collection key saved, use default name
         if not collection_key:
-            logger.warning("No Plex collection selected")
-            return rating_key_map  # ← CHANGED: return empty dict
+            collection_name = "Movies Leaving Soon"
+            logger.info(f"No Plex collection selected, using default: '{collection_name}'")
+        else:
+            # Try to use saved collection
+            from plexapi.server import PlexServer
+            from plexapi.exceptions import NotFound
         
-        # Get collection name ONCE, outside the loop
-        from plexapi.server import PlexServer
-        from plexapi.exceptions import NotFound
-
-        server = PlexServer(plex_config["url"], plex_client.api_key)
-
-        # Try to fetch the collection by stored key
-        try:
-            collection_obj = server.fetchItem(int(collection_key))
-            collection_name = collection_obj.title
-            logger.info(f"Using Plex collection: '{collection_name}'")
-            logger.info(f"Collection key: {collection_key}")
-        except NotFound:
-            logger.warning(f"Collection key {collection_key} not found in Plex. Attempting repair...")
-            
-            # Use the new find_collection_by_name method from PlexClient
-            fallback_name = "Movies Leaving Soon"
-            found = await plex_client.find_collection_by_name(fallback_name)
-            
-            if found:
-                new_key = found["key"]
-                collection_name = found["title"]
-                logger.info(f"✅ Repaired collection key: Found '{collection_name}' with key {new_key}")
-                
-                # Update the database with the new key
+            server = PlexServer(plex_config["url"], plex_client.api_key)
+        
+            try:
+                collection_obj = server.fetchItem(int(collection_key))
+                collection_name = collection_obj.title
+                logger.info(f"Using Plex collection: '{collection_name}' (key: {collection_key})")
+            except NotFound:
+                logger.warning(f"Collection key {collection_key} not found. Will attempt to find or create by name.")
+                collection_key = None  # Reset so we fall back to name-based lookup
+                collection_name = "Movies Leaving Soon"  # Default fallback
+            except Exception as e:
+                logger.error(f"Failed to fetch collection: {e}")
+                collection_key = None
+                collection_name = "Movies Leaving Soon"
+    
+        # If we don't have a valid key, ensure collection exists by name
+        if not collection_key and collection_name:
+            collection_key = await plex_client.ensure_collection(collection_name)
+        
+            if collection_key:
+                # Save the key to database for next time
                 conn.execute(
                     "UPDATE plex_config SET collection_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
-                    (new_key,)
+                    (collection_key,)
                 )
                 conn.commit()
-                collection_key = new_key
-                logger.info(f"✅ Database updated with new collection key: {new_key}")
+                logger.info(f"✅ Database updated with collection key: {collection_key}")
             else:
-                # No collection found - log warning and skip
-                logger.warning(f"❌ Collection '{fallback_name}' not found in Plex. Skipping collection operations.")
+                logger.warning(f"❌ Failed to ensure collection '{collection_name}' exists. Skipping collection operations.")
                 return rating_key_map
-        except Exception as e:
-            logger.error(f"❌ Failed to fetch collection: {e}")
+    
+        # If we still don't have a key, skip
+        if not collection_key:
+            logger.warning("No valid Plex collection available")
             return rating_key_map
    
     finally:
@@ -198,41 +201,52 @@ async def _remove_plex_collections(
     try:
         plex_config = conn.execute("SELECT collection_key, url FROM plex_config WHERE id = 1").fetchone()
         collection_key = plex_config["collection_key"] if plex_config else None
+        collection_name = None
+    
+        # If no collection key saved, use default name
         if not collection_key:
-            return
+            collection_name = "Movies Leaving Soon"
+            logger.info(f"No Plex collection selected, using default: '{collection_name}'")
+        else:
+            # Try to use saved collection
+            from plexapi.server import PlexServer
+            from plexapi.exceptions import NotFound
         
-        from plexapi.server import PlexServer
-        from plexapi.exceptions import NotFound
+            server = PlexServer(plex_config["url"], plex_client.api_key)
         
-        server = PlexServer(plex_config["url"], plex_client.api_key)
+            try:
+                collection_obj = server.fetchItem(int(collection_key))
+                collection_name = collection_obj.title
+                logger.info(f"Using Plex collection: '{collection_name}' (key: {collection_key})")
+            except NotFound:
+                logger.warning(f"Collection key {collection_key} not found. Will attempt to find or create by name.")
+                collection_key = None  # Reset so we fall back to name-based lookup
+                collection_name = "Movies Leaving Soon"  # Default fallback
+            except Exception as e:
+                logger.error(f"Failed to fetch collection: {e}")
+                collection_key = None
+                collection_name = "Movies Leaving Soon"
+    
+        # If we don't have a valid key, ensure collection exists by name
+        if not collection_key and collection_name:
+            collection_key = await plex_client.ensure_collection(collection_name)
         
-        # Try to fetch the collection by stored key
-        try:
-            collection_obj = server.fetchItem(int(collection_key))
-            collection_name = collection_obj.title
-        except NotFound:
-            logger.warning(f"Collection key {collection_key} not found in Plex. Attempting repair...")
-            
-            # Use the new find_collection_by_name method from PlexClient
-            fallback_name = "Movies Leaving Soon"
-            found = await plex_client.find_collection_by_name(fallback_name)
-            
-            if found:
-                new_key = found["key"]
-                collection_name = found["title"]
-                logger.info(f"✅ Repaired collection key: Found '{collection_name}' with key {new_key}")
-                
-                # Update the database with the new key
+            if collection_key:
+                # Save the key to database for next time
                 conn.execute(
                     "UPDATE plex_config SET collection_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
-                    (new_key,)
+                    (collection_key,)
                 )
                 conn.commit()
-                collection_key = new_key
-                logger.info(f"✅ Database updated with new collection key: {new_key}")
+                logger.info(f"✅ Database updated with collection key: {collection_key}")
             else:
-                logger.warning(f"❌ Collection '{fallback_name}' not found in Plex. Skipping removal.")
+                logger.warning(f"❌ Failed to ensure collection '{collection_name}' exists. Skipping removal.")
                 return
+    
+        # If we still don't have a key, skip
+        if not collection_key:
+            return
+    
     finally:
         conn.close()
     

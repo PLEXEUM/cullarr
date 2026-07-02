@@ -206,6 +206,44 @@ class PlexClient:
         logger.warning(f"Collection '{name}' not found in Plex")
         return None
 
+    async def ensure_collection(self, name: str) -> Optional[str]:
+        """
+        Get existing collection or create it if it doesn't exist.
+        Returns ratingKey of the collection.
+        """
+        # Try to find by name first
+        collection = await self.find_collection_by_name(name)
+        if collection:
+            logger.info(f"Found existing collection: '{name}' (key: {collection['key']})")
+            return collection["key"]
+    
+        # Not found - create it
+        try:
+            from plexapi.server import PlexServer
+        
+            server = PlexServer(self.base_url, self.api_key)
+        
+            # Find first movie library section
+            section = None
+            for s in server.library.sections():
+                if s.type == "movie":
+                    section = s
+                    break
+        
+            if not section:
+                logger.error("No movie library found to create collection")
+                return None
+        
+            # Create the collection
+            collection_obj = section.createCollection(title=name)
+            collection_key = str(collection_obj.ratingKey)
+            logger.info(f"Created new Plex collection: '{name}' (key: {collection_key})")
+            return collection_key
+        
+        except Exception as e:
+            logger.error(f"Failed to create collection '{name}': {e}")
+            return None
+
     async def get_library_items(self) -> List[Dict]:
         """Fetch all movies from ALL movie library sections for TMDb mapping."""
         items = []
