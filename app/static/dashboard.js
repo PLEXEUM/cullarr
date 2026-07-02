@@ -47,6 +47,16 @@ async function loadQueueStatus() {
 // Scheduled Deletions - Load and render as poster grid
 async function loadScheduledDeletions() {
     try {
+        // Get Radarr status first
+        let radarrOffline = false;
+        try {
+            const statusRes = await fetch('/api/dashboard/queue-status');
+            const statusData = await statusRes.json();
+            radarrOffline = statusData.radarr.status === 'error';
+        } catch (e) {
+            console.error('Failed to check Radarr status:', e);
+        }
+        
         const res = await fetch('/api/dashboard/score-queue?page=1&per_page=500&scheduled=1&sort_by=score&sort_order=desc');
         
         if (!res.ok) {
@@ -54,7 +64,7 @@ async function loadScheduledDeletions() {
         }
         
         const data = await res.json();
-        renderScheduledGrid(data);
+        renderScheduledGrid(data, radarrOffline);
     } catch (e) {
         console.error('Failed to load scheduled deletions:', e);
         const gridContainer = document.getElementById('scheduled-grid-inner');
@@ -440,7 +450,7 @@ function loadScheduledDeletionsState() {
 }
 
 // Render Scheduled Deletions as Poster Grid
-function renderScheduledGrid(data) {
+function renderScheduledGrid(data, radarrOffline = false) {
     const gridContainer = document.getElementById('scheduled-grid-inner');
     const badge = document.getElementById('scheduled-badge');
     
@@ -448,16 +458,6 @@ function renderScheduledGrid(data) {
     
     if (!data.items || data.items.length === 0) {
         if (badge) badge.textContent = '0 items';
-    
-        // Check if Radarr is offline
-        let radarrOffline = false;
-        try {
-            const statusRes = await fetch('/api/dashboard/queue-status');
-            const statusData = await statusRes.json();
-            radarrOffline = statusData.radarr.status === 'error';
-        } catch (e) {
-            console.error('Failed to check Radarr status:', e);
-        }
     
         let message = radarrOffline 
             ? '⚠️ Radarr is offline. Deletions are paused. Please check your Radarr connection.'
@@ -468,7 +468,7 @@ function renderScheduledGrid(data) {
     }
     
     if (badge) badge.textContent = `${data.items.length} items`;
-    
+     
     const cardsHtml = data.items.map(item => {
         // Determine score badge class
         let scoreClass = 'score-high';
