@@ -136,30 +136,27 @@ async function loadScoreQueue() {
         const data = await res.json();
         const gridContainer = document.getElementById('score-queue-grid-inner');
 
-        // Check Radarr status first
-        let radarrOffline = false;
-        try {
-            const statusRes = await fetch('/api/dashboard/queue-status');
-            const statusData = await statusRes.json();
-            radarrOffline = statusData.radarr.status === 'error';
-        } catch (e) {
-            console.error('Failed to check Radarr status:', e);
-        }
-
-        // If Radarr is offline, show message regardless of items
-        if (radarrOffline) {
-            gridContainer.innerHTML = `<div class="col-span-full text-center py-8" style="color: var(--text-secondary);">⚠️ Radarr is offline. Please check your Radarr connection.</div>`;
-            document.getElementById('score-queue-pagination').innerHTML = '';
-            return;
-        }
-
         if (!data.items || data.items.length === 0) {
             let message = '';
-            if (scoreQueueSearchActive) {
+    
+            // Check if Radarr is offline
+            let radarrOffline = false;
+            try {
+                const statusRes = await fetch('/api/dashboard/queue-status');
+                const statusData = await statusRes.json();
+                radarrOffline = statusData.radarr.status === 'error';
+            } catch (e) {
+                console.error('Failed to check Radarr status:', e);
+            }
+    
+            if (radarrOffline) {
+                message = '⚠️ Radarr is offline. Score runs are unavailable. Please check your Radarr connection.';
+            } else if (scoreQueueSearchActive) {
                 message = `No movies match "${escapeHtml(scoreQueueSearch)}".`;
             } else {
                 message = 'No movies found. Run a score cycle or configure Radarr first.';
             }
+    
             gridContainer.innerHTML = `<div class="col-span-full text-center py-8" style="color: var(--text-secondary);">${message}</div>`;
             document.getElementById('score-queue-pagination').innerHTML = '';
             return;
@@ -459,16 +456,14 @@ function renderScheduledGrid(data, radarrOffline = false) {
     
     if (!gridContainer) return;
     
-    // If Radarr is offline, show message regardless of items
-    if (radarrOffline) {
-        if (badge) badge.textContent = '0 items';
-        gridContainer.innerHTML = `<div class="col-span-full text-center py-8" style="color: var(--text-secondary);">⚠️ Radarr is offline. Deletions are paused. Please check your Radarr connection.</div>`;
-        return;
-    }
-    
     if (!data.items || data.items.length === 0) {
         if (badge) badge.textContent = '0 items';
-        gridContainer.innerHTML = `<div class="col-span-full text-center py-8" style="color: var(--text-secondary);">No scheduled deletions</div>`;
+    
+        let message = radarrOffline 
+            ? '⚠️ Radarr is offline. Deletions are paused. Please check your Radarr connection.'
+            : 'No scheduled deletions';
+    
+        gridContainer.innerHTML = `<div class="col-span-full text-center py-8" style="color: var(--text-secondary);">${message}</div>`;
         return;
     }
     
