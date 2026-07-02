@@ -9,6 +9,7 @@ let scoreQueueSearchActive = false;
 let refreshInterval = null;
 let runStatusInterval = null;
 let scheduledDeletionsCollapsed = false;
+let cachedRadarrStatus = null;
 
 // Load all dashboard data
 async function loadDashboard() {
@@ -22,6 +23,9 @@ async function loadQueueStatus() {
     try {
         const res = await fetch('/api/dashboard/queue-status');
         const data = await res.json();
+
+        // Cache the status for other functions to use
+        cachedRadarrStatus = data.radarr.status;
 
         // Radarr status - update sidebar
         updateSidebarRadarrStatus(data.radarr.configured, data.radarr.status);
@@ -47,14 +51,18 @@ async function loadQueueStatus() {
 // Scheduled Deletions - Load and render as poster grid
 async function loadScheduledDeletions() {
     try {
-        // Get Radarr status first
+        // Get Radarr status first - use cached status if available
         let radarrOffline = false;
-        try {
-            const statusRes = await fetch('/api/dashboard/queue-status');
-            const statusData = await statusRes.json();
-            radarrOffline = statusData.radarr.status === 'error';
-        } catch (e) {
-            console.error('Failed to check Radarr status:', e);
+        if (cachedRadarrStatus !== null) {
+            radarrOffline = cachedRadarrStatus === 'error';
+        } else {
+            try {
+                const statusRes = await fetch('/api/dashboard/queue-status');
+                const statusData = await statusRes.json();
+                radarrOffline = statusData.radarr.status === 'error';
+            } catch (e) {
+                console.error('Failed to check Radarr status:', e);
+            }
         }
         
         const res = await fetch('/api/dashboard/score-queue?page=1&per_page=500&scheduled=1&sort_by=score&sort_order=desc');
@@ -134,14 +142,19 @@ async function loadScoreQueue() {
         
         const gridContainer = document.getElementById('score-queue-grid-inner');
 
-        // Check Radarr status FIRST
+        // Check Radarr status FIRST - use cached status if available
         let radarrOffline = false;
-        try {
-            const statusRes = await fetch('/api/dashboard/queue-status');
-            const statusData = await statusRes.json();
-            radarrOffline = statusData.radarr.status === 'error';
-        } catch (e) {
-            console.error('Failed to check Radarr status:', e);
+        if (cachedRadarrStatus !== null) {
+            radarrOffline = cachedRadarrStatus === 'error';
+        } else {
+            // Fallback to API call if cache not set yet
+            try {
+                const statusRes = await fetch('/api/dashboard/queue-status');
+                const statusData = await statusRes.json();
+                radarrOffline = statusData.radarr.status === 'error';
+            } catch (e) {
+                console.error('Failed to check Radarr status:', e);
+            }
         }
 
         // If Radarr is offline, show message and stop - don't even fetch data
