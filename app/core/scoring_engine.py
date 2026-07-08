@@ -62,22 +62,23 @@ def get_watched_score(play_count: int, last_viewed_timestamp: int = 0) -> float:
     Combined watch score based on play count AND recency.
     Returns score from 0.0 (protected) to 1.0 (deletable).
     
-    Play count scoring: 0 plays=1.0, 1=0.9, 2=0.8, 3=0.7, 4=0.6, 5=0.5, 6=0.4, 7=0.3, 8=0.2, 9=0.1, 10+=0.0
-    Recency scoring: days since last watch determines score
-    Final score = min(play_count_score, recency_score) [lower is better/protected]
+    Play count scoring: S-Curve (^0.7) - 0 plays=1.0, 1=0.93, 2=0.87, 3=0.82, 4=0.77, 5=0.72, 6=0.67, 7=0.61, 8=0.54, 9=0.47, 10+=0.0
+    Recency scoring: S-Curve (^0.7) on days since last watch
+    Final score = play_score * recency_score (both factors contribute)
     """
     import time
     from datetime import datetime
     
-    # Calculate play count score (10+ plays = fully protected)
+    # Calculate play count score with S-Curve (more nuance between counts)
     if play_count <= 0:
         play_score = 1.0
     elif play_count >= 10:
         play_score = 0.0
     else:
-        play_score = 1.0 - (play_count / 10)
+        # S-Curve: 0=1.0, 1=0.93, 2=0.87, 3=0.82, 4=0.77, 5=0.72, ... 10=0.0
+        play_score = (1.0 - (play_count / 10)) ** 0.7
     
-    # Calculate recency score (continuous linear scale)
+    # Calculate recency score with S-Curve
     recency_score = 1.0  # Default to deletable if no data
     days_since_last_watch = None
     watched_max_days = 730  # 2 years (configurable)
@@ -86,14 +87,15 @@ def get_watched_score(play_count: int, last_viewed_timestamp: int = 0) -> float:
         current_time = int(time.time())
         days_since_last_watch = (current_time - last_viewed_timestamp) / 86400
     
-        # Linear from 0 at 0 days to 1.0 at watched_max_days
-        recency_score = min(days_since_last_watch / watched_max_days, 1.0)
+        # S-Curve on recency: 0 days=0.0, 365 days=0.62, 730 days=1.0
+        recency_raw = days_since_last_watch / watched_max_days
+        recency_score = min(recency_raw ** 0.7, 1.0)
     else:
         days_since_last_watch = None  # No watch history
     
-    # Take the MORE protective score (lower is better)
-    # This ensures if either metric says "protect", we protect
-    final_score = min(play_score, recency_score)
+    # Combined score (multiplicative) - both factors contribute
+    # This ensures each play count has a distinct score
+    final_score = play_score * recency_score
     
     # Store recency info for display
     final_score_details = {
@@ -232,12 +234,14 @@ class ScoringEngine:
             effective_age_raw = 0
 
         # Capped at 1.0 so outliers don't compress all other scores
-        age_raw = min(effective_age_raw / self.age_max_days, 1.0)
-        size_raw = min(size_gb / self.size_max_gb, 1.0)
+        # S-Curve scaling for more nuanced age/size differentiation
+        age_raw = min((effective_age_raw / self.age_max_days) ** 0.7, 1.0)
+        size_raw = min((size_gb / self.size_max_gb) ** 0.7, 1.0)
 
         # TMDB rating (0-10, lower rating = higher deletion score)
+        # Aggressive power curve (^2.0) gives more weight to low-rated movies
         tmdb_rating = movie.get("ratings", {}).get("tmdb", {}).get("value") or movie.get("tmdbRating") or 5.0
-        rating_raw = 1.0 - (tmdb_rating / 10.0)
+        rating_raw = (1.0 - (tmdb_rating / 10.0)) ** 2.0
 
         # Quality
         current_quality = "Unknown"
