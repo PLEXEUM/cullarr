@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import datetime
 from typing import List, Dict, Optional, Any, Tuple
 from app.utils.logger import get_logger
@@ -239,9 +240,11 @@ class ScoringEngine:
         size_raw = min((size_gb / self.size_max_gb) ** 0.7, 1.0)
 
         # TMDB rating (0-10, lower rating = higher deletion score)
-        # Aggressive power curve (^2.0) gives more weight to low-rated movies
+        # Reverse sigmoid: high ratings → low raw, low ratings → high raw
         tmdb_rating = movie.get("ratings", {}).get("tmdb", {}).get("value") or movie.get("tmdbRating") or 5.0
-        rating_raw = (1.0 - (tmdb_rating / 10.0)) ** 2.0
+        rating_normalized = tmdb_rating / 10.0
+        steepness = 8.0  # Controls transition sharpness (higher = sharper)
+        rating_raw = 1.0 / (1.0 + math.exp(steepness * (rating_normalized - 0.55)))
 
         # Quality
         current_quality = "Unknown"
