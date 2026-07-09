@@ -289,7 +289,61 @@ class ScoringEngine:
                 # Store the actual play count for display
                 watched_details["play_count"] = play_count
 
-        # Step 2: Apply protection (overrides watched_raw but preserves details for display)
+        # Step 2: Apply age-based cap for unwatched movies (31-730 day grace period)
+        if play_count == 0:
+            days_since_added = age_days
+            grace_period = 730  # 2 years for full unwatched penalty
+            
+            if days_since_added < self.protection_days:
+                # Within protection window → completely protected
+                watched_raw = 0.0
+                if watched_details is None:
+                    watched_details = {
+                        "score": 0.0,
+                        "play_count": 0,
+                        "protected": True,
+                        "protection_days": self.protection_days,
+                        "grace_period": grace_period,
+                        "days_since_added": days_since_added
+                    }
+                else:
+                    watched_details["grace_period"] = grace_period
+                    watched_details["days_since_added"] = days_since_added
+                    watched_details["score"] = 0.0
+                    watched_details["protected"] = True
+            elif days_since_added < self.protection_days + grace_period:
+                # Grace period: gradual increase from 0.0 to 1.0 (31-730 days)
+                progress = (days_since_added - self.protection_days) / grace_period
+                watched_raw = progress * 1.0  # Linear ramp
+                if watched_details is None:
+                    watched_details = {
+                        "score": watched_raw,
+                        "play_count": 0,
+                        "grace_period": grace_period,
+                        "days_since_added": days_since_added,
+                        "progress": progress
+                    }
+                else:
+                    watched_details["grace_period"] = grace_period
+                    watched_details["days_since_added"] = days_since_added
+                    watched_details["progress"] = progress
+                    watched_details["score"] = watched_raw
+            else:
+                # Fully unwatched penalty applies (731+ days)
+                watched_raw = 1.0
+                if watched_details is None:
+                    watched_details = {
+                        "score": 1.0,
+                        "play_count": 0,
+                        "days_since_added": days_since_added,
+                        "fully_unwatched": True
+                    }
+                else:
+                    watched_details["fully_unwatched"] = True
+                    watched_details["days_since_added"] = days_since_added
+                    watched_details["score"] = 1.0
+
+        # Step 3: Apply protection (overrides watched_raw but preserves details for display)
         if age_days < self.protection_days:
             # Movie was added recently — Watched score = 0 (protected)
             watched_raw = 0.0
