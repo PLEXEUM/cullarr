@@ -100,33 +100,13 @@ Access the web interface at `http://localhost:7447`
 
 | Factor | Slider Range | Default | Max Contribution | Description |
 |--------|-------------|---------|------------------|-------------|
-| **Age** | 1-10 | 5 | 2-20% | Movies added longer ago score higher (3-year max with S-curve) |
-| **Size** | 1-10 | 5 | 2-20% | Stepped scoring: 0-1.5GB→0.0, 2.5GB→0.2, 3.5GB→0.4, 5GB→0.6, 10GB→0.8, 10GB+→1.0 |
-| **Rating** | 1-10 | 5 | 2-20% | Aggressive sigmoid: 3.0→0.94, 5.0→0.45, 7.0→0.04 (low ratings = very deletable) |
+| **Age** | 1-10 | 5 | 2-20% | Movies added longer ago score higher |
+| **Size** | 1-10 | 5 | 2-20% | Larger files score higher |
+| **Rating** | 1-10 | 5 | 2-20% | Lower TMDB ratings score higher |
 | **Quality** | 1-10 | 5 | 2-20% | SD/DVD before 1080p before 4K |
-| **Watched** | 1-10 | 5 | 2-20% | Stepped scoring: 0 plays=1.0, 1=0.8, 2=0.6, 3=0.4, 4=0.3, 5=0.25, 6=0.2, 7=0.15, 8=0.1, 9=0.05, 10+=0.0 |
+| **Watched** | 1-10 | 5 | 2-20% | Unwatched movies score highest |
 
 > **Note:** Each slider is independent. Slider 10 = 20% weight, Slider 1 = 2% weight. The total weight is the sum of all sliders, which can be less than 100% if not all sliders are at maximum.
-
-### Deletion Score Boosting
-
-Cullarr applies a tiered penalty to ensure the worst movies in your library are always clearly identified as deletion candidates. This boost is applied **after** all factor scores are combined, making the worst movies stand out at the top of the queue.
-
-| Raw Score Range | Penalty | Final Effect |
-|-----------------|---------|--------------|
-| 0.00-0.20 (Best) | +0% | No change |
-| 0.21-0.40 (Good) | +5% | Small boost |
-| 0.41-0.60 (Average) | +10% | Moderate boost |
-| 0.61-0.80 (Bad) | +15% | Significant boost |
-| 0.81-1.00 (Worst) | +20% (capped at 1.0) | Maximum boost (100) |
-
-**Example:** A movie with a raw score of 0.75 would receive a +15% boost, resulting in a final score of 0.90 (90/100). A movie with a raw score of 0.90 would receive a +20% boost, capped at 1.0 (100/100), making it the #1 deletion candidate.
-
-This ensures that:
-- **Worst movies always score 100** - unmistakable deletion targets
-- **Natural tiered separation** - scores group into clear categories
-- **Thresholds work intuitively** - a threshold of 50 captures average+ movies
-- **Scale remains 0-100** - no scores exceeding 100
 
 ### Cron Examples
 
