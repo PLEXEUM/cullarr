@@ -361,16 +361,44 @@ async def get_score_preview(weights_data: dict):
         if not radarr_ok:
             return {"movie": None, "error": "Cannot connect to Radarr"}
 
-        movies = await client.get_movies()
-
+        # Try to get a representative movie from cache first
         preview_movie = None
-        for movie in movies:
-            if movie.get("movieFile"):
-                preview_movie = movie
-                break
+
+        cached_movie = conn.execute("""
+            SELECT movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
+                size_gb, age_days, quality, monitored, plex_play_count
+            FROM scored_movies_cache
+            LIMIT 1
+        """).fetchone()
+
+        if cached_movie:
+            # Convert to Radarr-like format for the scoring engine
+            preview_movie = {
+                "id": cached_movie["movie_id"],
+                "title": cached_movie["movie_title"],
+                "year": cached_movie["movie_year"],
+                "tmdbId": cached_movie["tmdb_id"],
+                "tmdbRating": cached_movie["tmdb_rating"],
+                "monitored": bool(cached_movie["monitored"]),
+                "movieFile": {
+                    "size": cached_movie["size_gb"] * (1024 ** 3),
+                    "quality": {
+                        "quality": {
+                            "name": cached_movie["quality"]
+                        }
+                    }
+                }
+            }
+        else:
+            # Fallback to Radarr if cache is empty
+            movies = await client.get_movies()
+            for movie in movies:
+                if movie.get("movieFile"):
+                    preview_movie = movie
+                    break
 
         if not preview_movie:
-            return {"movie": None, "error": "No movies with files found"}
+            return {"movie": None, "error": "No movies available for preview"}
 
         plex_play_counts = None
         if plex_enabled:
