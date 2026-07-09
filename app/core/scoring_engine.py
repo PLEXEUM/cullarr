@@ -65,32 +65,35 @@ def get_quality_score(quality_name: str) -> float:
         return 1.0
     return 0.5
 
+# Play count scoring lookup (stepped)
+PLAY_SCORES = {
+    0: 1.00, 1: 0.80, 2: 0.60, 3: 0.40, 4: 0.30,
+    5: 0.25, 6: 0.20, 7: 0.15, 8: 0.10, 9: 0.05,
+}
+
+def get_play_score(play_count: int) -> float:
+    """Get play count score from stepped lookup. 10+ plays = 0.0."""
+    return PLAY_SCORES.get(min(play_count, 9), 0.0)
 
 def get_watched_score(play_count: int, last_viewed_timestamp: int = 0) -> float:
     """
     Combined watch score based on play count AND recency.
     Returns score from 0.0 (protected) to 1.0 (deletable).
-    
-    Play count scoring: S-Curve (^0.7) - 0 plays=1.0, 1=0.93, 2=0.87, 3=0.82, 4=0.77, 5=0.72, 6=0.67, 7=0.61, 8=0.54, 9=0.47, 10+=0.0
+
+    Play count scoring: Stepped - 0=1.0, 1=0.8, 2=0.6, 3=0.4, 4=0.3, 
+    5=0.25, 6=0.2, 7=0.15, 8=0.1, 9=0.05, 10+=0.0
     Recency scoring: S-Curve (^0.7) on days since last watch
     Final score = play_score * recency_score (both factors contribute)
     """
     import time
-    from datetime import datetime
-    
-    # Calculate play count score with S-Curve (more nuance between counts)
-    if play_count <= 0:
-        play_score = 1.0
-    elif play_count >= 10:
-        play_score = 0.0
-    else:
-        # S-Curve: 0=1.0, 1=0.93, 2=0.87, 3=0.82, 4=0.77, 5=0.72, ... 10=0.0
-        play_score = (1.0 - (play_count / 10)) ** 0.7
+      
+    # Calculate play count score with stepped lookup
+    play_score = get_play_score(play_count)
     
     # Calculate recency score with S-Curve
-    recency_score = 1.0  # Default to deletable if no data
+    recency_score = 1.0
     days_since_last_watch = None
-    watched_max_days = 730  # 2 years (configurable)
+    watched_max_days = 730
 
     if last_viewed_timestamp and last_viewed_timestamp > 0:
         current_time = int(time.time())
@@ -244,15 +247,15 @@ class ScoringEngine:
 
         # Capped at 1.0 so outliers don't compress all other scores
         # S-Curve scaling for more nuanced age/size differentiation
-        age_raw = min((effective_age_raw / self.age_max_days) ** 0.7, 1.0)
+        age_raw = min((effective_age_raw / self.age_max_days) ** 0.5, 1.0)
         size_raw = min((size_gb / self.size_max_gb) ** 0.7, 1.0)
 
         # TMDB rating (0-10, lower rating = higher deletion score)
         # Reverse sigmoid: high ratings → low raw, low ratings → high raw
         tmdb_rating = movie.get("ratings", {}).get("tmdb", {}).get("value") or movie.get("tmdbRating") or 5.0
         rating_normalized = tmdb_rating / 10.0
-        steepness = 8.0  # Controls transition sharpness (higher = sharper)
-        rating_raw = 1.0 / (1.0 + math.exp(steepness * (rating_normalized - 0.55)))
+        steepness = 10.0  # More aggressive than previous 8.0
+        rating_raw = 1.0 / (1.0 + math.exp(steepness * (rating_normalized - 0.50)))
 
         # Quality
         current_quality = "Unknown"
