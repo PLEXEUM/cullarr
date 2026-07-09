@@ -340,134 +340,127 @@ async def recalibrate_advanced_settings():
 async def get_score_preview(weights_data: dict):
     """
     Calculate score for a representative movie using provided weights.
-    Used by the live preview feature in settings.
+    Uses cached movie data for instant preview - no Radarr/Plex API calls.
     """
-    from app.core.radarr_client import RadarrClient
-    from app.core.scoring_engine import ScoringEngine
+    from app.core.scoring_engine import QUALITY_SCORES
     from app.db.database import get_connection
-    from datetime import datetime
+    import math
 
     conn = get_connection()
     try:
-        radarr_config = conn.execute("SELECT url, api_key FROM radarr_config WHERE id = 1").fetchone()
-        if not radarr_config or not radarr_config["url"] or not radarr_config["api_key"]:
-            return {"movie": None, "error": "Radarr not configured"}
-
-        plex_config = conn.execute("SELECT enabled, url, api_key FROM plex_config WHERE id = 1").fetchone()
-        plex_enabled = bool(plex_config and plex_config["enabled"] and plex_config["url"] and plex_config["api_key"])
-
-        client = RadarrClient(radarr_config["url"], radarr_config["api_key"])
-        radarr_ok, _ = await client.test_connection()
-        if not radarr_ok:
-            return {"movie": None, "error": "Cannot connect to Radarr"}
-
-        # Try to get a representative movie from cache first
-        preview_movie = None
-
+        # Get a cached movie with all its data
         cached_movie = conn.execute("""
             SELECT movie_id, movie_title, movie_year, tmdb_id, tmdb_rating,
-                size_gb, age_days, quality, monitored, plex_play_count
+                   size_gb, age_days, quality, monitored, plex_play_count,
+                   raw_score, factors
             FROM scored_movies_cache
             LIMIT 1
         """).fetchone()
 
-        if cached_movie:
-            # Convert to Radarr-like format for the scoring engine
-            preview_movie = {
-                "id": cached_movie["movie_id"],
-                "title": cached_movie["movie_title"],
-                "year": cached_movie["movie_year"],
-                "tmdbId": cached_movie["tmdb_id"],
-                "tmdbRating": cached_movie["tmdb_rating"],
-                "monitored": bool(cached_movie["monitored"]),
-                "movieFile": {
-                    "size": cached_movie["size_gb"] * (1024 ** 3),
-                    "quality": {
-                        "quality": {
-                            "name": cached_movie["quality"]
-                        }
-                    }
-                }
-            }
+        if not cached_movie:
+            return {"movie": None, "error": "No cached movies found. Run a score cycle first."}
+
+        # Get advanced settings from database
+        advanced = conn.execute("SELECT age_max_days, size_max_gb FROM scoring_weights WHERE id = 1").fetchone()
+        age_max_days = advanced["age_max_days"] if advanced else 365
+        size_max_gb = advanced["size_max_gb"] if advanced else 100
+
+        # Get protection days from settings
+        settings = conn.execute("SELECT protection_days FROM settings WHERE id = 1").fetchone()
+        protection_days = settings["protection_days"] if settings else 30
+
+        # Map slider values (1-10) to weights (2-20%)
+        age_raw = weights_data.get("age_raw", 5)
+        size_raw = weights_data.get("size_raw", 5)
+        rating_raw = weights_data.get("rating_raw", 5)
+        quality_raw = weights_data.get("quality_raw", 5)
+        watched_raw = weights_data.get("watched_raw", 5)
+
+        age_weight = (age_raw / 10) * 0.20
+        size_weight = (size_raw / 10) * 0.20
+        rating_weight = (rating_raw / 10) * 0.20
+        quality_weight = (quality_raw / 10) * 0.20
+        watched_weight = (watched_raw / 10) * 0.20
+
+        # Calculate each factor using the movie's cached data
+        age_days = cached_movie["age_days"] or 0
+        size_gb = cached_movie["size_gb"] or 0
+        tmdb_rating = cached_movie["tmdb_rating"] or 5.0
+        quality = cached_movie["quality"] or "Unknown"
+        plex_play_count = cached_movie["plex_play_count"] or 0
+
+        # Age factor (with protection)
+        effective_age = age_days if age_days >= protection_days else 0
+        age_raw_score = min((effective_age / age_max_days) ** 0.5, 1.0)
+
+        # Size factor
+        size_raw_score = min((size_gb / size_max_gb) ** 0.7, 1.0)
+
+        # Rating factor (reverse sigmoid)
+        rating_normalized = tmdb_rating / 10.0
+        steepness = 10.0
+        rating_raw_score = 1.0 / (1.0 + math.exp(steepness * (rating_normalized - 0.50)))
+
+        # Quality factor
+        quality_lower = quality.lower() if quality else ""
+        if "2160p" in quality_lower or "4k" in quality_lower:
+            quality_raw_score = 0.0
+        elif "1080p" in quality_lower:
+            quality_raw_score = 0.3
+        elif "720p" in quality_lower:
+            quality_raw_score = 0.6
+        elif "dvd" in quality_lower:
+            quality_raw_score = 0.9
+        elif "sd" in quality_lower:
+            quality_raw_score = 1.0
         else:
-            # Fallback to Radarr if cache is empty
-            movies = await client.get_movies()
-            for movie in movies:
-                if movie.get("movieFile"):
-                    preview_movie = movie
-                    break
+            quality_raw_score = 0.5
 
-        if not preview_movie:
-            return {"movie": None, "error": "No movies available for preview"}
-
-        plex_play_counts = None
-        if plex_enabled:
-            from app.core.plex_client import PlexClient
-            plex_client = PlexClient(plex_config["url"], plex_config["api_key"])
-            ok, _ = await plex_client.test_connection()
-            if ok:
-                plex_play_counts = await plex_client.get_play_counts_by_tmdb()
-
-        engine = ScoringEngine(conn)
-        
-        original_weights = {
-            "age_weight": engine.age_weight,
-            "size_weight": engine.size_weight,
-            "rating_weight": engine.rating_weight,
-            "quality_weight": engine.quality_weight,
-            "watched_weight": engine.watched_weight,
-            "age_max_days": engine.age_max_days,
-            "size_max_gb": engine.size_max_gb,
-        }
-        
-        try:
-            # Map slider values (1-10) to weights (2-20%)
-            age_raw = weights_data.get("age_raw", 5)
-            size_raw = weights_data.get("size_raw", 5)
-            rating_raw = weights_data.get("rating_raw", 5)
-            quality_raw = weights_data.get("quality_raw", 5)
-            watched_raw = weights_data.get("watched_raw", 5)
-
-            engine.age_weight = (age_raw / 10) * 0.20
-            engine.size_weight = (size_raw / 10) * 0.20
-            engine.rating_weight = (rating_raw / 10) * 0.20
-            engine.quality_weight = (quality_raw / 10) * 0.20
-            engine.watched_weight = (watched_raw / 10) * 0.20
-
-            # Load advanced settings from database (same as Score Run)
-            advanced = conn.execute("SELECT age_max_days, size_max_gb FROM scoring_weights WHERE id = 1").fetchone()
-            if advanced:
-                engine.age_max_days = advanced["age_max_days"]
-                engine.size_max_gb = advanced["size_max_gb"]
+        # Watched factor (using cached plex_play_count)
+        if plex_play_count == 0:
+            # Unwatched - use age-based grace period
+            if age_days < protection_days:
+                watched_raw_score = 0.0
+            elif age_days < protection_days + 730:
+                progress = (age_days - protection_days) / 730
+                watched_raw_score = progress
             else:
-                engine.age_max_days = weights_data.get("age_max_days", 365)
-                engine.size_max_gb = weights_data.get("size_max_gb", 100)
+                watched_raw_score = 1.0
+        else:
+            # Watched - stepped score based on play count
+            play_scores = {0: 1.0, 1: 0.8, 2: 0.6, 3: 0.4, 4: 0.3, 5: 0.25, 6: 0.2, 7: 0.15, 8: 0.1, 9: 0.05}
+            play_score = play_scores.get(min(plex_play_count, 9), 0.0)
+            watched_raw_score = play_score  # Simplified (no recency for preview)
 
-            engine.monitored_weight = 0.0
-            
-            result = engine.calculate_movie_score(preview_movie, plex_play_counts, plex_enabled)
-            
-            if not result.get("eligible"):
-                return {"movie": None, "error": "Selected movie has no file"}
-            
-            return {
-                "movie": {
-                    "movie_title": preview_movie.get("title"),
-                    "movie_year": preview_movie.get("year"),
-                    "size_gb": result.get("size_gb", 0),
-                    "age_days": result.get("age_days", 0),
-                    "raw_score": result.get("score", 0),
-                    "factors": result.get("factors", []),
-                }
+        # Calculate contributions
+        age_contrib = age_raw_score * age_weight
+        size_contrib = size_raw_score * size_weight
+        rating_contrib = rating_raw_score * rating_weight
+        quality_contrib = quality_raw_score * quality_weight
+        watched_contrib = watched_raw_score * watched_weight
+
+        raw_score = age_contrib + size_contrib + rating_contrib + quality_contrib + watched_contrib
+        normalized_score = raw_score * 100
+
+        # Build factors for display
+        factors = [
+            {"name": "Age", "contribution": age_contrib, "details": f"{age_days} days" + (f" (protected: {protection_days} days)" if age_days < protection_days else "")},
+            {"name": "Size", "contribution": size_contrib, "details": f"{size_gb:.1f} GB"},
+            {"name": "Rating", "contribution": rating_contrib, "details": f"{tmdb_rating:.1f}/10"},
+            {"name": "Quality", "contribution": quality_contrib, "details": quality},
+            {"name": "Watched", "contribution": watched_contrib, "details": f"Play count: {plex_play_count}" + (f" (protected)" if age_days < protection_days and plex_play_count == 0 else "")},
+        ]
+
+        return {
+            "movie": {
+                "movie_title": cached_movie["movie_title"],
+                "movie_year": cached_movie["movie_year"],
+                "size_gb": size_gb,
+                "age_days": age_days,
+                "raw_score": raw_score,
+                "factors": factors,
             }
-        finally:
-            engine.age_weight = original_weights["age_weight"]
-            engine.size_weight = original_weights["size_weight"]
-            engine.rating_weight = original_weights["rating_weight"]
-            engine.quality_weight = original_weights["quality_weight"]
-            engine.watched_weight = original_weights["watched_weight"]
-            engine.age_max_days = original_weights["age_max_days"]
-            engine.size_max_gb = original_weights["size_max_gb"]
+        }
 
     except Exception as e:
         logger.error(f"Preview failed: {e}")
