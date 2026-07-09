@@ -571,16 +571,18 @@ class ScoringEngine:
             scored.sort(key=lambda x: x["raw_score"], reverse=True)
 
         # Convert raw scores (0-1) to 0-100 scale (raw_score * 100)
-        # No normalization against library max
+        # Add base floor of 10 to ensure worst movies always stand out
+        BASE_FLOOR = 10  # Minimum score for any movie
+        
         for movie in scored:
-            movie["score"] = movie["raw_score"] * 100
+            movie["score"] = movie["raw_score"] * 100 + BASE_FLOOR
             # Keep normalized_score for backward compatibility (set to same value)
-            movie["normalized_score"] = movie["raw_score"] * 100
+            movie["normalized_score"] = movie["raw_score"] * 100 + BASE_FLOOR
 
             # For collections, ensure individual movies keep their original scores
             if movie.get("is_collection") and movie.get("movies"):
                 for member in movie["movies"]:
-                    member["score"] = member["raw_score"] * 100
-                    member["normalized_score"] = member["raw_score"] * 100
+                    member["score"] = member["raw_score"] * 100 + BASE_FLOOR
+                    member["normalized_score"] = member["raw_score"] * 100 + BASE_FLOOR
 
         return scored
