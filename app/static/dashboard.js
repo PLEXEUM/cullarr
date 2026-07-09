@@ -391,7 +391,33 @@ function updateSortIcons() {
 
 // Clear All Scheduled Deletions
 async function clearScheduledDeletions() {
-    if (!confirm('Remove ALL movies from the scheduled deletions queue? This cannot be undone.')) return;
+    // Get the menu button and its container
+    const menuBtn = document.getElementById('scheduled-deletions-menu-btn');
+    const menu = document.getElementById('scheduled-deletions-menu');
+    const clearBtn = document.getElementById('clear-scheduled-menu-btn');
+    
+    // Disable the button immediately
+    if (clearBtn) {
+        clearBtn.disabled = true;
+        clearBtn.textContent = '⏳ Removing...';
+        clearBtn.classList.add('btn-removing');
+        clearBtn.classList.remove('btn-restore');
+    }
+    
+    // Close the menu
+    if (menu) menu.classList.add('hidden');
+    
+    // Confirm with user
+    if (!confirm('Remove ALL movies from the scheduled deletions queue? This cannot be undone.')) {
+        // Re-enable button if canceled
+        if (clearBtn) {
+            clearBtn.disabled = false;
+            clearBtn.textContent = '✕ Remove All';
+            clearBtn.classList.add('btn-restore');
+            clearBtn.classList.remove('btn-removing');
+        }
+        return;
+    }
     
     try {
         const res = await fetch('/api/dashboard/scheduled/clear', { method: 'DELETE' });
@@ -406,6 +432,14 @@ async function clearScheduledDeletions() {
         }
     } catch (e) {
         showToast('Error: ' + e.message, 'error');
+    } finally {
+        // Re-enable the button
+        if (clearBtn) {
+            clearBtn.disabled = false;
+            clearBtn.textContent = '✕ Remove All';
+            clearBtn.classList.add('btn-restore');
+            clearBtn.classList.remove('btn-removing');
+        }
     }
 }
 
@@ -648,6 +682,7 @@ async function triggerScoreRun() {
     const btn = document.getElementById('run-score-btn');
     btn.disabled = true;
     btn.textContent = 'Starting...';
+    btn.classList.add('btn-removing');
 
     try {
         const res = await fetch(`/api/run/score?dry_run=${dryRun}`, { method: 'POST' });
@@ -662,11 +697,13 @@ async function triggerScoreRun() {
             showToast(err.detail || 'Failed to start run', 'error');
             btn.disabled = false;
             btn.textContent = '🎯 Run Score';
+            btn.classList.remove('btn-removing');
         }
     } catch (e) {
         showToast('Error: ' + e.message, 'error');
         btn.disabled = false;
         btn.textContent = '🎯 Run Score';
+        btn.classList.remove('btn-removing');
     }
 }
 
@@ -676,6 +713,7 @@ async function triggerCullRun() {
     const btn = document.getElementById('run-cull-btn');
     btn.disabled = true;
     btn.textContent = 'Starting...';
+    btn.classList.add('btn-removing');
 
     try {
         const url = dryRun ? '/api/run/cull?dry_run=true' : '/api/run/cull';
@@ -690,11 +728,13 @@ async function triggerCullRun() {
             showToast(err.detail || 'Failed to start cull run', 'error');
             btn.disabled = false;
             btn.textContent = '🗑️ Run Cull';
+            btn.classList.remove('btn-removing');
         }
     } catch (e) {
         showToast('Error: ' + e.message, 'error');
         btn.disabled = false;
         btn.textContent = '🗑️ Run Cull';
+        btn.classList.remove('btn-removing');
     }
 }
 
@@ -783,10 +823,12 @@ function startRunStatusPolling() {
                 if (scoreBtn) {
                     scoreBtn.disabled = false;
                     scoreBtn.textContent = '🎯 Run Score';
+                    scoreBtn.classList.remove('btn-removing');
                 }
                 if (cullBtn) {
                     cullBtn.disabled = false;
                     cullBtn.textContent = '🗑️ Run Cull';
+                    cullBtn.classList.remove('btn-removing');
                 }
     
                 // Check if this was a dry run with results
