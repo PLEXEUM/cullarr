@@ -5,6 +5,7 @@ from app.db.database import get_connection
 from app.utils.logger import get_logger
 from app.utils.validators import validate_cron, validate_delete_after_days, validate_max_queued
 from app.core.scheduler import update_score_schedule, update_cull_schedule
+from app.core.scoring_engine import ScoringEngine, apply_score_penalty
 
 router = APIRouter()
 logger = get_logger()
@@ -390,6 +391,7 @@ async def get_score_preview(weights_data: dict):
             "watched_weight": engine.watched_weight,
             "age_max_days": engine.age_max_days,
             "size_max_gb": engine.size_max_gb,
+            "protection_days": engine.protection_days,
         }
         
         try:
@@ -411,9 +413,11 @@ async def get_score_preview(weights_data: dict):
             if advanced:
                 engine.age_max_days = advanced["age_max_days"]
                 engine.size_max_gb = advanced["size_max_gb"]
+                engine.protection_days = advanced["protection_days"]
             else:
                 engine.age_max_days = weights_data.get("age_max_days", 365)
                 engine.size_max_gb = weights_data.get("size_max_gb", 100)
+                engine.protection_days = weights_data.get("protection_days", 30) 
 
             engine.monitored_weight = 0.0
             
@@ -422,13 +426,16 @@ async def get_score_preview(weights_data: dict):
             if not result.get("eligible"):
                 return {"movie": None, "error": "Selected movie has no file"}
             
+            # Apply penalty to the raw score 
+            boosted_raw = apply_score_penalty(result.get("score", 0)) 
+            
             return {
                 "movie": {
                     "movie_title": preview_movie.get("title"),
                     "movie_year": preview_movie.get("year"),
                     "size_gb": result.get("size_gb", 0),
                     "age_days": result.get("age_days", 0),
-                    "raw_score": result.get("score", 0),
+                    "raw_score": boosted_raw,
                     "factors": result.get("factors", []),
                 }
             }
@@ -440,6 +447,7 @@ async def get_score_preview(weights_data: dict):
             engine.watched_weight = original_weights["watched_weight"]
             engine.age_max_days = original_weights["age_max_days"]
             engine.size_max_gb = original_weights["size_max_gb"]
+            engine.protection_days = original_weights["protection_days"]
 
     except Exception as e:
         logger.error(f"Preview failed: {e}")
