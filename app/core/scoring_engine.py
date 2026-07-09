@@ -66,26 +66,32 @@ def get_quality_score(quality_name: str) -> float:
     return 0.5
 
 
+# Play count scoring lookup (stepped)
+PLAY_SCORES = {
+    0: 1.00, 1: 0.80, 2: 0.60, 3: 0.40, 4: 0.30,
+    5: 0.25, 6: 0.20, 7: 0.15, 8: 0.10, 9: 0.05,
+}
+
+def get_play_score(play_count: int) -> float:
+    """Get play count score from stepped lookup. 10+ plays = 0.0."""
+    return PLAY_SCORES.get(min(play_count, 9), 0.0)
+
+
 def get_watched_score(play_count: int, last_viewed_timestamp: int = 0) -> float:
     """
     Combined watch score based on play count AND recency.
     Returns score from 0.0 (protected) to 1.0 (deletable).
     
-    Play count scoring: S-Curve (^0.7) - 0 plays=1.0, 1=0.93, 2=0.87, 3=0.82, 4=0.77, 5=0.72, 6=0.67, 7=0.61, 8=0.54, 9=0.47, 10+=0.0
+    Play count scoring: Stepped - 0=1.0, 1=0.8, 2=0.6, 3=0.4, 4=0.3, 
+    5=0.25, 6=0.2, 7=0.15, 8=0.1, 9=0.05, 10+=0.0
     Recency scoring: S-Curve (^0.7) on days since last watch
     Final score = play_score * recency_score (both factors contribute)
     """
     import time
     from datetime import datetime
     
-    # Calculate play count score with S-Curve (more nuance between counts)
-    if play_count <= 0:
-        play_score = 1.0
-    elif play_count >= 10:
-        play_score = 0.0
-    else:
-        # S-Curve: 0=1.0, 1=0.93, 2=0.87, 3=0.82, 4=0.77, 5=0.72, ... 10=0.0
-        play_score = (1.0 - (play_count / 10)) ** 0.7
+    # Calculate play count score with stepped lookup
+    play_score = get_play_score(play_count)
     
     # Calculate recency score with S-Curve
     recency_score = 1.0  # Default to deletable if no data
@@ -103,7 +109,6 @@ def get_watched_score(play_count: int, last_viewed_timestamp: int = 0) -> float:
         days_since_last_watch = None  # No watch history
     
     # Combined score (multiplicative) - both factors contribute
-    # This ensures each play count has a distinct score
     final_score = play_score * recency_score
     
     # Store recency info for display
@@ -117,6 +122,29 @@ def get_watched_score(play_count: int, last_viewed_timestamp: int = 0) -> float:
     
     return final_score_details
 
+def apply_score_penalty(raw_score: float) -> float:
+    """
+    Apply tiered penalty to boost bad movies.
+    raw_score is 0-1 scale (raw score from factors).
+    Returns boosted score 0-1.
+    
+    Tier mapping:
+    - Best movies (0-0.20): No penalty
+    - Good movies (0.21-0.40): +5% boost
+    - Average movies (0.41-0.60): +10% boost
+    - Bad movies (0.61-0.80): +15% boost
+    - Worst movies (0.81-1.00): +20% boost (capped at 1.0)
+    """
+    if raw_score <= 0.20:
+        return raw_score
+    elif raw_score <= 0.40:
+        return min(1.0, raw_score + 0.05)
+    elif raw_score <= 0.60:
+        return min(1.0, raw_score + 0.10)
+    elif raw_score <= 0.80:
+        return min(1.0, raw_score + 0.15)
+    else:
+        return 1.0  # Cap at 1.0 for worst movies
 
 def extract_collection(movie: Dict) -> Optional[Tuple[int, str]]:
     """
@@ -242,17 +270,33 @@ class ScoringEngine:
         if age_days < self.protection_days:
             effective_age_raw = 0
 
-        # Capped at 1.0 so outliers don't compress all other scores
-        # S-Curve scaling for more nuanced age/size differentiation
-        age_raw = min((effective_age_raw / self.age_max_days) ** 0.7, 1.0)
-        size_raw = min((size_gb / self.size_max_gb) ** 0.7, 1.0)
+        # Size scoring: stepped, sensitive in 0-5GB range
+        def get_size_score(size_gb: float) -> float:
+            """Stepped size scoring based on file size."""
+            if size_gb <= 0:
+                return 0.0
+            elif size_gb <= 1.5:
+                return 0.00
+            elif size_gb <= 2.5:
+                return 0.20
+            elif size_gb <= 3.5:
+                return 0.40
+            elif size_gb <= 5.0:
+                return 0.60
+            elif size_gb <= 10.0:
+                return 0.80
+            else:
+                return 1.00
+
+        size_raw = get_size_score(size_gb)
 
         # TMDB rating (0-10, lower rating = higher deletion score)
         # Reverse sigmoid: high ratings → low raw, low ratings → high raw
         tmdb_rating = movie.get("ratings", {}).get("tmdb", {}).get("value") or movie.get("tmdbRating") or 5.0
         rating_normalized = tmdb_rating / 10.0
-        steepness = 8.0  # Controls transition sharpness (higher = sharper)
-        rating_raw = 1.0 / (1.0 + math.exp(steepness * (rating_normalized - 0.55)))
+        steepness = 12.0  # More aggressive than previous 8.0
+        rating_raw = 1.0 / (1.0 + math.exp(steepness * (rating_normalized - 0.45)))
+        # 3.0 = 0.94, 4.0 = 0.79, 5.0 = 0.45, 6.0 = 0.16, 7.0 = 0.04
 
         # Quality
         current_quality = "Unknown"
@@ -515,15 +559,20 @@ class ScoringEngine:
 
         # Convert raw scores (0-1) to 0-100 scale (raw_score * 100)
         # No normalization against library max
+        # Apply penalty to boost bad movies
         for movie in scored:
-            movie["score"] = movie["raw_score"] * 100
-            # Keep normalized_score for backward compatibility (set to same value)
-            movie["normalized_score"] = movie["raw_score"] * 100
+            movie["raw_score_original"] = movie["raw_score"] 
+            boosted_raw = apply_score_penalty(movie["raw_score"])  # ← Penalty applied
+            movie["score"] = boosted_raw * 100
+            movie["normalized_score"] = boosted_raw * 100
 
             # For collections, ensure individual movies keep their original scores
             if movie.get("is_collection") and movie.get("movies"):
                 for member in movie["movies"]:
-                    member["score"] = member["raw_score"] * 100
-                    member["normalized_score"] = member["raw_score"] * 100
+                    boosted_member_raw = apply_score_penalty(member["raw_score"])
+                    member["score"] = boosted_member_raw * 100
+                    member["normalized_score"] = boosted_member_raw * 100
+                    member["raw_score_original"] = member["raw_score"] 
+                    member["raw_score"] = boosted_member_raw
 
         return scored
