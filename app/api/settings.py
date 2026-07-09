@@ -408,16 +408,21 @@ async def get_score_preview(weights_data: dict):
             engine.quality_weight = (quality_raw / 10) * 0.20
             engine.watched_weight = (watched_raw / 10) * 0.20
 
-            # Load advanced settings from database (same as Score Run)
+            # Load advanced settings from database
             advanced = conn.execute("SELECT age_max_days, size_max_gb FROM scoring_weights WHERE id = 1").fetchone()
             if advanced:
                 engine.age_max_days = advanced["age_max_days"]
                 engine.size_max_gb = advanced["size_max_gb"]
-                engine.protection_days = advanced["protection_days"]
             else:
                 engine.age_max_days = weights_data.get("age_max_days", 365)
                 engine.size_max_gb = weights_data.get("size_max_gb", 100)
-                engine.protection_days = weights_data.get("protection_days", 30) 
+            
+            # Load protection_days from settings table separately
+            settings_row = conn.execute("SELECT protection_days FROM settings WHERE id = 1").fetchone()
+            if settings_row:
+                engine.protection_days = settings_row["protection_days"]
+            else:
+                engine.protection_days = weights_data.get("protection_days", 30)
 
             engine.monitored_weight = 0.0
             
