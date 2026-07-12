@@ -96,17 +96,40 @@ Access the web interface at `http://localhost:7447`
 5. **Schedules** – Set cron expressions for auto-scoring and auto-culling
 6. **Enable** – Toggle the main switch to activate automation
 
-### Scoring Factors
+---
 
-| Factor | Slider Range | Default | Max Contribution | Description |
-|--------|-------------|---------|------------------|-------------|
+## Scoring Factors
+
+| Factor | Slider Range | Default | Influence | Description |
+|--------|--------------|---------|-----------|-------------|
 | **Age** | 1-10 | 5 | 2-20% | Movies added longer ago score higher |
 | **Size** | 1-10 | 5 | 2-20% | Larger files score higher |
 | **Rating** | 1-10 | 5 | 2-20% | Lower TMDB ratings score higher |
 | **Quality** | 1-10 | 5 | 2-20% | SD/DVD before 1080p before 4K |
 | **Watched** | 1-10 | 5 | 2-20% | Unwatched movies score highest |
 
-> **Note:** Each slider is independent. Slider 10 = 20% weight, Slider 1 = 2% weight. The total weight is the sum of all sliders, which can be less than 100% if not all sliders are at maximum.
+### How It Works
+
+Each slider independently controls its factor's influence. A slider at **10** gives that factor its maximum influence (20%), while a slider at **1** gives minimum influence (2%). Sliders do not affect each other — lowering one slider only reduces that factor's contribution, it does not automatically increase others.
+
+### Total Influence
+
+The sum of all sliders determines the overall scoring sensitivity. For example, all sliders at 5 gives 50% total influence (each slider at 5 = 10% influence × 5 sliders = 50%). This is intentional — you don't need to maximize every slider to get useful results. The scoring system works effectively at any total influence level, and scores are always displayed on a 0-100 scale for easy comparison.
+
+### Score Floor
+
+All movies receive a minimum score of 10 points (out of 100), ensuring even the lowest-scoring movies remain visible in the score queue. This helps you see the full spectrum of your library, from "most deletable" at the top to "safest" at the bottom. Without this floor, all very safe movies would cluster near 0, making it difficult to distinguish between them. The +10 floor creates meaningful separation at the bottom of the queue.
+
+### Understanding Your Scores
+
+| Score Range | Priority | Description |
+|-------------|----------|-------------|
+| **90-100** | High | High priority for deletion — old, large, low-quality, unwatched movies |
+| **70-89** | Moderate | Moderate priority — some factors make them candidates, others protect them |
+| **50-69** | Lower | Lower priority — generally safe movies with some deletable traits |
+| **10-49** | Very Safe | Very safe — recently added, high quality, watched, or highly rated |
+
+---
 
 ### Cron Examples
 
