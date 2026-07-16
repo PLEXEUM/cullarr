@@ -254,6 +254,11 @@ async function updateLivePreview() {
         
         const totalRaw = ageRaw + sizeRaw + ratingRaw + qualityRaw + watchedRaw;
         
+        // Clamp score base floor to 0-50 range
+        let floorValue = parseInt(document.getElementById('score-base-floor').value || 0);
+        floorValue = Math.max(0, Math.min(50, floorValue));
+        document.getElementById('score-base-floor').value = floorValue;
+        
         // Calculate percentages for preview API
         const weights = {
             age_raw: parseInt(ageSlider.value),
@@ -263,7 +268,7 @@ async function updateLivePreview() {
             watched_raw: parseInt(watchedSlider.value),
             age_max_days: parseInt(ageMaxDays.value),
             size_max_gb: parseFloat(sizeMaxGb.value),
-            score_base_floor: parseInt(document.getElementById('score-base-floor').value || 0)
+            score_base_floor: floorValue
         };
         
         const res = await fetch('/api/settings/preview', {
@@ -702,6 +707,10 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
+    let floorValue = parseInt(document.getElementById('score-base-floor').value || 0);
+    floorValue = Math.max(0, Math.min(50, floorValue));
+    document.getElementById('score-base-floor').value = floorValue;
+
     const payload = {
         enabled: document.getElementById('cullarr-enabled').checked,
         score_cron: document.getElementById('score-cron').value,
@@ -711,7 +720,7 @@ async function saveSettings() {
         delete_after_days: parseInt(document.getElementById('delete-after-days').value),
         collection_grouping: document.getElementById('collection-grouping').checked,
         min_score_threshold: parseInt(minScoreThreshold?.value || 0),
-        score_base_floor: parseInt(document.getElementById('score-base-floor').value || 0)
+        score_base_floor: floorValue
     };
     
     try {

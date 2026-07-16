@@ -376,6 +376,8 @@ async def get_score_preview(weights_data: dict):
 
         # Get score base floor from request payload (or default to 10)
         score_base_floor = weights_data.get("score_base_floor", 10)
+        # Clamp to 0-50 range
+        score_base_floor = max(0, min(50, score_base_floor))
 
         # Map slider values (1-10) to weights (2-20%)
         age_raw = weights_data.get("age_raw", 5)
