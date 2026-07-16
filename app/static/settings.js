@@ -263,7 +263,7 @@ async function updateLivePreview() {
             watched_raw: parseInt(watchedSlider.value),
             age_max_days: parseInt(ageMaxDays.value),
             size_max_gb: parseFloat(sizeMaxGb.value),
-            score_base_floor: parseInt(document.getElementById('score-base-floor').value || 10)
+            score_base_floor: parseInt(document.getElementById('score-base-floor').value || 0)
         };
         
         const res = await fetch('/api/settings/preview', {
@@ -296,7 +296,7 @@ function renderPreview(movie) {
     const previewDiv = document.getElementById('live-preview-content');
     if (!previewDiv) return;
     
-    const score = (movie.raw_score * 100 + (movie.score_base_floor || 10)).toFixed(1);
+    const score = (movie.raw_score * 100 + (movie.score_base_floor || 0)).toFixed(1);
     const wouldQueue = movie.raw_score * 100 > (parseInt(minScoreThreshold?.value) || 0);
     const queueBadge = wouldQueue 
         ? '<span class="badge" style="background: var(--success-bg); color: var(--success);">✓ Would queue</span>'
@@ -711,7 +711,7 @@ async function saveSettings() {
         delete_after_days: parseInt(document.getElementById('delete-after-days').value),
         collection_grouping: document.getElementById('collection-grouping').checked,
         min_score_threshold: parseInt(minScoreThreshold?.value || 0),
-        score_base_floor: parseInt(document.getElementById('score-base-floor').value || 10)
+        score_base_floor: parseInt(document.getElementById('score-base-floor').value || 0)
     };
     
     try {
