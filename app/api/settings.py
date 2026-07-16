@@ -374,11 +374,8 @@ async def get_score_preview(weights_data: dict):
         settings = conn.execute("SELECT protection_days FROM settings WHERE id = 1").fetchone()
         protection_days = settings["protection_days"] if settings else 30
 
-        # Get score base floor from settings
-        score_base_floor = conn.execute(
-            "SELECT score_base_floor FROM settings WHERE id = 1"
-        ).fetchone()
-        score_base_floor = score_base_floor["score_base_floor"] if score_base_floor else 10
+        # Get score base floor from request payload (or default to 10)
+        score_base_floor = weights_data.get("score_base_floor", 10)
 
         # Map slider values (1-10) to weights (2-20%)
         age_raw = weights_data.get("age_raw", 5)
