@@ -180,14 +180,16 @@ class ScoringEngine:
     def _load_settings(self):
         """Load settings (protection days, collection grouping)."""
         settings = self.conn.execute(
-            "SELECT protection_days, collection_grouping FROM settings WHERE id = 1"
+            "SELECT protection_days, collection_grouping, score_base_floor FROM settings WHERE id = 1"
         ).fetchone()
         if settings:
             self.protection_days = settings["protection_days"]
             self.collection_grouping = bool(settings["collection_grouping"])
+            self.score_base_floor = settings["score_base_floor"] or 10 
         else:
             self.protection_days = 30
             self.collection_grouping = False
+            self.score_base_floor = 10
 
     def reload_config(self):
         """Reload weights and settings from database."""
@@ -572,7 +574,7 @@ class ScoringEngine:
 
         # Convert raw scores (0-1) to 0-100 scale (raw_score * 100)
         # Add base floor of 10 to ensure worst movies always stand out
-        BASE_FLOOR = 10  # Minimum score for any movie
+        BASE_FLOOR = self.score_base_floor
         
         for movie in scored:
             movie["score"] = movie["raw_score"] * 100 + BASE_FLOOR

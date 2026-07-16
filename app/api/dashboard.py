@@ -1177,7 +1177,7 @@ async def get_settings_summary() -> Dict[str, Any]:
     conn = get_connection()
     try:
         settings = conn.execute("""
-            SELECT delete_after_days, protection_days, collection_grouping, max_queued, deletions_per_day
+            SELECT delete_after_days, protection_days, collection_grouping, max_queued, deletions_per_day, score_base_floor
             FROM settings WHERE id = 1
         """).fetchone()
 
@@ -1194,5 +1194,6 @@ async def get_settings_summary() -> Dict[str, Any]:
         "collection_grouping": bool(settings["collection_grouping"]) if settings else False,
         "max_queued": settings["max_queued"] if settings else 20,
         "deletions_per_day": settings["deletions_per_day"] if settings else 0,
+        "score_base_floor": settings["score_base_floor"] if settings else 10,
         "weights": dict(weights) if weights else {},
     }

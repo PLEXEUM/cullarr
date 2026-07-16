@@ -30,6 +30,7 @@ class SettingsInput(BaseModel):
     delete_after_days: int
     collection_grouping: bool
     min_score_threshold: int = 0
+    score_base_floor: int = 10
 
 
 @router.get("/settings/weights")
@@ -155,6 +156,7 @@ async def get_settings():
             "protection_days": 30,
             "collection_grouping": False,
             "min_score_threshold": 0,
+            "score_base_floor": 10, 
         }
 
     return dict(settings)
@@ -182,6 +184,9 @@ async def save_settings(data: SettingsInput):
     if data.min_score_threshold < 0 or data.min_score_threshold > 100:
         raise HTTPException(status_code=400, detail="Minimum score threshold must be between 0 and 100")
 
+    if data.score_base_floor < 0 or data.score_base_floor > 50:   # <-- ADD THIS
+        raise HTTPException(status_code=400, detail="Score base floor must be between 0 and 50")
+
     is_valid, error = validate_delete_after_days(data.delete_after_days)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)
@@ -192,11 +197,11 @@ async def save_settings(data: SettingsInput):
             """UPDATE settings SET
                 enabled = ?, score_cron = ?, cull_cron = ?,
                 max_queued = ?, deletions_per_day = ?, delete_after_days = ?,
-                collection_grouping = ?, min_score_threshold = ?, updated_at = CURRENT_TIMESTAMP
+                collection_grouping = ?, min_score_threshold = ?, score_base_floor = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = 1""",
             (1 if data.enabled else 0, data.score_cron, data.cull_cron,
             data.max_queued, data.deletions_per_day, data.delete_after_days,
-            1 if data.collection_grouping else 0, data.min_score_threshold)
+            1 if data.collection_grouping else 0, data.min_score_threshold, data.score_base_floor)
         )
         conn.commit()
 

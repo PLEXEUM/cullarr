@@ -70,6 +70,7 @@ def init_db():
             protection_days INTEGER DEFAULT 30,
             collection_grouping BOOLEAN DEFAULT 0,
             min_score_threshold INTEGER DEFAULT 0,
+            score_base_floor INTEGER DEFAULT 10,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -428,6 +429,15 @@ def migrate_db():
         print("Migration applied: added individual score columns")
     except Exception:
         pass
+
+    # Migration: Add score_base_floor to settings table
+    try:
+        cursor.execute(
+            "ALTER TABLE settings ADD COLUMN score_base_floor INTEGER DEFAULT 10"
+        )
+        print("Migration applied: added score_base_floor to settings")
+    except Exception:
+        pass  # Column already exists, safe to ignore
 
     conn.commit()
     conn.close()

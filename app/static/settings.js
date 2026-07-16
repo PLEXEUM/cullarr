@@ -695,6 +695,7 @@ async function loadSettings() {
         document.getElementById('collection-grouping').checked = data.collection_grouping || false;
         if (minScoreThreshold) minScoreThreshold.value = data.min_score_threshold || 0;
     } catch (e) {
+        document.getElementById('score-base-floor').value = data.score_base_floor !== undefined ? data.score_base_floor : 10; 
         console.error('Failed to load settings:', e);
     }
 }
@@ -708,7 +709,8 @@ async function saveSettings() {
         deletions_per_day: parseInt(deletionsPerDay?.value || 0),
         delete_after_days: parseInt(document.getElementById('delete-after-days').value),
         collection_grouping: document.getElementById('collection-grouping').checked,
-        min_score_threshold: parseInt(minScoreThreshold?.value || 0)
+        min_score_threshold: parseInt(minScoreThreshold?.value || 0),
+        score_base_floor: parseInt(document.getElementById('score-base-floor').value || 10)
     };
     
     try {

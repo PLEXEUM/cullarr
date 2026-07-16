@@ -107,6 +107,7 @@ Access the web interface at `http://localhost:7447`
 | **Rating** | 1-10 | 5 | 2-20% | Lower TMDB ratings score higher |
 | **Quality** | 1-10 | 5 | 2-20% | SD/DVD before 1080p before 4K |
 | **Watched** | 1-10 | 5 | 2-20% | Unwatched movies score highest |
+| **Score Base Floor** | User Setting | 10 (0-50) | Adds a minimum score to all movies. Higher values make more movies visible in the queue. Set to 0 for raw scores. |
 
 ### How It Works
 
@@ -116,11 +117,31 @@ Each slider independently controls its factor's influence. A slider at **10** gi
 
 The sum of all sliders determines the overall scoring sensitivity. For example, all sliders at 5 gives 50% total influence (each slider at 5 = 10% influence × 5 sliders = 50%). This is intentional — you don't need to maximize every slider to get useful results. The scoring system works effectively at any total influence level, and scores are always displayed on a 0-100 scale for easy comparison.
 
-### Score Floor
+### Score Base Floor
 
-All movies receive a minimum score of 10 points (out of 100), ensuring even the lowest-scoring movies remain visible in the score queue. This helps you see the full spectrum of your library, from "most deletable" at the top to "safest" at the bottom. Without this floor, all very safe movies would cluster near 0, making it difficult to distinguish between them. The +10 floor creates meaningful separation at the bottom of the queue.
+Cullarr adds a **minimum score** (base floor) to every movie to ensure even the safest movies are visible in the score queue. This helps you see the full spectrum of your library.
+
+- **Default: 10** — gives every movie a minimum score of 10/100
+- **Range: 0-50** — adjustable in Settings → Scoring Weights
+- **Set to 0** to see raw, unfloored scores
+- **Set higher** to make more movies appear in the score queue
+
+Without a floor, the safest movies would cluster near 0, making it difficult to distinguish between them. The floor creates meaningful separation at the bottom of the queue.
+
+**Example:**
+| Raw Score | Floor = 0 | Floor = 10 | Floor = 20 |
+|-----------|-----------|------------|------------|
+| 0.00      | 0         | 10         | 20         |
+| 0.05      | 5         | 15         | 25         |
+| 0.10      | 10        | 20         | 30         |
+| 0.50      | 50        | 60         | 70         |
+| 0.90      | 90        | 100        | 110*       |
+
+*Scores are capped at 100 for display, but the underlying logic uses the full value.
 
 ### Understanding Your Scores
+
+Scores are displayed on a 0-100 scale, with a **configurable base floor** (default 10) added to all movies. The floor ensures even the safest movies remain visible in the queue.
 
 | Score Range | Priority | Description |
 |-------------|----------|-------------|
@@ -128,6 +149,8 @@ All movies receive a minimum score of 10 points (out of 100), ensuring even the 
 | **70-89** | Moderate | Moderate priority — some factors make them candidates, others protect them |
 | **50-69** | Lower | Lower priority — generally safe movies with some deletable traits |
 | **10-49** | Very Safe | Very safe — recently added, high quality, watched, or highly rated |
+
+*Note: If you set the floor to 0, raw scores below 10 will appear.*
 
 ---
 

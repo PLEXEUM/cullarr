@@ -254,6 +254,21 @@
                 </div>
             </div>
 
+            <!-- Score Base Floor -->
+                <div class="border-t pt-4 mt-4" style="border-color: var(--border-color);">
+                    <div>
+                        <label class="text-sm block mb-1" style="color: var(--text-secondary);">
+                            Score Base Floor:
+                        </label>
+                        <input type="number" id="score-base-floor" value="10" min="0" max="50" step="1">
+                        <p class="text-xs mt-1" style="color: var(--text-secondary);">
+                            Minimum score added to all movies (0-50). Higher values make more movies visible in the queue.
+                            <br>
+                            <span style="color: var(--accent);">💡 Set to 0 to see raw scores without any floor.</span>
+                        </p>
+                    </div>
+                </div>
+
             <!-- Advanced Settings (Collapsible - matches Logs page style) -->
             <div class="card rounded-xl overflow-hidden mt-6">
                 <button onclick="toggleAdvancedSettings()" class="w-full flex items-center justify-between p-4 text-left">
