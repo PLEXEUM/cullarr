@@ -374,6 +374,12 @@ async def get_score_preview(weights_data: dict):
         settings = conn.execute("SELECT protection_days FROM settings WHERE id = 1").fetchone()
         protection_days = settings["protection_days"] if settings else 30
 
+        # Get score base floor from settings
+        score_base_floor = conn.execute(
+            "SELECT score_base_floor FROM settings WHERE id = 1"
+        ).fetchone()
+        score_base_floor = score_base_floor["score_base_floor"] if score_base_floor else 10
+
         # Map slider values (1-10) to weights (2-20%)
         age_raw = weights_data.get("age_raw", 5)
         size_raw = weights_data.get("size_raw", 5)
@@ -445,7 +451,7 @@ async def get_score_preview(weights_data: dict):
         watched_contrib = watched_raw_score * watched_weight
 
         raw_score = age_contrib + size_contrib + rating_contrib + quality_contrib + watched_contrib
-        normalized_score = raw_score * 100
+        normalized_score = raw_score * 100 + score_base_floor
 
         # Build factors for display
         factors = [
@@ -463,6 +469,7 @@ async def get_score_preview(weights_data: dict):
                 "size_gb": size_gb,
                 "age_days": age_days,
                 "raw_score": raw_score,
+                "score_base_floor": score_base_floor, 
                 "factors": factors,
             }
         }

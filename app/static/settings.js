@@ -262,7 +262,8 @@ async function updateLivePreview() {
             quality_raw: parseInt(qualitySlider.value),
             watched_raw: parseInt(watchedSlider.value),
             age_max_days: parseInt(ageMaxDays.value),
-            size_max_gb: parseFloat(sizeMaxGb.value)
+            size_max_gb: parseFloat(sizeMaxGb.value),
+            score_base_floor: parseInt(document.getElementById('score-base-floor').value || 10)
         };
         
         const res = await fetch('/api/settings/preview', {
@@ -295,7 +296,7 @@ function renderPreview(movie) {
     const previewDiv = document.getElementById('live-preview-content');
     if (!previewDiv) return;
     
-    const score = (movie.raw_score * 100).toFixed(1);
+    const score = (movie.raw_score * 100 + (movie.score_base_floor || 10)).toFixed(1);
     const wouldQueue = movie.raw_score * 100 > (parseInt(minScoreThreshold?.value) || 0);
     const queueBadge = wouldQueue 
         ? '<span class="badge" style="background: var(--success-bg); color: var(--success);">✓ Would queue</span>'
@@ -694,8 +695,8 @@ async function loadSettings() {
         document.getElementById('protection-days').value = data.protection_days || 30;
         document.getElementById('collection-grouping').checked = data.collection_grouping || false;
         if (minScoreThreshold) minScoreThreshold.value = data.min_score_threshold || 0;
-    } catch (e) {
-        document.getElementById('score-base-floor').value = data.score_base_floor !== undefined ? data.score_base_floor : 10; 
+        document.getElementById('score-base-floor').value = data.score_base_floor !== undefined ? data.score_base_floor : 10;
+    } catch (e) { 
         console.error('Failed to load settings:', e);
     }
 }
