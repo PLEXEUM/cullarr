@@ -247,6 +247,28 @@ class ScoringEngine:
         if age_days < self.protection_days:
             effective_age_raw = 0
 
+        # ===== FULL PROTECTION: newly added OR recently watched =====
+        is_protected = age_days < self.protection_days
+        protection_reason = (
+            f"Added {age_days} days ago (protected: {self.protection_days} days)"
+            if is_protected else None
+        )
+
+        if plex_enabled and plex_play_counts:
+            tmdb_id = movie.get("tmdbId") or movie.get("tmdb_id")
+            if tmdb_id and str(tmdb_id) in plex_play_counts:
+                last_viewed = plex_play_counts[str(tmdb_id)].get("last_viewed", 0)
+                if last_viewed and last_viewed > 0:
+                    import time
+                    days_since_watch = (int(time.time()) - last_viewed) / 86400
+                    if days_since_watch < self.protection_days:
+                        is_protected = True
+                        protection_reason = (
+                            f"Watched {int(days_since_watch)} days ago "
+                            f"(protected: {self.protection_days} days)"
+                        )
+        # ===== END FULL PROTECTION CHECK =====
+
         # Capped at 1.0 so outliers don't compress all other scores
         # S-Curve scaling for more nuanced age/size differentiation
         age_raw = min((effective_age_raw / self.age_max_days) ** 0.5, 1.0)
@@ -377,6 +399,11 @@ class ScoringEngine:
             quality_contrib + watched_contrib  # monitored removed
         )
 
+        # ===== APPLY FULL PROTECTION =====
+        if is_protected:
+            raw_score = 0.0
+        # ===== END APPLY =====
+
         # Build factor breakdown (monitored factor removed)
         factors = [
             {
@@ -413,6 +440,8 @@ class ScoringEngine:
         return {
             "score": raw_score,
             "eligible": True,
+            "protected": is_protected,
+            "protection_reason": protection_reason,
             "size_gb": size_gb,
             "age_days": age_days,
             "tmdb_rating": tmdb_rating,
@@ -500,7 +529,19 @@ class ScoringEngine:
 
         for coll_id, movies in collection_buckets.items():
             coll_title = movies[0]["collection"][1]
-            avg_score = sum(m["raw_score"] for m in movies) / len(movies)
+
+            # If ANY member is protected, the whole collection is protected
+            collection_protected = any(m.get("protected") for m in movies)
+            if collection_protected:
+                avg_score = 0.0
+                protection_reason = next(
+                    (m.get("protection_reason") for m in movies if m.get("protected")),
+                    None,
+                )
+            else:
+                avg_score = sum(m["raw_score"] for m in movies) / len(movies)
+                protection_reason = None
+            
             total_size = sum(m["size_gb"] for m in movies)
             oldest_age = max(m["age_days"] for m in movies)
 
@@ -521,6 +562,8 @@ class ScoringEngine:
                 "monitored": all(m["monitored"] for m in movies),
                 "factors": movies[0]["factors"],  # representative factors from first movie
                 "plex_play_count": sum(m.get("plex_play_count", 0) for m in movies),
+                "protected": collection_protected,
+                "protection_reason": protection_reason,
                 "poster_url": movies[0].get("poster_url"),
             })
 
@@ -559,6 +602,8 @@ class ScoringEngine:
                     "factors": result["factors"],
                     "collection": collection,
                     "is_collection": False,
+                    "protected": result.get("protected", False),
+                    "protection_reason": result.get("protection_reason"),
                     "plex_play_count": result.get("plex_play_count", 0),
                     "poster_url": movie.get("remotePoster"),
                 })
