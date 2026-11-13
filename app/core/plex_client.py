@@ -43,8 +43,8 @@ class PlexClient:
             logger.error(f"Plex API request failed: {redact(str(e))}")
             return None
 
-    async def _request_xml(self, endpoint: str, timeout: int = 30) -> Optional[str]:
-        """Make a GET request to Plex API returning raw XML."""
+    async def _request_xml(self, endpoint: str, timeout: int = 30, _retry: int = 0) -> Optional[str]:
+        """Make a GET request to Plex API returning raw XML. Retries 401s with backoff."""
         sep = "&" if "?" in endpoint else "?"
         url = f"{self.base_url}{endpoint}{sep}X-Plex-Token={self.api_key}"
         
@@ -60,6 +60,11 @@ class PlexClient:
                 response.raise_for_status()
                 return response.text
         except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401 and _retry < 2:
+                wait = 2 ** _retry
+                logger.warning(f"Plex XML GET returned 401 (likely rate-limit), retry {_retry+1}/2 in {wait}s")
+                await asyncio.sleep(wait)
+                return await self._request_xml(endpoint, timeout, _retry + 1)
             if e.response.status_code == 404:
                 logger.debug(f"Plex XML request returned 404: {endpoint}")
             else:
@@ -69,8 +74,8 @@ class PlexClient:
             logger.error(f"Plex XML request failed: {redact(str(e))}")
             return None
 
-    async def _put(self, endpoint: str, timeout: int = 30) -> bool:
-        """Make a PUT request to Plex API."""
+    async def _put(self, endpoint: str, timeout: int = 30, _retry: int = 0) -> bool:
+        """Make a PUT request to Plex API. Retries 401s with backoff (rate-limit disguise)."""
         sep = "&" if "?" in endpoint else "?"
         url = f"{self.base_url}{endpoint}{sep}X-Plex-Token={self.api_key}"
         
@@ -82,11 +87,20 @@ class PlexClient:
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.put(url, headers=headers)
-                logger.debug(f"PUT {endpoint} -> status {response.status_code}")  # <--- ADD THIS DEBUG
+                logger.debug(f"PUT {endpoint} -> status {response.status_code}")
                 response.raise_for_status()
                 return True
+        except httpx.HTTPStatusError as e:
+            # Plex returns 401 when rate-limited, not just on auth failure
+            if e.response.status_code == 401 and _retry < 2:
+                wait = 2 ** _retry
+                logger.warning(f"Plex PUT returned 401 (likely rate-limit), retry {_retry+1}/2 in {wait}s")
+                await asyncio.sleep(wait)
+                return await self._put(endpoint, timeout, _retry + 1)
+            logger.error(f"Plex PUT request failed: {e.response.status_code} - {e.response.text[:200]}")
+            return False
         except Exception as e:
-            logger.error(f"Plex PUT request failed: {e.response.status_code} - {e.response.text[:200]}")  # <--- MODIFY THIS (add response text)
+            logger.error(f"Plex PUT request failed: {redact(str(e))}")
             return False
 
     async def _delete(self, endpoint: str, timeout: int = 30) -> bool:

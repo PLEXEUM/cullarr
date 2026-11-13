@@ -185,6 +185,9 @@ async def _apply_plex_collections(
         else:
             logger.warning(f"Failed to add '{title}' to Plex collection")
             logger.error(f"❌ Failed to add '{title}' to Plex collection")  # <--- Already there but ensure it's there
+
+        # Throttle: prevent Plex rate-limiting (returns 401 on burst)
+        await asyncio.sleep(0.25)
     
     logger.info(f"Added {len(rating_key_map)} movies to Plex collection (out of {len(flat_movies)})")
     return rating_key_map
@@ -286,6 +289,9 @@ async def _remove_plex_collections(
         
         if success:
             logger.info(f"Removed '{title}' from Plex collection '{collection_name}'")
+
+        # Throttle: prevent Plex rate-limiting (returns 401 on burst)
+        await asyncio.sleep(0.25)
 
 
 async def _build_plex_library_map(plex_client: PlexClient) -> dict:
@@ -811,6 +817,9 @@ async def run_score_cycle():
                 logger.debug("No newly scheduled movies to add to Plex collection")
 
         # ===== STEP 8: Repair any scheduled movies missing from Plex collection =====
+        # Only run repair on the manually-queued + newly-scheduled set to avoid re-tagging
+        # the entire queue every run (which triggers Plex rate-limiting).
+        # A full repair can be forced by clearing the collection manually.
         if plex_enabled and plex_client and plex_config and plex_config["collection_key"]:
             all_scheduled = conn.execute(
                 "SELECT movie_id, movie_title, movie_year, tmdb_id FROM scored_movies_cache WHERE scheduled_for_deletion = 1"
@@ -835,7 +844,8 @@ async def run_score_cycle():
         import traceback
         traceback.print_exc()
     finally:
-        conn.close()
+        if 'conn' in locals():
+            conn.close()
         await release_run_lock()
 
 
@@ -1020,5 +1030,6 @@ async def run_cull_cycle(dry_run: bool = False):
     except Exception as e:
         logger.error(f"Cull cycle failed: {e}")
     finally:
-        conn.close()
+        if 'conn' in locals():
+            conn.close()
         await release_run_lock()
