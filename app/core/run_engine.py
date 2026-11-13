@@ -669,8 +669,51 @@ async def run_score_cycle():
         # ===== STEP 5: Assign scheduled dates with staggering =====
         # NOTE: existing_scheduled was populated BEFORE we cleared the flags
         
-        # Calculate staggering for new movies
         current_time = datetime.now()
+        
+        # ----- Compute start day for NEW movies (tail-append) -----
+        # Preserved movies keep their dates. New movies append after the tail,
+        # batched at deletions_per_day, never before today + base_delay_days.
+        
+        def _parse_date(value):
+            """Safely parse a scheduled_date value. Returns None if unparseable."""
+            if isinstance(value, datetime):
+                return value
+            try:
+                return datetime.fromisoformat(value)
+            except (ValueError, TypeError):
+                return None
+        
+        if existing_scheduled:
+            parsed_dates = [
+                d for d in (_parse_date(v) for v in existing_scheduled.values())
+                if d is not None
+            ]
+            if parsed_dates:
+                tail_date = max(parsed_dates)
+            else:
+                # All values were unparseable — fall back to cold-start behavior
+                logger.warning(
+                    f"Could not parse any existing scheduled_date values "
+                    f"({len(existing_scheduled)} entries). Falling back to cold-start tail."
+                )
+                tail_date = current_time + timedelta(days=base_delay_days - 1)
+        else:
+            tail_date = current_time + timedelta(days=base_delay_days - 1)
+        
+        if deletions_per_day > 0:
+            start_day = max(
+                tail_date + timedelta(days=1),
+                current_time + timedelta(days=base_delay_days)
+            )
+        else:
+            # deletions_per_day == 0: all new movies on one day
+            start_day = max(
+                tail_date + timedelta(days=1),
+                current_time + timedelta(days=base_delay_days)
+            )
+        
+        new_movie_index = 0  # counts NEW movies only, not preserved
         
         for idx, movie in enumerate(top_movies):
             group_id = movie["movie_id"]
@@ -699,17 +742,15 @@ async def run_score_cycle():
                     )
                     logger.info(f"PRESERVED: Movie (ID: {group_id}) keeps existing scheduled date {original_date} (rank #{idx+1})")
             else:
-                # New movie entering top N - calculate scheduled date based on rank position
+                # New movie entering top N — batch from start_day using new_movie_index
                 if deletions_per_day > 0:
-                    # Each batch of movies gets pushed back by an additional day
-                    batch_number = idx // deletions_per_day
-                    # Add 1 day per batch, starting from base_delay_days
-                    total_delay_days = base_delay_days + batch_number  # ✅ CORRECT - adds!
+                    batch_number = new_movie_index // deletions_per_day
+                    scheduled_date = start_day + timedelta(days=batch_number)
                 else:
-                    total_delay_days = base_delay_days
+                    scheduled_date = start_day
         
-                scheduled_date = current_time + timedelta(days=total_delay_days)
                 scheduled_date_str = scheduled_date.isoformat()
+                new_movie_index += 1
         
                 # Check if this is a collection
                 is_collection = conn.execute(
@@ -723,14 +764,14 @@ async def run_score_cycle():
                         SET scheduled_for_deletion = 1, scheduled_date = ?
                         WHERE collection_id = ?
                     """, (scheduled_date_str, group_id))
-                    logger.info(f"SCHEDULED: New collection (ID: {group_id}) (rank #{idx+1}) for {scheduled_date_str} (+{total_delay_days} days)")
+                    logger.info(f"SCHEDULED: New collection (ID: {group_id}) (rank #{idx+1}) for {scheduled_date_str}")
                 else:
                     conn.execute("""
                         UPDATE scored_movies_cache 
                         SET scheduled_for_deletion = 1, scheduled_date = ?
                         WHERE movie_id = ?
                     """, (scheduled_date_str, group_id))
-                    logger.info(f"SCHEDULED: New movie (rank #{idx+1}) for {scheduled_date_str} (+{total_delay_days} days)")
+                    logger.info(f"SCHEDULED: New movie (rank #{idx+1}) for {scheduled_date_str}")
         
         # ===== STEP 6: Ensure all other movies are marked as not scheduled =====
         conn.execute("""
