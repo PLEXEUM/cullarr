@@ -905,9 +905,14 @@ async def run_score_cycle():
                 logger.debug("No newly scheduled movies to add to Plex collection")
 
         # ===== STEP 8: Repair any scheduled movies missing from Plex collection =====
-        # Only run repair on the manually-queued + newly-scheduled set to avoid re-tagging
-        # the entire queue every run (which triggers Plex rate-limiting).
-        # A full repair can be forced by clearing the collection manually.
+        # Sweeps the full scheduled queue every run so any movie that STEP 7 failed to
+        # add (transient Plex error, library-map miss, Plex disabled at run time, etc.)
+        # gets re-added on the next run. This is deliberate: a movie drops out of
+        # "newly scheduled" after one run, so this full sweep is the only recovery path.
+        #
+        # Trade-off: N PUT requests per run where N = full queue size. Acceptable at
+        # current queue caps; if max_queued grows large or Plex rate-limits, switch to
+        # a diff-based repair (fetch collection members, PUT only missing entries).
         if plex_enabled and plex_client and plex_config and plex_config["collection_key"]:
             all_scheduled = conn.execute(
                 "SELECT movie_id, movie_title, movie_year, tmdb_id FROM scored_movies_cache WHERE scheduled_for_deletion = 1"
