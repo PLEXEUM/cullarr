@@ -635,7 +635,7 @@ async def run_score_cycle():
         threshold = settings["min_score_threshold"] if settings else 0
         deletions_per_day = int(settings["deletions_per_day"]) if settings and settings["deletions_per_day"] is not None else 0
         base_delay_days = settings["delete_after_days"] if settings else 7
-        
+
         # Count manually queued movies (they stay queued regardless)
         manual_count = conn.execute("""
             SELECT COUNT(*) as count 
@@ -643,7 +643,47 @@ async def run_score_cycle():
             WHERE scheduled_for_deletion = 1 AND manual_for_deletion = 1
         """).fetchone()["count"]
 
-        logger.info(f"Found {manual_count} manually queued movies (preserved, not counted in slots)")
+        logger.info(f"Found {manual_count} manually queued movies (preserved, counted toward cap)")
+
+        # ===== BLOCK-FILL LOGIC =====
+        # Count SLOTS currently preserved (collections count as 1 slot, individuals as 1).
+        # Uses existing_scheduled_movies (captured in STEP 1) because STEP 2 cleared flags.
+        preserved_slot_keys = set()
+        for row in existing_scheduled_movies:
+            if row["collection_id"]:
+                preserved_slot_keys.add(("coll", row["collection_id"]))
+            else:
+                preserved_slot_keys.add(("movie", row["movie_id"]))
+        preserved_slots = len(preserved_slot_keys)
+
+        currently_queued = preserved_slots + manual_count
+        headroom = max_queued - currently_queued
+
+        # Block-fill: only add in whole blocks of deletions_per_day.
+        # deletions_per_day == 0 -> no blocking, fill all available headroom.
+        if deletions_per_day > 0:
+            fill_slots = (headroom // deletions_per_day) * deletions_per_day
+            if fill_slots < 0:
+                fill_slots = 0
+        else:
+            fill_slots = max(headroom, 0)
+
+        logger.info(
+            f"Block-fill: max_queued={max_queued}, preserved={preserved_slots}, "
+            f"manual={manual_count}, headroom={headroom}, "
+            f"deletions_per_day={deletions_per_day} -> fill_slots={fill_slots}"
+        )
+
+        # Diagnostic: surface over-cap state caused by manual entries
+        if currently_queued > max_queued:
+            pause_reason = (
+                f"auto-fill paused until headroom >= {deletions_per_day}"
+                if deletions_per_day > 0
+                else "auto-fill limited to available headroom (unlimited mode)"
+            )
+            logger.info(
+                f"Queue over cap ({currently_queued}/{max_queued}) due to manual entries — {pause_reason}"
+            )
 
         # Get all movies sorted by normalized_score (highest first) - exclude manual
         # For collections, use collection_id as the unique identifier (one slot per collection)
@@ -658,13 +698,20 @@ async def run_score_cycle():
             ORDER BY MAX(normalized_score) DESC
         """, (threshold,)).fetchall()
 
-        # Auto slots = max_queued (manual doesn't reduce slots)
-        auto_slots = max_queued
-        top_movies = all_movies[:auto_slots]
+        # Split into preserved (keep slot) and new candidates (fill blocks only)
+        preserved_entries = [m for m in all_movies if m["movie_id"] in existing_scheduled]
+        candidates = [m for m in all_movies if m["movie_id"] not in existing_scheduled]
+        top_movies_new = candidates[:fill_slots]
 
-        logger.info(f"Auto-scheduling top {len(top_movies)} movies from {len(all_movies)} eligible (max_queued: {max_queued})")
-        
-        logger.info(f"Top {len(top_movies)} movies qualify for scheduling (threshold: {threshold})")
+        # top_movies = preserved + new block. STEP 5 re-marks preserved scheduled,
+        # and staggers only the new ones (new_movie_index counts new only).
+        top_movies = preserved_entries + top_movies_new
+
+        logger.info(
+            f"Scheduling {len(top_movies_new)} new slot(s) "
+            f"(preserved: {len(preserved_entries)}, fill target: {fill_slots}, "
+            f"eligible new candidates: {len(candidates)}, threshold: {threshold})"
+        )
         
         # ===== STEP 5: Assign scheduled dates with staggering =====
         # NOTE: existing_scheduled was populated BEFORE we cleared the flags
@@ -828,7 +875,7 @@ async def run_score_cycle():
             "SELECT COUNT(*) as count FROM scored_movies_cache WHERE scheduled_for_deletion = 1 AND manual_for_deletion = 1"
         ).fetchone()["count"]
 
-        logger.info(f"Score cycle complete: {scheduled_count} movies scheduled (auto: {scheduled_count - manual_count_final}, manual: {manual_count_final}) - Slots filled: {len(top_movies)}/{max_queued}")
+        logger.info(f"Score cycle complete: {scheduled_count} movies scheduled (auto: {scheduled_count - manual_count_final}, manual: {manual_count_final}) - Slots filled: {preserved_slots + len(top_movies_new)}/{max_queued}")
           
         # ===== STEP 7: Sync with Plex collection if enabled (ONLY for newly scheduled movies) =====
         if plex_enabled and plex_client and plex_config and plex_config["collection_key"]:

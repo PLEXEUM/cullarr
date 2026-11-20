@@ -103,15 +103,61 @@ async def _run_dry_score(run_id: str):
         # Filter already-queued movies and apply threshold
         max_queued = settings["max_queued"] if settings else 20
         threshold = settings["min_score_threshold"] if settings else 0
-        
+        deletions_per_day = int(settings["deletions_per_day"]) if settings and settings["deletions_per_day"] is not None else 0
+
+        # Count preserved slots (already-queued, non-manual) and manual slots.
+        # Collections count as 1 slot, individuals as 1 slot.
+        # NOTE: `conn` was closed earlier in this function, so open a fresh one.
+        _conn_slots = get_connection()
+        try:
+            manual_count = _conn_slots.execute("""
+                SELECT COUNT(*) as count
+                FROM scored_movies_cache
+                WHERE scheduled_for_deletion = 1 AND manual_for_deletion = 1
+            """).fetchone()["count"]
+
+            slot_rows = _conn_slots.execute("""
+                SELECT movie_id, collection_id
+                FROM scored_movies_cache
+                WHERE scheduled_for_deletion = 1 AND manual_for_deletion = 0
+            """).fetchall()
+        finally:
+            _conn_slots.close()
+
+        preserved_slot_keys = set()
+        for row in slot_rows:
+            if row["collection_id"]:
+                preserved_slot_keys.add(("coll", row["collection_id"]))
+            else:
+                preserved_slot_keys.add(("movie", row["movie_id"]))
+        preserved_slots = len(preserved_slot_keys)
+
+        currently_queued = preserved_slots + manual_count
+        headroom = max_queued - currently_queued
+
+        if deletions_per_day > 0:
+            fill_slots = (headroom // deletions_per_day) * deletions_per_day
+            if fill_slots < 0:
+                fill_slots = 0
+        else:
+            fill_slots = max(headroom, 0)
+
+        # Diagnostic: surface over-cap state caused by manual entries
+        if currently_queued > max_queued:
+            pause_reason = (
+                f"auto-fill paused until headroom >= {deletions_per_day}"
+                if deletions_per_day > 0
+                else "auto-fill limited to available headroom (unlimited mode)"
+            )
+            logger.info(
+                f"[Dry run] Queue over cap ({currently_queued}/{max_queued}) due to manual entries — {pause_reason}"
+            )
+
         # Filter: not already queued AND score > threshold
         candidates = []
         for entry in scored:
-            # Check threshold first
             if entry.get("normalized_score", 0) <= threshold:
                 continue
-            
-            # Check if already queued (handles both individual and collection)
             if entry.get("is_collection"):
                 member_ids = {m["movie_id"] for m in entry.get("movies", [])}
                 if member_ids.intersection(scheduled_id_set):
@@ -119,15 +165,22 @@ async def _run_dry_score(run_id: str):
             else:
                 if entry.get("movie_id") in scheduled_id_set:
                     continue
-            
             candidates.append(entry)
-        
-        would_queue = candidates[:max_queued]
+
+        # Apply block-fill: only queue up to fill_slots new entries
+        would_queue = candidates[:fill_slots]
 
         _active_run["dry_run_results"] = would_queue
         _active_run["current"] = len(movies)
-        _active_run["current_movie"] = f"Dry run complete — {len(would_queue)} movies would be queued"
-        logger.info(f"Dry score run complete: {len(would_queue)} movies would be queued")
+        _active_run["current_movie"] = (
+            f"Dry run complete — {len(would_queue)} would be queued "
+            f"(block-fill: {fill_slots} slot(s), {currently_queued}/{max_queued} currently queued)"
+        )
+        logger.info(
+            f"Dry score run complete: {len(would_queue)} would be queued "
+            f"(preserved={preserved_slots}, manual={manual_count}, "
+            f"headroom={headroom}, fill_slots={fill_slots})"
+        )
 
     except Exception as e:
         logger.error(f"Dry score run failed: {e}")
